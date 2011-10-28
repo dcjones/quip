@@ -1,0 +1,8 @@
+
+#ifndef FAZER_VERSION_H
+#define FAZER_VERSION_H
+
+#define FAZER_VERSION "@VERSION@"
+
+#endif
+
