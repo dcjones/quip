@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /* K-mers are encoded 2 bits per nucleotide in a 64 bit integer,
- * allowing up to 32.
+ * allowing up to k = 32.
  */
 typedef uint64_t kmer_t;
 
@@ -23,6 +23,11 @@ kmer_t kmer_revcomp(kmer_t);
 
 /* canonical */
 kmer_t kmer_canonical(kmer_t);
+
+/* hash functions for kmers */
+uint64_t kmer_hash(kmer_t);
+uint64_t kmer_hash_with_seed(kmer_t, uint64_t seed);
+
 
 #endif
 

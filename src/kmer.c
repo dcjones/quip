@@ -113,4 +113,33 @@ kmer_t kmer_canonical(kmer_t x)
 
 
 
+/* This is Thomas Wang's hash function for 64-bit integers. */
+uint64_t kmer_hash(kmer_t x)
+{
+    x = (~x) + (x << 21);
+    x = x ^ (x >> 24);
+    x = (x + (x << 3)) + (x << 8); // x * 265
+    x = x ^ (x >> 14);
+    x = (x + (x << 2)) + (x << 4); // x * 21
+    x = x ^ (x >> 28);
+    x = x + (x << 31);
+    return x;
+}
+
+
+/* This is taken from the Hash128to64 function in CityHash */
+uint64_t kmer_hash_with_seed(kmer_t x, uint64_t h2)
+{
+    const uint64_t c1 = 0x9ae16a3b2f90404fULL;
+    const uint64_t c2 = 0x9ddfea08eb382d69ULL;
+
+    uint64_t h1 = kmer_hash(x) - c1;
+    uint64_t a = (h1 ^ h2) * c2;
+    a ^= (a >> 47);
+    uint64_t b = (h2 ^ a) * c2;
+    b ^= (b >> 47);
+    b *= c2;
+    return b;
+}
+
 
