@@ -14,12 +14,12 @@ static kmer_t kmer_comp1(kmer_t x)
 }
 
 
-static kmer_t kmer_high_order(kmer_t x)
+static kmer_t kmer_high_order(kmer_t x, size_t k)
 {
 #ifdef WORDS_BIGENDIAN
-    return x << (sizeof(kmer_t) - 2);
+    return x << (2 * (k - 1));
 #else
-    return x >> (sizeof(kmer_t) - 2);
+    return x >> (2 * (k - 1));
 #endif
 }
 
@@ -43,6 +43,16 @@ kmer_t chartokmer(char c)
     }
 }
 
+char kmertochar(kmer_t x)
+{
+    switch (x & 0x3) {
+        case 0: return 'A';
+        case 1: return 'C';
+        case 2: return 'G';
+        case 3: default: return 'T';
+    }
+}
+
 
 kmer_t strtokmer(const char* s)
 {
@@ -62,6 +72,22 @@ kmer_t strtokmer(const char* s)
 }
 
 
+void kmertostr(kmer_t x, char* s, size_t k)
+{
+    size_t i = 0;
+    for (i = 0; i < k; ++i) {
+        s[i] = kmertochar((x & 0x3));
+#ifdef WORDS_BIGENDIAN
+        x >>= 2;
+#else
+        x <<= 2;
+#endif
+    }
+
+    s[i] = '\0';
+}
+
+
 kmer_t kmer_get_nt(kmer_t* x, size_t i)
 {
     size_t idx = (4 * sizeof(kmer_t)) / i;
@@ -75,11 +101,10 @@ kmer_t kmer_get_nt(kmer_t* x, size_t i)
 }
 
 
-kmer_t kmer_comp(kmer_t x)
+kmer_t kmer_comp(kmer_t x, size_t k)
 {
     kmer_t y = 0;
-    size_t n = 4 * sizeof(kmer_t);
-    while (n--) {
+    while (k--) {
 #ifdef WORDS_BIGENDIAN
         y = (y >> 2) | kmer_comp1(x);
         x <<= 2;
@@ -93,16 +118,15 @@ kmer_t kmer_comp(kmer_t x)
 }
 
 
-kmer_t kmer_revcomp(kmer_t x)
+kmer_t kmer_revcomp(kmer_t x, size_t k)
 {
     kmer_t y = 0;
-    size_t n = 4 * sizeof(kmer_t);
-    while (n--) {
+    while (k--) {
 #ifdef WORDS_BIGENDIAN
-        y = (y >> 2) | kmer_comp1((x << (sizeof(kmer_t) - 2)) & 0x3);
+        y = (y >> 2) | kmer_comp1(x << (2 * (k - 1)));
         x >>= 2;
 #else
-        y = (y << 2) | kmer_comp1((x >> (sizeof(kmer_t) - 2)) & 0x3);
+        y = (y << 2) | kmer_comp1(x >> (2 * (k - 1)));
         x <<= 2;
 #endif
     }
@@ -111,17 +135,17 @@ kmer_t kmer_revcomp(kmer_t x)
 }
 
 
-kmer_t kmer_canonical(kmer_t x)
+kmer_t kmer_canonical(kmer_t x, size_t k)
 {
     /* to decide whether x or revcomp(x) is lexigraphically smaller, we only
      * need to look at the higher order nucleotide and complement of the low
      * order nucleotide. */
 
-    if (kmer_high_order(x) < kmer_comp1(kmer_low_order(x))) {
+    if (kmer_high_order(x, k) < kmer_comp1(kmer_low_order(x))) {
         return x;
     }
     else {
-        return kmer_revcomp(x);
+        return kmer_revcomp(x, k);
     }
 }
 

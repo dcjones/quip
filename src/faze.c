@@ -33,6 +33,7 @@ int main(int argc, char* argv[])
     fastq_close(fqf);
 
 
+    assembler_write(A, stdout);
     assembler_free(A);
 
     return 0;
