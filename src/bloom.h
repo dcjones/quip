@@ -1,8 +1,17 @@
+/*
+ * This file is part of fazer.
+ *
+ * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ *
+ */
 
 /*
- * A variation of the "d-left counting bloom filter" proposed by Bonomi, et al.
- * in the paper entitled: "An Improved Construction for Counting Bloom Filters".
+ * bloom :
+ * A variation of the "d-left counting bloom filter" proposed in:
  *
+ *     Bonomi, F., Mitzenmacher, M., Panigrahy, R., Singh, S., & Varghese, G.
+ *     (2006). An improved construction for counting bloom filters. 14th Annual
+ *     European Symposium on Algorithms, LNCS 4168 (pp. 684–695). Springer.
  */
 
 
@@ -16,7 +25,6 @@
 
 
 typedef struct bloom_t_ bloom_t;
-typedef uint8_t bloom_count_t;
 
 /* Allocate a new counting bloom filter, where n is the number of buckets per
  * table, and m is the number of cells per bucket.

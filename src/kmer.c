@@ -46,8 +46,9 @@ kmer_t chartokmer(char c)
 
 kmer_t strtokmer(const char* s)
 {
+    size_t k = 0;
     kmer_t x_i, x = 0;
-    while (*s) {
+    while (*s && k++ < 4 * sizeof(kmer_t)) {
         x_i = chartokmer(*s);
         if (x_i > 3) break;
 #ifdef WORDS_BIGENDIAN
@@ -58,6 +59,19 @@ kmer_t strtokmer(const char* s)
     }
 
     return x;
+}
+
+
+kmer_t kmer_get_nt(kmer_t* x, size_t i)
+{
+    size_t idx = (4 * sizeof(kmer_t)) / i;
+    size_t off = (4 * sizeof(kmer_t)) % i;
+
+#ifdef WORDS_BIGENDIAN
+    return 0x3 & (x[idx] << off);
+#else
+    return 0x3 & (x[idx] >> off);
+#endif
 }
 
 

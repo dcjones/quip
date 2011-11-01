@@ -55,6 +55,7 @@ bloom_t* bloom_alloc(size_t n, size_t m)
      * integers, mainly so valgrind doesn't whine. */
     B->T = malloc(((d * n * m * cell_bytes) / 4 + 1) * 4);
     assert(B->T != NULL);
+    memset(B->T, 0, ((d * n * m * cell_bytes) / 4 + 1) * 4);
     return B;
 }
 
@@ -72,9 +73,9 @@ unsigned int bloom_get(bloom_t* B, kmer_t x)
     /* fingerprint */
     uint64_t h = kmer_hash(x);
 #ifdef WORDS_BIGENDIAN
-    uint32_t fp = (h % (uint64_t) fingerprint_mask);
+    uint32_t fp = (h & (uint64_t) fingerprint_mask);
 #else
-    uint32_t fp = (h % (uint64_t) fingerprint_mask);
+    uint32_t fp = (h & (uint64_t) fingerprint_mask);
 #endif
 
     uint8_t* c;
@@ -103,9 +104,9 @@ void bloom_inc(bloom_t* B, kmer_t x)
     /* fingerprint */
     uint64_t h = kmer_hash(x);
 #ifdef WORDS_BIGENDIAN
-    uint32_t fp = (h % (uint64_t) fingerprint_mask);
+    uint32_t fp = (h & (uint64_t) fingerprint_mask);
 #else
-    uint32_t fp = (h % (uint64_t) fingerprint_mask);
+    uint32_t fp = (h & (uint64_t) fingerprint_mask);
 #endif
     uint32_t g;
     uint32_t cnt;
@@ -124,6 +125,8 @@ void bloom_inc(bloom_t* B, kmer_t x)
         /* scan through cells */
         for (j = 0; j < B->m; ++j) {
             g = (*(uint32_t*) c) & fingerprint_mask;
+
+            assert(c < B->T + d * B->n * B->m * cell_bytes);
 
             if (g == fp) {
                 cnt = get_cell_count(c);
@@ -157,7 +160,7 @@ void bloom_inc(bloom_t* B, kmer_t x)
     }
 
     if (i_min < d) {
-        (*(uint32_t*) cells[i_min]) = fp & 1; // figngerprint & count
+        (*(uint32_t*) cells[i_min]) = fp | 1; // figngerprint & count
     }
 }
 
