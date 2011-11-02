@@ -204,8 +204,8 @@ uint64_t kmer_hash(kmer_t x)
 /* This is taken from the Hash128to64 function in CityHash */
 uint64_t kmer_hash_mix(uint64_t h1, uint64_t h2)
 {
-    const uint64_t c1 = 0x9ae16a3b2f90404fULL;
-    const uint64_t c2 = 0x9ddfea08eb382d69ULL;
+    static const uint64_t c1 = 0x9ae16a3b2f90404fULL;
+    static const uint64_t c2 = 0x9ddfea08eb382d69ULL;
 
     h1 -= c1;
     uint64_t a = (h1 ^ h2) * c2;

@@ -1,5 +1,6 @@
 
 #include "bloom.h"
+#include "misc.h"
 #include <assert.h>
 #include <string.h>
 
@@ -10,7 +11,7 @@
 
 /* the number of subtables, hard-coded so I can use stack space in a few places
  * */
-static const size_t d = 4;
+#define NUM_SUBTABLES 4
 
 /* careful, these numbers should not be changed independent of each other */
 static const size_t   fingerprint_bits = 14;
@@ -36,6 +37,9 @@ struct bloom_t_
 {
     uint8_t* T; 
 
+    /* pointers into T, to save a little computation */
+    uint8_t* subtable[NUM_SUBTABLES];
+
     /* number of buckets per subtable */
     size_t n;
 
@@ -53,9 +57,15 @@ bloom_t* bloom_alloc(size_t n, size_t m)
 
     /* the '(. / 4 + 1) * 4' is to make sure things are aligned up to 32-bit
      * integers, mainly so valgrind doesn't whine. */
-    B->T = malloc(((d * n * m * cell_bytes) / 4 + 1) * 4);
+    B->T = malloc(((NUM_SUBTABLES * n * m * cell_bytes) / 4 + 1) * 4);
     assert(B->T != NULL);
-    memset(B->T, 0, ((d * n * m * cell_bytes) / 4 + 1) * 4);
+    memset(B->T, 0, ((NUM_SUBTABLES * n * m * cell_bytes) / 4 + 1) * 4);
+
+    size_t i;
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
+        B->subtable[i] = B->T + i * B->n * B->m * cell_bytes;
+    }
+
     return B;
 }
 
@@ -70,22 +80,26 @@ void bloom_free(bloom_t* B)
 
 unsigned int bloom_get(bloom_t* B, kmer_t x)
 {
+    const size_t bytes_per_bucket = B->m * cell_bytes;
+
     /* fingerprint */
     uint64_t h, h1, h0 = kmer_hash(x);
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
 
     uint8_t* c;
-    size_t i, j;
+    uint8_t* c_end;
+    size_t i;
     h1 = h0;
-    for (i = 0; i < d; ++i) {
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
         h1 = kmer_hash_mix(h0, h1);
         h = h1 % B->n;
 
         /* get bucket offset */
-        c = B->T + (i * B->n + h) * B->m * cell_bytes;
+        c = B->subtable[i] + h * bytes_per_bucket;
+        c_end = c + bytes_per_bucket;
 
         /* scan through cells */
-        for (j = 0; j < B->m; ++j) {
+        while (c < c_end) {
             if (((*(uint32_t*) c) & fingerprint_mask) == fp) {
                 return get_cell_count(c);
             }
@@ -100,22 +114,26 @@ unsigned int bloom_get(bloom_t* B, kmer_t x)
 
 void bloom_del(bloom_t* B, kmer_t x)
 {
+    const size_t bytes_per_bucket = B->m * cell_bytes;
+
     /* fingerprint */
     uint64_t h, h1, h0 = kmer_hash(x);
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
 
     uint8_t* c;
-    size_t i, j;
+    uint8_t* c_end;
+    size_t i;
     h1 = h0;
-    for (i = 0; i < d; ++i) {
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
         h1 = kmer_hash_mix(h0, h1);
         h = h1 % B->n;
 
         /* get bucket offset */
-        c = B->T + (i * B->n + h) * B->m * cell_bytes;
+        c = B->subtable[i] + h * bytes_per_bucket;
+        c_end = c + bytes_per_bucket;
 
         /* scan through cells */
-        for (j = 0; j < B->m; ++j) {
+        while (c < c_end) {
             if (((*(uint32_t*) c) & fingerprint_mask) == fp) {
                 (*(uint32_t*) c) &= ~(fingerprint_mask | counter_mask);
                 return;
@@ -130,6 +148,8 @@ void bloom_del(bloom_t* B, kmer_t x)
 
 unsigned int bloom_inc(bloom_t* B, kmer_t x)
 {
+    const size_t bytes_per_bucket = B->m * cell_bytes;
+
     /* fingerprint */
     uint64_t h, h1, h0 = kmer_hash(x);
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
@@ -137,24 +157,23 @@ unsigned int bloom_inc(bloom_t* B, kmer_t x)
     uint32_t g;
     uint32_t cnt;
 
-    uint8_t* cells[d];
-    size_t bucket_sizes[d];
+    uint8_t* cells[NUM_SUBTABLES];
+    size_t bucket_sizes[NUM_SUBTABLES];
 
-    uint8_t *c0, *c;
-    size_t i, j;
+    uint8_t *c0, *c, *c_end;
+    size_t i;
     h1 = h0;
-    for (i = 0; i < d; ++i) {
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
         h1 = kmer_hash_mix(h0, h1);
         h = h1 % B->n;
 
         /* get bucket offset */
-        c0 = c = B->T + (i * B->n + h) * B->m * cell_bytes;
+        c0 = c = B->subtable[i] + h * bytes_per_bucket;
+        c_end = c + bytes_per_bucket;
 
         /* scan through cells */
-        for (j = 0; j < B->m; ++j) {
+        while (c < c_end) {
             g = (*(uint32_t*) c) & fingerprint_mask;
-
-            assert(c < B->T + d * B->n * B->m * cell_bytes);
 
             if (g == fp) {
                 cnt = get_cell_count(c);
@@ -171,23 +190,23 @@ unsigned int bloom_inc(bloom_t* B, kmer_t x)
         }
 
         /* full bucket */
-        if (j == B->m) {
+        if (c == c_end) {
             cells[i] = NULL;
             bucket_sizes[i] = B->m;
         }
     }
 
     /* find the smallest bucket, breaking ties to the left */
-    size_t i_min = d;
+    size_t i_min = NUM_SUBTABLES;
     size_t min_bucket_size = B->m;
-    for (i = 0; i < d && min_bucket_size > 0; ++i) {
+    for (i = 0; i < NUM_SUBTABLES && min_bucket_size > 0; ++i) {
         if (bucket_sizes[i] < min_bucket_size) {
             i_min = i;
             min_bucket_size = bucket_sizes[i];
         }
     }
 
-    if (i_min < d) {
+    if (i_min < NUM_SUBTABLES) {
         (*(uint32_t*) cells[i_min]) = fp | 1; // figngerprint & count
         return 1;
     }
