@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 /* K-mers are encoded 2 bits per nucleotide in a 64 bit integer,
  * allowing up to k = 32.
@@ -40,6 +41,9 @@ kmer_t kmer_revcomp(kmer_t, size_t k);
 
 /* canonical */
 kmer_t kmer_canonical(kmer_t, size_t k);
+
+/* are fewer than all four nucleotides present in the kmer */
+bool kmer_simple(kmer_t, size_t k);
 
 /* hash functions for kmers */
 uint64_t kmer_hash(kmer_t);

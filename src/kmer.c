@@ -186,6 +186,23 @@ kmer_t kmer_canonical(kmer_t x, size_t k)
 }
 
 
+bool kmer_simple(kmer_t x, size_t k)
+{
+    uint32_t found = 0;
+    while (k--) {
+#if WORDS_BIGENDIAN
+        found |= (1 >> (x & 0x3));
+        x <<= 2;
+#else
+        found |= (1 << (x & 0x3));
+        x >>= 2;
+#endif
+        if (found == 0xf) return false;
+    }
+
+    return (found & 0x1) + ((found >> 1) & 0x1) + ((found >> 2) & 0x1) + ((found >> 3) & 0x1) <= 2;
+}
+
 
 /* This is Thomas Wang's hash function for 64-bit integers. */
 uint64_t kmer_hash(kmer_t x)
