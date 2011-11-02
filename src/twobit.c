@@ -45,6 +45,11 @@ void twobit_free(twobit_t* s)
     free(s);
 }
 
+void twobit_clear(twobit_t* s)
+{
+    s->len = 0;
+}
+
 
 size_t twobit_len(twobit_t* s)
 {
@@ -87,8 +92,48 @@ void twobit_append_n(twobit_t* s, const char* seqstr, size_t seqlen)
 }
 
 
+void twobit_append_kmer(twobit_t* s, kmer_t x, size_t k)
+{
+    /* expand, if more space is needed */
+    if (s->n < kmers_needed(s->len + k)) {
+        while (s->n < kmers_needed(s->len + k)) s->n *= 2;
+        s->seq = realloc_or_die(s->seq, s->n * sizeof(kmer_t));
+    }
 
-void twobit_set(size_t i, twobit_t* s, char seqc)
+    size_t idx, off;
+    size_t i;
+    for (i = 0; i < k; ++i) {
+
+        idx = (s->len + i) / (4 * sizeof(kmer_t));
+        off = (s->len + i) % (4 * sizeof(kmer_t));
+
+#ifdef WORDS_BIGENDIAN
+        s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 >> (2 * off))) | ((x & 0x3) >> (2 * off));
+        x <<= 2;
+#else
+        s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 << (2 * off))) | ((x & 0x3) << (2 * off));
+        x >>= 2;
+#endif
+    }
+
+    s->len += k;
+}
+
+
+void twobit_reverse(twobit_t* s)
+{
+    kmer_t x;
+    int i, j;
+    for (i = 0, j = s->len - 1; i < j; ++i, --j) {
+        x = twobit_get(s, i);
+        twobit_set(s, i, twobit_get(s, j));
+        twobit_set(s, j, x);
+    }
+}
+
+
+
+void twobit_setc(twobit_t* s, size_t i, char seqc)
 {
     size_t idx = i / (4 * sizeof(kmer_t));
     size_t off = i % (4 * sizeof(kmer_t));
@@ -104,7 +149,22 @@ void twobit_set(size_t i, twobit_t* s, char seqc)
 
 }
 
-kmer_t twobit_get(size_t i, twobit_t* s)
+
+void twobit_set(twobit_t* s, size_t i, kmer_t x)
+{
+    size_t idx = i / (4 * sizeof(kmer_t));
+    size_t off = i % (4 * sizeof(kmer_t));
+
+#ifdef WORDS_BIGENDIAN
+    s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 >> (2 * off))) | (x >> (2 * off));
+#else
+    s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 << (2 * off))) | (x << (2 * off));
+#endif
+
+}
+
+
+kmer_t twobit_get(twobit_t* s, size_t i)
 {
     size_t idx = i / (4 * sizeof(kmer_t));
     size_t off = i % (4 * sizeof(kmer_t));
@@ -117,3 +177,10 @@ kmer_t twobit_get(size_t i, twobit_t* s)
 }
 
 
+void twobit_print(twobit_t* s, FILE* fout)
+{
+    size_t i;
+    for (i = 0; i < s->len; ++i) {
+        fputc(kmertochar(twobit_get(s, i)), fout);
+    }
+}

@@ -14,6 +14,7 @@ static kmer_t kmer_comp1(kmer_t x)
 }
 
 
+#if 0
 static kmer_t kmer_high_order(kmer_t x, size_t k)
 {
 #ifdef WORDS_BIGENDIAN
@@ -28,6 +29,7 @@ static kmer_t kmer_low_order(kmer_t x)
 {
     return x & 0x3;
 }
+#endif
 
 
 kmer_t chartokmer(char c)
@@ -76,11 +78,11 @@ void kmertostr(kmer_t x, char* s, size_t k)
 {
     size_t i = 0;
     for (i = 0; i < k; ++i) {
-        s[i] = kmertochar((x & 0x3));
+        s[k - i - 1] = kmertochar((x & 0x3));
 #ifdef WORDS_BIGENDIAN
-        x >>= 2;
-#else
         x <<= 2;
+#else
+        x >>= 2;
 #endif
     }
 
@@ -123,11 +125,11 @@ kmer_t kmer_revcomp(kmer_t x, size_t k)
     kmer_t y = 0;
     while (k--) {
 #ifdef WORDS_BIGENDIAN
-        y = (y >> 2) | kmer_comp1(x << (2 * (k - 1)));
-        x >>= 2;
-#else
-        y = (y << 2) | kmer_comp1(x >> (2 * (k - 1)));
+        y |= kmer_comp1(x) >> (2 * k);
         x <<= 2;
+#else
+        y |= kmer_comp1(x) << (2 * k);
+        x >>= 2;
 #endif
     }
 
@@ -137,16 +139,11 @@ kmer_t kmer_revcomp(kmer_t x, size_t k)
 
 kmer_t kmer_canonical(kmer_t x, size_t k)
 {
-    /* to decide whether x or revcomp(x) is lexigraphically smaller, we only
-     * need to look at the higher order nucleotide and complement of the low
-     * order nucleotide. */
-
-    if (kmer_high_order(x, k) < kmer_comp1(kmer_low_order(x))) {
-        return x;
-    }
-    else {
-        return kmer_revcomp(x, k);
-    }
+    /* TODO: we can make this a bit faster by comparing low order nucleotides to
+     * high-order nucleotides until we are sure the revcomp needs to be computed
+     * */
+    kmer_t y = kmer_revcomp(x, k);
+    return x < y ? x : y;
 }
 
 

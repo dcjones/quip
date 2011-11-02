@@ -16,6 +16,7 @@
 
 #include "kmer.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 typedef struct twobit_t_ twobit_t;
 
@@ -23,15 +24,19 @@ typedef struct twobit_t_ twobit_t;
 twobit_t* twobit_alloc();
 twobit_t* twobit_alloc_n(size_t n);
 void      twobit_free(twobit_t*);
-
+void      twobit_clear(twobit_t*);
 
 size_t twobit_len(twobit_t*);
 void   twobit_append(twobit_t*, const char*);
 void   twobit_append_n(twobit_t*, const char*, size_t);
+void   twobit_append_kmer(twobit_t*, kmer_t x, size_t k);
+void   twobit_reverse(twobit_t*);
 
 
-void   twobit_set(size_t i, twobit_t*, char);
-kmer_t twobit_get(size_t i, twobit_t*);
+void   twobit_setc(twobit_t*, size_t i, char);
+void   twobit_set(twobit_t*, size_t i, kmer_t);
+kmer_t twobit_get(twobit_t*, size_t i);
+void   twobit_print(twobit_t*, FILE*);
 
 
 

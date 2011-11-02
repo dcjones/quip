@@ -72,11 +72,7 @@ unsigned int bloom_get(bloom_t* B, kmer_t x)
 {
     /* fingerprint */
     uint64_t h = kmer_hash(x);
-#ifdef WORDS_BIGENDIAN
-    uint32_t fp = (h & (uint64_t) fingerprint_mask);
-#else
-    uint32_t fp = (h & (uint64_t) fingerprint_mask);
-#endif
+    uint32_t fp = h & (uint64_t) fingerprint_mask;
 
     uint8_t* c;
     size_t i, j;
@@ -98,6 +94,35 @@ unsigned int bloom_get(bloom_t* B, kmer_t x)
 
     return 0;
 }
+
+
+void bloom_del(bloom_t* B, kmer_t x)
+{
+    /* fingerprint */
+    uint64_t h = kmer_hash(x);
+    uint32_t fp = h & (uint64_t) fingerprint_mask;
+
+    uint8_t* c;
+    size_t i, j;
+    for (i = 0; i < d; ++i) {
+        h = kmer_hash_with_seed(x, h) % B->n;
+
+        /* get bucket offset */
+        c = B->T + (i * B->n + h) * B->m * cell_bytes;
+
+        /* scan through cells */
+        for (j = 0; j < B->m; ++j) {
+            if (((*(uint32_t*) c) & fingerprint_mask) == fp) {
+                (*(uint32_t*) c) &= ~(fingerprint_mask | counter_mask);
+                return;
+            }
+
+            c += cell_bytes;
+        }
+    }
+}
+
+
 
 void bloom_inc(bloom_t* B, kmer_t x)
 {
