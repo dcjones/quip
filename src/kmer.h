@@ -10,6 +10,13 @@
  */
 typedef uint64_t kmer_t;
 
+
+/* this function needs to be called when the program starts to build
+ * reverse complement lookup tables, in particular. */
+void kmer_init();
+void kmer_free();
+
+
 /* nucleotide character to kmer */
 kmer_t chartokmer(char);
 
@@ -36,8 +43,7 @@ kmer_t kmer_canonical(kmer_t, size_t k);
 
 /* hash functions for kmers */
 uint64_t kmer_hash(kmer_t);
-uint64_t kmer_hash_with_seed(kmer_t, uint64_t seed);
-
+uint64_t kmer_hash_mix(uint64_t a, uint64_t b);
 
 #endif
 

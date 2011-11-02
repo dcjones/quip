@@ -1,17 +1,64 @@
 
 #include "kmer.h"
+#include "misc.h"
 #include <stdlib.h>
+#include <assert.h>
 
 
-static kmer_t kmer_comp1(kmer_t x)
+static const kmer_t complement1[4] = {3, 2, 1, 0};
+
+/* reverse complements of 2, 4, and 8-kmers, resp. */
+kmer_t* complement2 = NULL;
+kmer_t* complement4 = NULL;
+kmer_t* complement8 = NULL;
+
+
+void kmer_init()
 {
-    switch(x & 0x3) {
-        case 0: return 3;
-        case 1: return 2;
-        case 2: return 1;
-        case 3: default: return 0;
+    kmer_t x;
+    complement2 = malloc_or_die(0x100 * sizeof(kmer_t));
+    for (x = 0; x <= 0xff; ++x) {
+#if WORDS_BIGENDIAN
+        complement2[x] = (complement1[x & 0x3] >> 2) | complement1[(x << 2)];
+#else
+        complement2[x] = (complement1[x & 0x3] << 2) | complement1[(x >> 2)];
+#endif
+    }
+
+
+    complement4 = malloc_or_die(0x1000 * sizeof(kmer_t));
+    for (x = 0; x <= 0xff; ++x) {
+#if WORDS_BIGENDIAN
+        complement4[x] = (complement2[x & 0xf] >> 4) | complement2[x << 4];
+#else
+        complement4[x] = (complement2[x & 0xf] << 4) | complement2[x >> 4];
+#endif
+    }
+
+
+    complement8 = malloc_or_die(0x10000 * sizeof(kmer_t));
+    for (x = 0; x < 0xffff; ++x) {
+#if WORDS_BIGENDIAN
+        complement8[x] = (complement4[x & 0xff] >> 8) | complement4[x << 8];
+#else
+        complement8[x] = (complement4[x & 0xff] << 8) | complement4[x >> 8];
+#endif
     }
 }
+
+
+void kmer_free()
+{
+    free(complement2);
+    free(complement4);
+    free(complement8);
+}
+
+
+/* TODO:
+ * mabye we can build a lookup table to do reverse complements
+ * of very large chunks of the kmer at a time
+ */
 
 
 #if 0
@@ -108,10 +155,10 @@ kmer_t kmer_comp(kmer_t x, size_t k)
     kmer_t y = 0;
     while (k--) {
 #ifdef WORDS_BIGENDIAN
-        y = (y >> 2) | kmer_comp1(x);
+        y = (y >> 2) | complement1[x & 0x3];
         x <<= 2;
 #else
-        y = (y << 2) | kmer_comp1(x); 
+        y = (y << 2) | complement1[x & 0x3]; 
         x >>= 2;
 #endif
     }
@@ -122,26 +169,18 @@ kmer_t kmer_comp(kmer_t x, size_t k)
 
 kmer_t kmer_revcomp(kmer_t x, size_t k)
 {
-    kmer_t y = 0;
-    while (k--) {
-#ifdef WORDS_BIGENDIAN
-        y |= kmer_comp1(x) >> (2 * k);
-        x <<= 2;
-#else
-        y |= kmer_comp1(x) << (2 * k);
-        x >>= 2;
-#endif
-    }
+    kmer_t y =
+        (complement8[x & 0xffff] << 48) |
+        (complement8[(x >> 16) & 0xffff] << 32) |
+        (complement8[(x >> 32) & 0xffff] << 16) |
+         complement8[x >> 48];
 
-    return y;
+    return y >> (64 - (2 * k));
 }
 
 
 kmer_t kmer_canonical(kmer_t x, size_t k)
 {
-    /* TODO: we can make this a bit faster by comparing low order nucleotides to
-     * high-order nucleotides until we are sure the revcomp needs to be computed
-     * */
     kmer_t y = kmer_revcomp(x, k);
     return x < y ? x : y;
 }
@@ -163,12 +202,12 @@ uint64_t kmer_hash(kmer_t x)
 
 
 /* This is taken from the Hash128to64 function in CityHash */
-uint64_t kmer_hash_with_seed(kmer_t x, uint64_t h2)
+uint64_t kmer_hash_mix(uint64_t h1, uint64_t h2)
 {
     const uint64_t c1 = 0x9ae16a3b2f90404fULL;
     const uint64_t c2 = 0x9ddfea08eb382d69ULL;
 
-    uint64_t h1 = kmer_hash(x) - c1;
+    h1 -= c1;
     uint64_t a = (h1 ^ h2) * c2;
     a ^= (a >> 47);
     uint64_t b = (h2 ^ a) * c2;

@@ -71,13 +71,15 @@ void bloom_free(bloom_t* B)
 unsigned int bloom_get(bloom_t* B, kmer_t x)
 {
     /* fingerprint */
-    uint64_t h = kmer_hash(x);
-    uint32_t fp = h & (uint64_t) fingerprint_mask;
+    uint64_t h, h1, h0 = kmer_hash(x);
+    uint32_t fp = h0 & (uint64_t) fingerprint_mask;
 
     uint8_t* c;
     size_t i, j;
+    h1 = h0;
     for (i = 0; i < d; ++i) {
-        h = kmer_hash_with_seed(x, h) % B->n;
+        h1 = kmer_hash_mix(h0, h1);
+        h = h1 % B->n;
 
         /* get bucket offset */
         c = B->T + (i * B->n + h) * B->m * cell_bytes;
@@ -99,13 +101,15 @@ unsigned int bloom_get(bloom_t* B, kmer_t x)
 void bloom_del(bloom_t* B, kmer_t x)
 {
     /* fingerprint */
-    uint64_t h = kmer_hash(x);
-    uint32_t fp = h & (uint64_t) fingerprint_mask;
+    uint64_t h, h1, h0 = kmer_hash(x);
+    uint32_t fp = h0 & (uint64_t) fingerprint_mask;
 
     uint8_t* c;
     size_t i, j;
+    h1 = h0;
     for (i = 0; i < d; ++i) {
-        h = kmer_hash_with_seed(x, h) % B->n;
+        h1 = kmer_hash_mix(h0, h1);
+        h = h1 % B->n;
 
         /* get bucket offset */
         c = B->T + (i * B->n + h) * B->m * cell_bytes;
@@ -124,15 +128,12 @@ void bloom_del(bloom_t* B, kmer_t x)
 
 
 
-void bloom_inc(bloom_t* B, kmer_t x)
+unsigned int bloom_inc(bloom_t* B, kmer_t x)
 {
     /* fingerprint */
-    uint64_t h = kmer_hash(x);
-#ifdef WORDS_BIGENDIAN
-    uint32_t fp = (h & (uint64_t) fingerprint_mask);
-#else
-    uint32_t fp = (h & (uint64_t) fingerprint_mask);
-#endif
+    uint64_t h, h1, h0 = kmer_hash(x);
+    uint32_t fp = h0 & (uint64_t) fingerprint_mask;
+
     uint32_t g;
     uint32_t cnt;
 
@@ -141,8 +142,10 @@ void bloom_inc(bloom_t* B, kmer_t x)
 
     uint8_t *c0, *c;
     size_t i, j;
+    h1 = h0;
     for (i = 0; i < d; ++i) {
-        h = kmer_hash_with_seed(x, h) % B->n;
+        h1 = kmer_hash_mix(h0, h1);
+        h = h1 % B->n;
 
         /* get bucket offset */
         c0 = c = B->T + (i * B->n + h) * B->m * cell_bytes;
@@ -156,7 +159,7 @@ void bloom_inc(bloom_t* B, kmer_t x)
             if (g == fp) {
                 cnt = get_cell_count(c);
                 if (cnt < counter_mask) set_cell_count(c, cnt + 1);
-                return;
+                return cnt + 1;
             }
             else if (g == 0) {
                 cells[i] = c;
@@ -186,7 +189,10 @@ void bloom_inc(bloom_t* B, kmer_t x)
 
     if (i_min < d) {
         (*(uint32_t*) cells[i_min]) = fp | 1; // figngerprint & count
+        return 1;
     }
+
+    return 0; // no space for insertion
 }
 
 

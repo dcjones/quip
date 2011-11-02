@@ -32,9 +32,9 @@ typedef struct bloom_t_ bloom_t;
 bloom_t* bloom_alloc(size_t n, size_t m);
 void     bloom_free(bloom_t*);
 
-void         bloom_inc(bloom_t*, kmer_t);
-void         bloom_del(bloom_t*, kmer_t);
+unsigned int bloom_inc(bloom_t*, kmer_t);
 unsigned int bloom_get(bloom_t*, kmer_t);
+void         bloom_del(bloom_t*, kmer_t);
 
 #endif
 

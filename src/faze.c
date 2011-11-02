@@ -1,5 +1,6 @@
 
 #include "assembler.h"
+#include "kmer.h"
 #include "misc.h"
 #include "parse.h"
 #include <stdlib.h>
@@ -7,6 +8,8 @@
 
 int main(int argc, char* argv[])
 {
+    kmer_init();
+
     FILE* fin;
 
     if (argc > 1) fin = fopen_or_die(argv[1], "r");
@@ -35,6 +38,8 @@ int main(int argc, char* argv[])
 
     assembler_write(A, stdout);
     assembler_free(A);
+
+    kmer_free();
 
     return 0;
 }
