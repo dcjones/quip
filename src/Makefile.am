@@ -10,5 +10,5 @@ faze_SOURCES = faze.c version.h \
 			   twobit.h      twobit.c \
 			   parse.h       parse.c
 
-faze_LDADD = -lz -lm
+faze_LDADD = -lm
 

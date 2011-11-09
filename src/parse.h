@@ -12,7 +12,6 @@
 #define FASTQ_TOOLS_PARSE_H
 
 #include <stdio.h>
-#include <zlib.h>
 
 
 typedef struct
@@ -39,7 +38,7 @@ void fastq_free_seq(seq_t*);
 
 typedef struct
 {
-    gzFile file;
+    FILE*  file;
     int    state;
     char*  buf;
     char*  c;

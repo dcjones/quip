@@ -51,7 +51,7 @@ assembler_t* assembler_alloc(size_t k)
 
     A->k = k;
     // TODO: set n and m in some principled way
-    A->B = bloom_alloc(4194304, 8);
+    A->B = bloom_alloc(8388608, 8);
 
     A->xs = twobit_alloc();
 
@@ -61,7 +61,7 @@ assembler_t* assembler_alloc(size_t k)
     A->offsets[0] = 0;
 
     A->H = kmer_hash_alloc();
-    A->count_cutoff = 10;
+    A->count_cutoff = 5;
 
     return A;
 }
@@ -136,11 +136,9 @@ static void assembler_make_contig(assembler_t* A, kmer_t seed, twobit_t* contig)
     twobit_clear(contig);
 
     /* expand the contig as far left as possible */
-    unsigned int cnt0, cnt, cnt_best = 0;
-    int min_diff, diff;
+    unsigned int cnt, cnt_best = 0;
 
-    cnt0 = bloom_get(A->B, kmer_canonical(seed, A->k));
-    kmer_t nt, nt_best = 0, x, y;
+    kmer_t nt, nt_best = 0, x, xc, y;
 
     x = seed;
     while (true) {
@@ -151,17 +149,19 @@ static void assembler_make_contig(assembler_t* A, kmer_t seed, twobit_t* contig)
 #else 
         x = (x >> 2) & A->mask;
 #endif
-        min_diff = 1000000;
+        cnt_best = 0;
         for (nt = 0; nt < 4; ++nt) {
 #if WORDS_BIGENDIAN
             y = nt >> (2 * (A->k - 1));
 #else
             y = nt << (2 * (A->k - 1));
 #endif
-            cnt = bloom_get(A->B, kmer_canonical(x | y, A->k));
-            diff = abs((int) cnt - (int) cnt0);
-            if (diff < min_diff) {
-                min_diff = diff;
+            xc = kmer_canonical(x | y, A->k);
+            cnt = kmer_hash_get(A->H, xc);
+            if (cnt == 0) cnt = bloom_get(A->B, xc);
+            else kmer_hash_put(A->H, xc, 0);
+
+            if (cnt > cnt_best) {
                 cnt_best = cnt;
                 nt_best  = nt;
             }
@@ -191,13 +191,14 @@ static void assembler_make_contig(assembler_t* A, kmer_t seed, twobit_t* contig)
 #else 
         x = (x << 2) & A->mask;
 #endif
-        min_diff = 1000000;
         cnt_best = 0;
         for (nt = 0; nt < 4; ++nt) {
-            cnt = bloom_get(A->B, kmer_canonical(x | nt, A->k));
-            diff = abs((int) cnt - (int) cnt0);
-            if (diff < min_diff) {
-                min_diff = diff;
+            xc = kmer_canonical(x | nt, A->k);
+            cnt = kmer_hash_get(A->H, xc);
+            if (cnt == 0) cnt = bloom_get(A->B, xc);
+            else kmer_hash_put(A->H, xc, 0);
+
+            if (cnt > cnt_best) {
                 cnt_best = cnt;
                 nt_best  = nt;
             }

@@ -188,19 +188,17 @@ kmer_t kmer_canonical(kmer_t x, size_t k)
 
 bool kmer_simple(kmer_t x, size_t k)
 {
-    uint32_t found = 0;
-    while (k--) {
-#if WORDS_BIGENDIAN
-        found |= (1 >> (x & 0x3));
-        x <<= 2;
-#else
-        found |= (1 << (x & 0x3));
-        x >>= 2;
-#endif
-        if (found == 0xf) return false;
+    /* to test if a kmer is simple, we just try shifting it a few times, and
+     * comparing the shifted version to the original. */
+
+    size_t i;
+    kmer_t  y = x;
+    for (i = 1; i <= 3; ++i) {
+        y &= ~((kmer_t) 0x3 << (2 * (k - i)));
+        if (x >> (2 * i) == y) return true;
     }
 
-    return (found & 0x1) + ((found >> 1) & 0x1) + ((found >> 2) & 0x1) + ((found >> 3) & 0x1) <= 2;
+    return false;
 }
 
 

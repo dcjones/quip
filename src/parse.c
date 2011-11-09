@@ -67,13 +67,12 @@ typedef enum
 fastq_t* fastq_open(FILE* f)
 {
     fastq_t* fqf = malloc_or_die(sizeof(fastq_t));
-    or_die((int)((fqf->file = gzdopen(fileno(f), "rb")) != NULL),
-           "Can not open gzip file.");
-    
-    fqf->state = STATE_ID1;
-    fqf->buf = malloc_or_die(fastq_buf_size);
+
+    fqf->file   = f;
+    fqf->state  = STATE_ID1;
+    fqf->buf    = malloc_or_die(fastq_buf_size);
     fqf->buf[0] = '\0';
-    fqf->c = fqf->buf;
+    fqf->c      = fqf->buf;
 
     return fqf;
 }
@@ -81,7 +80,6 @@ fastq_t* fastq_open(FILE* f)
 
 void fastq_close(fastq_t* fqf)
 {
-    gzclose(fqf->file);
     free(fqf->buf);
     free(fqf);
 }
@@ -90,18 +88,17 @@ void fastq_close(fastq_t* fqf)
 void fastq_refill(fastq_t* f)
 {
     int errnum;
-    const char* errmsg;
 
-    int n = gzread(f->file, f->buf, fastq_buf_size - 1);
+    size_t n = fread(f->buf, sizeof(char), fastq_buf_size - 1, f->file);
 
     if (n <= 0) {
-        if (gzeof(f->file)) {
+        if (feof(f->file)) {
             f->state = STATE_EOF;
             n = 0;
         }
         else {
-            errmsg = gzerror(f->file, &errnum);
-            fprintf(stderr, "I/O error: %s\n", errmsg);
+            errnum = ferror(f->file);
+            fprintf(stderr, "I/O error: %d\n", errnum);
             exit(1);
         }
     }
@@ -243,7 +240,7 @@ int fastq_next(fastq_t* f, seq_t* seq)
 
 void fastq_rewind(fastq_t* fqf)
 {
-    gzrewind(fqf->file);
+    rewind(fqf->file);
     fqf->state = STATE_ID1;
     fqf->buf[0] = '\0';
     fqf->c = fqf->buf;

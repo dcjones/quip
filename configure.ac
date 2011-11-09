@@ -21,16 +21,14 @@ AS_IF([test "x$enable_debug" = xyes],
       [CFLAGS="$dbg_CFLAGS"],
       [CFLAGS="$opt_CFLAGS"])
 
-AC_DEFINE(_FILE_OFFSET_BITS, 64)
-AC_DEFINE(_POSIX_SOURCE) # needed for fileno
+
+AC_DEFINE([_FILE_OFFSET_BITS], [64],
+          [Do not crash on >4GB files on 32bit machines.])
 
 AC_PROG_LIBTOOL
 
 AC_CHECK_FUNC(fileno, ,
               AC_MSG_ERROR([The 'fileno' function is missing.]))
-
-# check zlib
-AX_CHECK_ZLIB
 
 # check getopt
 AC_CHECK_HEADER(getopt.h, ,
@@ -45,6 +43,8 @@ CXXFLAGS=$CFLAGS
 AC_CONFIG_FILES([Makefile
                  src/Makefile
                  src/version.h])
+
+AM_CONFIG_HEADER([src/config.h])
 
 AC_OUTPUT
 

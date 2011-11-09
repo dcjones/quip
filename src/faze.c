@@ -16,7 +16,7 @@ int main(int argc, char* argv[])
     else          fin = stdin;
 
 
-    size_t k = 25;
+    size_t k = 40;
     assembler_t* A = assembler_alloc(k);
 
 
@@ -43,5 +43,4 @@ int main(int argc, char* argv[])
 
     return 0;
 }
-
 

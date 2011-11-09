@@ -51,7 +51,7 @@ void twobit_clear(twobit_t* s)
 }
 
 
-size_t twobit_len(twobit_t* s)
+size_t twobit_len(const twobit_t* s)
 {
     return s->len;
 }
@@ -164,7 +164,7 @@ void twobit_set(twobit_t* s, size_t i, kmer_t x)
 }
 
 
-kmer_t twobit_get(twobit_t* s, size_t i)
+kmer_t twobit_get(const twobit_t* s, size_t i)
 {
     size_t idx = i / (4 * sizeof(kmer_t));
     size_t off = i % (4 * sizeof(kmer_t));
@@ -177,10 +177,16 @@ kmer_t twobit_get(twobit_t* s, size_t i)
 }
 
 
-void twobit_print(twobit_t* s, FILE* fout)
+void twobit_print(const twobit_t* s, FILE* fout)
 {
     size_t i;
     for (i = 0; i < s->len; ++i) {
         fputc(kmertochar(twobit_get(s, i)), fout);
     }
 }
+
+
+
+
+
+
