@@ -37,7 +37,7 @@ void kmer_init()
 
 
     complement8 = malloc_or_die(0x10000 * sizeof(kmer_t));
-    for (x = 0; x < 0xffff; ++x) {
+    for (x = 0; x <= 0xffff; ++x) {
 #if WORDS_BIGENDIAN
         complement8[x] = (complement4[x & 0xff] >> 8) | complement4[x << 8];
 #else
@@ -174,6 +174,7 @@ kmer_t kmer_revcomp(kmer_t x, size_t k)
         (complement8[(x >> 16) & 0xffff] << 32) |
         (complement8[(x >> 32) & 0xffff] << 16) |
          complement8[x >> 48];
+
 
     return y >> (64 - (2 * k));
 }

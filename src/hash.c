@@ -163,6 +163,36 @@ unsigned int kmer_hash_get(kmer_hash_t* H, kmer_t x)
 }
 
 
+unsigned int kmer_hash_add(kmer_hash_t* H, kmer_t x, unsigned int d)
+{
+    /* if we are at capacity, preemptively expand */
+    if (H->m >= H->m_max) kmer_hash_expand(H);
+
+    uint64_t h = kmer_hash(x) % H->n;
+    kmer_count_pair_t *slot, *slot0;
+    slot0 = H->slots[h];
+    size_t slot_size = H->slot_sizes[h];
+
+    for (slot = slot0; (size_t) (slot - slot0) < slot_size; ++slot) {
+        if (slot->x == x) {
+            slot->count += d;
+            return slot->count;
+        }
+    }
+
+
+    /* kmer was not present, we must insert */
+    H->slot_sizes[h] += 1;
+    slot0 = realloc_or_die(slot0, H->slot_sizes[h] * sizeof(kmer_count_pair_t));
+    slot0[H->slot_sizes[h] - 1].x     = x;
+    slot0[H->slot_sizes[h] - 1].count = d;
+    H->slots[h] = slot0;
+    ++H->m;
+
+    return slot0[H->slot_sizes[h] - 1].count;
+}
+
+
 int kmer_count_pair_cmp(const void* a, const void* b)
 {
     unsigned int cnta = ((kmer_count_pair_t*) a)->count;

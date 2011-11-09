@@ -4,6 +4,7 @@
 #include "hash.h"
 #include "kmer.h"
 #include "misc.h"
+#include "seqset.h"
 #include "twobit.h"
 #include <assert.h>
 #include <math.h>
@@ -13,17 +14,12 @@ struct assembler_t_
     /* kmer bit-mask */
     kmer_t mask;
 
-    /* nucleotide sequences */
-    twobit_t* xs;
+    /* read set */
+    seqset_t* S;
 
-    /* the sequence of read i is at xs[offset[i]] */
-    uint32_t* offsets;
-    uint32_t next_offset;
+    /* current read */
+    twobit_t* x;
 
-    /* size fo offsets and read_lens arrays */
-    size_t max_n;
-
-    size_t n; /* number of stored reads */
     size_t k; /* k-mer size used for assembly */
 
     bloom_t*     B; /* k-mer table */
@@ -49,16 +45,13 @@ assembler_t* assembler_alloc(size_t k)
 #endif
     }
 
+    A->S = seqset_alloc();
+
     A->k = k;
     // TODO: set n and m in some principled way
     A->B = bloom_alloc(8388608, 8);
 
-    A->xs = twobit_alloc();
-
-    A->n           = 0;
-    A->max_n       = 512;
-    A->offsets     = malloc_or_die(A->max_n * sizeof(uint32_t));
-    A->offsets[0] = 0;
+    A->x = twobit_alloc();
 
     A->H = kmer_hash_alloc();
     A->count_cutoff = 5;
@@ -69,9 +62,9 @@ assembler_t* assembler_alloc(size_t k)
 
 void assembler_free(assembler_t* A)
 {
+    seqset_free(A->S);
     bloom_free(A->B);
-    twobit_free(A->xs);
-    free(A->offsets);
+    twobit_free(A->x);
 }
 
 
@@ -88,38 +81,8 @@ void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
 
     // TODO: handle the case in which seqlen < k
 
-
-    /* append to xs */
-    while (A->n + 1 >= A->max_n) {
-        A->max_n *= 2;
-        A->offsets   = realloc_or_die(A->offsets, A->max_n * sizeof(uint32_t));
-    }
-
-    twobit_append_n(A->xs, seq, seqlen);
-    A->offsets[A->n + 1] = A->offsets[A->n] + seqlen;
-    ++A->n;
-
-
-
-    /* hash kmers */
-    size_t j;
-    unsigned int cnt;
-    kmer_t y, x = 0;
-    for (i = A->offsets[A->n - 1], j = 0; i < A->offsets[A->n]; ++i, ++j) {
-#ifdef WORDS_BIGENDIAN
-        x = ((x >> 2) | twobit_get(A->xs, i)) & A->mask;
-#else
-        x = ((x << 2) | twobit_get(A->xs, i)) & A->mask;
-#endif
-
-        if (j + 1 >= A->k) {
-            y = kmer_canonical(x, A->k);
-            cnt = bloom_inc(A->B, y);
-            if (cnt >= A->count_cutoff) {
-                kmer_hash_put(A->H, y, cnt);
-            }
-        }
-    }
+    twobit_copy_n(A->x, seq, seqlen);
+    seqset_inc(A->S, A->x);
 }
 
 
@@ -131,16 +94,22 @@ typedef struct seed_t_
 
 
 
-static void assembler_make_contig(assembler_t* A, kmer_t seed, twobit_t* contig)
+static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
 {
     twobit_clear(contig);
+
+    // XXX
+    /*twobit_append_twobit(contig, seed);*/
+    /*return;*/
 
     /* expand the contig as far left as possible */
     unsigned int cnt, cnt_best = 0;
 
     kmer_t nt, nt_best = 0, x, xc, y;
 
-    x = seed;
+    /* TODO: delete alle kmers in seed */
+
+    x = twobit_get_kmer(seed, 0, A->k);
     while (true) {
         bloom_del(A->B, kmer_canonical(x, A->k));
 
@@ -180,9 +149,9 @@ static void assembler_make_contig(assembler_t* A, kmer_t seed, twobit_t* contig)
     }
 
     twobit_reverse(contig);
-    twobit_append_kmer(contig, seed, A->k);
+    twobit_append_twobit(contig, seed);
 
-    x = seed;
+    x = twobit_get_kmer(seed, twobit_len(seed) - A->k, A->k);
     while (true) {
         bloom_del(A->B, kmer_canonical(x, A->k));
 
@@ -213,29 +182,65 @@ static void assembler_make_contig(assembler_t* A, kmer_t seed, twobit_t* contig)
 }
 
 
+static int seqset_value_cmp(const void* a_, const void* b_)
+{
+    seqset_value_t* a = (seqset_value_t*) a_;
+    seqset_value_t* b = (seqset_value_t*) b_;
+
+    if      (a->cnt < b->cnt) return 1;
+    else if (a->cnt > b->cnt) return -1;
+    else                      return 0;
+}
+
+
 static void assembler_assemble(assembler_t* A)
 {
-    kmer_count_pair_t* seeds = kmer_hash_dump_sorted(A->H);
-    size_t num_seeds = kmer_hash_size(A->H);
+    /* dump reads and sort by abundance */
+    seqset_value_t* xs = seqset_dump(A->S);
+    qsort(xs, seqset_size(A->S), sizeof(seqset_value_t), seqset_value_cmp);
 
-    fprintf(stdout, "%zu seeds\n", num_seeds);
+    /* count kmers */
+    size_t i, j, n, seqlen;
+    uint32_t cnt;
+    kmer_t x, y;
+
+    n = seqset_size(A->S);
+    for (i = 0; i < n; ++i) {
+        seqlen = twobit_len(xs[i].seq);
+        x = 0;
+        for (j = 0; j < seqlen; ++j) {
+#ifdef WORDS_BIGENDIAN
+            x = ((x >> 2) | twobit_get(xs[i].seq, j)) & A->mask;
+#else
+            x = ((x << 2) | twobit_get(xs[i].seq, j)) & A->mask;
+#endif
+
+            if (j + 1 >= A->k) {
+                y = kmer_canonical(x, A->k);
+                cnt = bloom_add(A->B, y, xs[i].cnt);
+                if (cnt >= A->count_cutoff) {
+                    kmer_hash_add(A->H, y, xs[i].cnt);
+                }
+            }
+        }
+    }
+
+
+    fprintf(stdout, "%zu unique reads\n", seqset_size(A->S));
 
     FILE* f = fopen("contig.fa", "w");
-
     twobit_t* contig = twobit_alloc();
-    size_t i;
-    for (i = 0; i < num_seeds; ++i) {
-        assembler_make_contig(A, seeds[i].x, contig);
+
+    for (i = 0; i < n && xs[i].cnt > 1; ++i) {
+        assembler_make_contig(A, xs[i].seq, contig);
         if (twobit_len(contig) <= A->k) continue;
         fprintf(f, ">contig_%05zu\n", i);
         twobit_print(contig, f);
         fprintf(f, "\n\n");
     }
+
     twobit_free(contig);
-
     fclose(f);
-
-    free(seeds);
 }
 
 

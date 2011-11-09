@@ -145,8 +145,13 @@ void bloom_del(bloom_t* B, kmer_t x)
 }
 
 
-
 unsigned int bloom_inc(bloom_t* B, kmer_t x)
+{
+    return bloom_add(B, x, 1);
+}
+
+
+unsigned int bloom_add(bloom_t* B, kmer_t x, unsigned int d)
 {
     const size_t bytes_per_bucket = B->m * cell_bytes;
 
@@ -177,8 +182,9 @@ unsigned int bloom_inc(bloom_t* B, kmer_t x)
 
             if (g == fp) {
                 cnt = get_cell_count(c);
-                if (cnt < counter_mask) set_cell_count(c, cnt + 1);
-                return cnt + 1;
+                if (cnt + d < counter_mask) set_cell_count(c, cnt + d);
+                else set_cell_count(c, counter_mask);
+                return cnt + d;
             }
             else if (g == 0) {
                 cells[i] = c;
@@ -207,7 +213,8 @@ unsigned int bloom_inc(bloom_t* B, kmer_t x)
     }
 
     if (i_min < NUM_SUBTABLES) {
-        (*(uint32_t*) cells[i_min]) = fp | 1; // figngerprint & count
+        if (d > counter_mask) d = counter_mask;
+        (*(uint32_t*) cells[i_min]) = fp | d; // figngerprint & count
         return 1;
     }
 

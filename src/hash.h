@@ -36,6 +36,7 @@ void         kmer_hash_free(kmer_hash_t*);
 size_t       kmer_hash_size(kmer_hash_t*);
 void         kmer_hash_put(kmer_hash_t*, kmer_t, unsigned int);
 unsigned int kmer_hash_get(kmer_hash_t*, kmer_t);
+unsigned int kmer_hash_add(kmer_hash_t*, kmer_t, unsigned int);
 
 kmer_count_pair_t* kmer_hash_dump_sorted(kmer_hash_t*);
 
