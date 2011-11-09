@@ -23,7 +23,6 @@ struct assembler_t_
     size_t k; /* k-mer size used for assembly */
 
     bloom_t*     B; /* k-mer table */
-    kmer_hash_t* H; /* seed candidates */
 
     /* count required to be nominated as a seed candidate */
     unsigned int count_cutoff;
@@ -53,8 +52,7 @@ assembler_t* assembler_alloc(size_t k)
 
     A->x = twobit_alloc();
 
-    A->H = kmer_hash_alloc();
-    A->count_cutoff = 5;
+    A->count_cutoff = 2;
 
     return A;
 }
@@ -126,9 +124,7 @@ static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* cont
             y = nt << (2 * (A->k - 1));
 #endif
             xc = kmer_canonical(x | y, A->k);
-            cnt = kmer_hash_get(A->H, xc);
-            if (cnt == 0) cnt = bloom_get(A->B, xc);
-            else kmer_hash_put(A->H, xc, 0);
+            cnt = bloom_get(A->B, xc);
 
             if (cnt > cnt_best) {
                 cnt_best = cnt;
@@ -163,9 +159,7 @@ static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* cont
         cnt_best = 0;
         for (nt = 0; nt < 4; ++nt) {
             xc = kmer_canonical(x | nt, A->k);
-            cnt = kmer_hash_get(A->H, xc);
-            if (cnt == 0) cnt = bloom_get(A->B, xc);
-            else kmer_hash_put(A->H, xc, 0);
+            cnt = bloom_get(A->B, xc);
 
             if (cnt > cnt_best) {
                 cnt_best = cnt;
@@ -201,7 +195,6 @@ static void assembler_assemble(assembler_t* A)
 
     /* count kmers */
     size_t i, j, n, seqlen;
-    uint32_t cnt;
     kmer_t x, y;
 
     n = seqset_size(A->S);
@@ -217,10 +210,7 @@ static void assembler_assemble(assembler_t* A)
 
             if (j + 1 >= A->k) {
                 y = kmer_canonical(x, A->k);
-                cnt = bloom_add(A->B, y, xs[i].cnt);
-                if (cnt >= A->count_cutoff) {
-                    kmer_hash_add(A->H, y, xs[i].cnt);
-                }
+                bloom_add(A->B, y, xs[i].cnt);
             }
         }
     }
@@ -231,9 +221,12 @@ static void assembler_assemble(assembler_t* A)
     FILE* f = fopen("contig.fa", "w");
     twobit_t* contig = twobit_alloc();
 
-    for (i = 0; i < n && xs[i].cnt > 1; ++i) {
+    for (i = 0; i < n && xs[i].cnt >= A->count_cutoff; ++i) {
         assembler_make_contig(A, xs[i].seq, contig);
         if (twobit_len(contig) <= A->k) continue;
+        /* TODO: when we discard a contig, it would be nice if we could return
+         * its k-mers to the bloom filter */
+
         fprintf(f, ">contig_%05zu\n", i);
         twobit_print(contig, f);
         fprintf(f, "\n\n");
