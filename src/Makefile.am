@@ -9,7 +9,8 @@ faze_SOURCES = faze.c version.h \
 			   misc.h        misc.c \
 			   seqset.h      seqset.c \
 			   twobit.h      twobit.c \
-			   parse.h       parse.c
+			   parse.h       parse.c \
+			   qual.h        qual.c
 
 faze_LDADD = -lm
 

@@ -3,6 +3,7 @@
 #include "kmer.h"
 #include "misc.h"
 #include "parse.h"
+#include "qual.h"
 #include <stdlib.h>
 
 
@@ -25,16 +26,20 @@ int main(int argc, char* argv[])
 
     size_t cnt = 0;
 
+    qualmodel_t* M = qualmodel_alloc();
+
     while (fastq_next(fqf, read)) {
         if (++cnt % 100000 == 0) {
             fprintf(stdout, "%zu reads\n", cnt);
         }
         assembler_add_seq(A, read->seq.s, read->seq.n);
+        qualmodel_update(M, read);
     }
 
     fastq_free_seq(read);
     fastq_close(fqf);
 
+    qualmodel_free(M);
 
     assembler_write(A, stdout);
     assembler_free(A);
