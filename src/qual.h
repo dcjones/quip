@@ -15,15 +15,18 @@
 #define FAZER_QUAL
 
 #include "parse.h"
+#include <stdint.h>
 
-typedef struct qualmodel_t_ qualmodel_t;
 
+typedef struct qualenc_t_ qualenc_t;
 
-qualmodel_t* qualmodel_alloc();
-void         qualmodel_free(qualmodel_t*);
+typedef void (*qualenc_writer_t) (void*, uint8_t*, size_t);
 
-/* Update the quality model with the given n sequences. */
-void qualmodel_update(qualmodel_t*, const seq_t* x);
+qualenc_t* qualenc_alloc(qualenc_writer_t, void* writer_data);
+void       qualenc_free(qualenc_t*);
+
+void qualenc_encode(qualenc_t*, const seq_t*);
+void qualenc_finish(qualenc_t*);
 
 
 #endif
