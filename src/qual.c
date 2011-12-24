@@ -7,46 +7,24 @@
 #include <assert.h>
 
 
-/* Every quality encoding scheme uses ASCII charocters in [33, 126] */
+/* Every quality encoding scheme uses ASCII charocters in [33, 104] */
 const char   qual_first = 33;
-const char   qual_last  = 126;
-const size_t qual_size  = 94;
+const char   qual_last  = 104;
+const size_t qual_size  = 72;
 
 /* We expand arrays as we see longer reads. This is the expansion regime, which
  * is based on common read lengths*/
 /*const size_t ms[] = {36, 50, 55, 75, 100, 150};*/
-const size_t ms[] = {100, 150};
+const size_t ms[] = {150};
 const size_t ms_size = sizeof(ms);
 
 
-/* A statistical model of quality scores. This is actually a pretty simple
- * model, so allow me to describe it here.
- *
- * Quality scores are essentially run-length encoded, but we assign a
- * propability to each run length and condition on position and score.
- * A probability is assigned to the quality score my conditioning on nucleotide
- * and position.
- *
- * Drawn as a graphical model, this looks something like:
- *
- *                 N    P
- *                 |   /|
- *                 |  / |
- *                 | /  |
- *                 |/   |
- *                 V    V
- *                 Q--->K
- *
- * Where N is the nucleotide, P is the position, Q is the quality score, and K
- * is the run-length.
+/*
  */
 typedef struct qualmodel_t_
 {
-    /* Score given position and nucleotide. */
+    /* Score given position, nucleotide, and previous score */
     cumdist_t** cs;
-
-    /* Run-length given position and score. */
-    cumdist_t** ck;
 
     /* Maximum read length. */
     size_t m;
@@ -54,23 +32,15 @@ typedef struct qualmodel_t_
 
 
 
-
 qualmodel_t* qualmodel_alloc()
 {
     qualmodel_t* M = malloc_or_die(sizeof(qualmodel_t));
     M->m = ms[0];
-    size_t i, j;
+    size_t i;
 
-    M->cs = malloc_or_die(M->m * 5 * sizeof(cumdist_t*));
-    for (i = 0; i < M->m * 5; ++i) {
+    M->cs = malloc_or_die(M->m * 5 * qual_size * sizeof(cumdist_t*));
+    for (i = 0; i < M->m * 5 * qual_size; ++i) {
         M->cs[i] = cumdist_alloc(qual_size);
-    }
-
-    M->ck = malloc_or_die(M->m * qual_size * sizeof(cumdist_t*));
-    for (i = 0; i < M->m; ++i) {
-        for (j = 0; j < qual_size; ++j) {
-            M->ck[i * qual_size + j] = cumdist_alloc(M->m - i);
-        }
     }
 
     return M;
@@ -81,15 +51,10 @@ qualmodel_t* qualmodel_alloc()
 void qualmodel_free(qualmodel_t* M)
 {
     size_t i;
-    for (i = 0; i < M->m * 5; ++i) {
+    for (i = 0; i < M->m * 5 * qual_size; ++i) {
         cumdist_free(M->cs[i]);
     }
     free(M->cs);
-
-    for (i = 0; i < M->m * qual_size; ++i) {
-        cumdist_free(M->ck[i]);
-    }
-    free(M->ck);
 
     free(M);
 }
@@ -109,38 +74,22 @@ unsigned char ascii_to_nucnum(char x)
 
 void qualmodel_update(qualmodel_t* M, const seq_t* x)
 {
-    unsigned char q; // quality score
-    unsigned char u; // nucleotide
-    size_t ki, kj;   // position
-    size_t l;        // run-length
+    unsigned char q0; // preceeding quality score
+    unsigned char q;  // quality score
+    unsigned char u;  // nucleotide
 
     assert(x->qual.n <= M->m);
 
-    u = ascii_to_nucnum(x->seq.s[0]);
-    q = (unsigned char) (x->qual.s[0] - qual_first);
-    cumdist_add(M->cs[0 * 5 + u], q, 1);
+    size_t i;
+    q0 = 0;
+    for (i = 0; i < x->qual.n; ++i) {
+        u = ascii_to_nucnum(x->seq.s[i]);
+        q = x->qual.s[i] - qual_first;
 
-    ki = 0;
-    kj = 1;
-    while (kj < x->qual.n) {
-        u = ascii_to_nucnum(x->seq.s[kj]);
-        q = (unsigned char) (x->qual.s[kj] - qual_first);
-        cumdist_add(M->cs[kj * 5 + u], q, 1);
+        if (i > 0) q0 = x->qual.s[i - 1] - qual_first;
 
-        if (x->qual.s[kj] != x->qual.s[ki]) {
-            l = kj - ki;
-            q = (unsigned char) (x->qual.s[ki] - qual_first);
-            cumdist_add(M->ck[ki * qual_size + q], l - 1, 1);
-
-            ki = kj;
-        }
-
-        ++kj;
+        cumdist_add(M->cs[i * (5 * qual_size) + u * qual_size + q0], q, 1);
     }
-
-    l = kj - ki;
-    q = (unsigned char) (x->qual.s[ki] - qual_first);
-    cumdist_add(M->ck[ki * qual_size + q], l - 1, 1);
 }
 
 
@@ -224,11 +173,12 @@ static void qualenc_buf_append(qualenc_t* E, uint8_t c)
 
 static void qualenc_encoder_renormalization(qualenc_t* E)
 {
+    uint32_t v;
     while (E->l < 0xffffff) {
-        qualenc_buf_append(E, (uint8_t) (E->b >> 24));
-        E->b <<= 8;
+        v = E->b >> 24;
+        qualenc_buf_append(E, (uint8_t) v);
         E->l <<= 8;
-        /*assert((uint64_t) E->b + (uint64_t) E->l < 0x100000000);*/
+        E->b <<= 8;
     }
 }
 
@@ -262,12 +212,8 @@ static void qualenc_interval_update(qualenc_t* E, uint32_t p, uint32_t P)
 
     uint32_t b0 = E->b;
 
-    /*assert((uint64_t) E->b + (uint64_t) x < 0x100000000);*/
-
     E->b += x;
     E->l = y - x;
-
-    /*assert((uint64_t) E->b + (uint64_t) E->l < 0x100000000);*/
 
     if (b0 > E->b) qualenc_propogate_carry(E);
 
@@ -277,27 +223,20 @@ static void qualenc_interval_update(qualenc_t* E, uint32_t p, uint32_t P)
 
 /* encode a single quality/run-length pair */
 static void qualenc_encode_qk(qualenc_t* E,
-                              size_t        pos,
-                              size_t        len,
-                              unsigned char nuc,
-                              unsigned char qual)
+                              size_t        i,
+                              unsigned char u,
+                              unsigned char q0,
+                              unsigned char q)
 {
     uint64_t Z;
     uint32_t p, P;
 
     /* encode quality score */
-    cumdist_t* cs = E->M->cs[pos * 5 + nuc];
+    cumdist_t* cs = E->M->cs[i * (5 * qual_size) + u * qual_size + q0];
     Z = cumdist_Z(cs);
-    p = ((uint64_t) cumdist_p(cs, qual) << 32) / Z;
-    P = ((uint64_t) cumdist_P(cs, qual) << 32) / Z;
-    if (P == 0) P = 0xffffffff;
-    qualenc_interval_update(E, p, P);
+    p = ((uint64_t) cumdist_p(cs, q) << 32) / Z;
+    P = ((uint64_t) cumdist_P(cs, q) << 32) / Z;
 
-    /* encode run-length */
-    cumdist_t* ck = E->M->ck[pos * qual_size + qual];
-    Z = cumdist_Z(ck);
-    p = ((uint64_t) cumdist_p(ck, len) << 32) / Z;
-    P = ((uint64_t) cumdist_P(ck, len) << 32) / Z;
     if (P == 0) P = 0xffffffff;
     qualenc_interval_update(E, p, P);
 }
@@ -311,25 +250,20 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
         // TODO: handle max read length increase
     }
 
-    unsigned char q; /* quality score */
-    unsigned char u; /* nucleotide */
-    size_t ki, kj;   /* position */
-    size_t l;        /* run-length */
+    unsigned char q0; /* preceeding quality score */
+    unsigned char q;  /* quality score */
+    unsigned char u;  /* nucleotide */
 
-    ki = 0;
-    kj = 1;
-    do {
-        if (kj >= x->qual.n || x->qual.s[kj] != x->qual.s[ki]) {
-            l = kj - ki;
-            u = ascii_to_nucnum(x->seq.s[ki]);
-            q = (unsigned char) (x->qual.s[ki] - qual_first);
-            qualenc_encode_qk(E, ki, l - 1, u, q);
+    size_t i;
+    q0 = 0;
+    for (i = 0; i < x->qual.n; ++i) {
+        u = ascii_to_nucnum(x->seq.s[i]);
+        q = x->qual.s[i] - qual_first;
 
-            ki = kj;
-        }
+        if (i > 0) q0 = x->qual.s[i - 1] - qual_first;
 
-        ++kj;
-    } while (kj < x->qual.n);
+        qualenc_encode_qk(E, i, u, q0, q);
+    }
 
     qualmodel_update(E->M, x);
 }
