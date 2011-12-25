@@ -72,26 +72,6 @@ unsigned char ascii_to_nucnum(char x)
 }
 
 
-void qualmodel_update(qualmodel_t* M, const seq_t* x)
-{
-    unsigned char q0; // preceeding quality score
-    unsigned char q;  // quality score
-    unsigned char u;  // nucleotide
-
-    assert(x->qual.n <= M->m);
-
-    size_t i;
-    q0 = 0;
-    for (i = 0; i < x->qual.n; ++i) {
-        u = ascii_to_nucnum(x->seq.s[i]);
-        q = x->qual.s[i] - qual_first;
-
-        if (i > 0) q0 = x->qual.s[i - 1] - qual_first;
-
-        cumdist_add(M->cs[i * (5 * qual_size) + u * qual_size + q0], q, 1);
-    }
-}
-
 
 struct qualenc_t_
 {
@@ -242,6 +222,46 @@ static void qualenc_encode_qk(qualenc_t* E,
 }
 
 
+#if 0
+static int cmpuc(const void* a, const void* b)
+{
+    return *(char*) a - *(char*) b;
+}
+
+
+static unsigned char stupid_mode(unsigned char* qs, size_t n)
+{
+    size_t cnt = 1;
+    size_t cnt_max = 0;
+    unsigned char q;
+    unsigned char q_max = 0;
+
+    q = qs[n - 1];
+    int i;
+    for (i = n - 2; i >= 0; --i) {
+        if (qs[i] == q) {
+            ++cnt;
+        }
+        else {
+            if (cnt > cnt_max) {
+                q_max = q;
+                cnt_max = cnt;
+                cnt = 1;
+                q = qs[i];
+            }
+        }
+    }
+
+    if (cnt > cnt_max) {
+        q_max = q;
+        cnt_max = cnt;
+    }
+
+    return q_max;
+}
+#endif
+
+
 void qualenc_encode(qualenc_t* E, const seq_t* x)
 {
     if (x->qual.n == 0) return;
@@ -250,22 +270,30 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
         // TODO: handle max read length increase
     }
 
+    /* the number of preceeding quality scores to use to predict the next */
+    static const size_t k = 3;
+
     unsigned char q0; /* preceeding quality score */
     unsigned char q;  /* quality score */
     unsigned char u;  /* nucleotide */
 
-    size_t i;
+    size_t i, j;
     q0 = 0;
     for (i = 0; i < x->qual.n; ++i) {
         u = ascii_to_nucnum(x->seq.s[i]);
         q = x->qual.s[i] - qual_first;
 
-        if (i > 0) q0 = x->qual.s[i - 1] - qual_first;
+        /* use the maximum of the last k quality scores to predict the next */
+        q0 = qual_first;
+        j = i < k ?  0 : i - k;
+        for (; j < i; ++j) if (x->qual.s[j] > q0) q0 = x->qual.s[j];
+        q0 -= qual_first;
 
         qualenc_encode_qk(E, i, u, q0, q);
-    }
 
-    qualmodel_update(E->M, x);
+        /* update model */
+        cumdist_add(E->M->cs[i * (5 * qual_size) + u * qual_size + q0], q, 1);
+    }
 }
 
 
