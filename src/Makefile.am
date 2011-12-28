@@ -1,12 +1,12 @@
 
-bin_PROGRAMS=faze
+bin_PROGRAMS=faze kmerhash_test
 
 faze_SOURCES = faze.c version.h \
 			   assembler.h   assembler.c \
 			   bloom.h       bloom.c \
 			   cumdist.h     cumdist.c \
-			   hash.h        hash.c \
 			   kmer.h        kmer.c \
+			   kmerhash.h    kmerhash.c \
 			   misc.h        misc.c \
 			   seqset.h      seqset.c \
 			   twobit.h      twobit.c \
@@ -14,4 +14,12 @@ faze_SOURCES = faze.c version.h \
 			   qual.h        qual.c
 
 faze_LDADD = -lm
+
+
+kmerhash_test_SOURCES=kmerhash_test.c \
+					  misc.h misc.c \
+					  kmer.h kmer.c \
+					  kmerhash.h kmerhash.c
+
+kmerhash_test_LDADD = -lm
 

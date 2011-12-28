@@ -38,8 +38,8 @@ qualmodel_t* qualmodel_alloc()
     M->m = ms[0];
     size_t i;
 
-    M->cs = malloc_or_die(M->m * 5 * qual_size * sizeof(cumdist_t*));
-    for (i = 0; i < M->m * 5 * qual_size; ++i) {
+    M->cs = malloc_or_die(M->m * 25 * qual_size * sizeof(cumdist_t*));
+    for (i = 0; i < M->m * 25 * qual_size; ++i) {
         M->cs[i] = cumdist_alloc(qual_size);
     }
 
@@ -51,7 +51,7 @@ qualmodel_t* qualmodel_alloc()
 void qualmodel_free(qualmodel_t* M)
 {
     size_t i;
-    for (i = 0; i < M->m * 5 * qual_size; ++i) {
+    for (i = 0; i < M->m * 25 * qual_size; ++i) {
         cumdist_free(M->cs[i]);
     }
     free(M->cs);
@@ -212,7 +212,7 @@ static void qualenc_encode_qk(qualenc_t* E,
     uint32_t p, P;
 
     /* encode quality score */
-    cumdist_t* cs = E->M->cs[i * (5 * qual_size) + u * qual_size + q0];
+    cumdist_t* cs = E->M->cs[i * (25 * qual_size) + u * qual_size + q0];
     Z = cumdist_Z(cs);
     p = ((uint64_t) cumdist_p(cs, q) << 32) / Z;
     P = ((uint64_t) cumdist_P(cs, q) << 32) / Z;
@@ -280,7 +280,10 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     size_t i, j;
     q0 = 0;
     for (i = 0; i < x->qual.n; ++i) {
-        u = ascii_to_nucnum(x->seq.s[i]);
+
+        u = i < x->qual.n - 1 ? 5 * ascii_to_nucnum(x->seq.s[i + 1]) : 0;
+        u += ascii_to_nucnum(x->seq.s[i]);
+
         q = x->qual.s[i] - qual_first;
 
         /* use the maximum of the last k quality scores to predict the next */
@@ -292,7 +295,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
         qualenc_encode_qk(E, i, u, q0, q);
 
         /* update model */
-        cumdist_add(E->M->cs[i * (5 * qual_size) + u * qual_size + q0], q, 1);
+        cumdist_add(E->M->cs[i * (25 * qual_size) + u * qual_size + q0], q, 1);
     }
 }
 

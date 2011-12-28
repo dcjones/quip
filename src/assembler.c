@@ -1,7 +1,6 @@
 
 #include "assembler.h"
 #include "bloom.h"
-#include "hash.h"
 #include "kmer.h"
 #include "misc.h"
 #include "seqset.h"
@@ -96,16 +95,20 @@ static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* cont
 {
     twobit_clear(contig);
 
-    // XXX
-    /*twobit_append_twobit(contig, seed);*/
-    /*return;*/
+
+    /* delete all kmers in the seed */
+    kmer_t x = twobit_get_kmer(seed, 0, A->k);
+    size_t i;
+    for (i = A->k; i < twobit_len(seed); ++i) {
+        bloom_del(A->B, kmer_canonical((x << 2) | twobit_get(seed, i), A->k));
+    }
+
 
     /* expand the contig as far left as possible */
     unsigned int cnt, cnt_best = 0;
 
-    kmer_t nt, nt_best = 0, x, xc, y;
+    kmer_t nt, nt_best = 0, xc, y;
 
-    /* TODO: delete alle kmers in seed */
 
     x = twobit_get_kmer(seed, 0, A->k);
     while (true) {
@@ -223,7 +226,7 @@ static void assembler_assemble(assembler_t* A)
 
     for (i = 0; i < n && xs[i].cnt >= A->count_cutoff; ++i) {
         assembler_make_contig(A, xs[i].seq, contig);
-        if (twobit_len(contig) <= A->k) continue;
+        if (twobit_len(contig) < 3 * A->k) continue;
         /* TODO: when we discard a contig, it would be nice if we could return
          * its k-mers to the bloom filter */
 

@@ -41,9 +41,9 @@ int main(int argc, char* argv[])
         if (++cnt % 100000 == 0) {
             fprintf(stdout, "%zu reads\n", cnt);
         }
-        /*assembler_add_seq(A, read->seq.s, read->seq.n);*/
+        assembler_add_seq(A, read->seq.s, read->seq.n);
         qual_bytes += read->qual.n;
-        qualenc_encode(E, read);
+        /*qualenc_encode(E, read);*/
     }
     qualenc_finish(E);
 
@@ -56,7 +56,7 @@ int main(int argc, char* argv[])
     printf("%0.2f%% compression\n", 100.0 * (double) qual_compressed_bytes / (double) qual_bytes);
 
 
-    /*assembler_write(A, stdout);*/
+    assembler_write(A, stdout);
     assembler_free(A);
 
     kmer_free();
