@@ -23,8 +23,9 @@ int main(int argc, char* argv[])
     else          fin = stdin;
 
 
-    size_t k = 25;
-    assembler_t* A = assembler_alloc(k);
+    const size_t assemble_k = 25;
+    const size_t align_k    = 20;
+    assembler_t* A = assembler_alloc(assemble_k, align_k);
 
 
     fastq_t* fqf = fastq_open(fin);

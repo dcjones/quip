@@ -2,6 +2,7 @@
 #include "assembler.h"
 #include "bloom.h"
 #include "kmer.h"
+#include "kmerhash.h"
 #include "misc.h"
 #include "seqset.h"
 #include "twobit.h"
@@ -10,8 +11,11 @@
 
 struct assembler_t_
 {
-    /* kmer bit-mask */
-    kmer_t mask;
+    /* kmer bit-mask used in assembly */
+    kmer_t assemble_kmer_mask;
+
+    /* kmer bit-mask used in alignment */
+    kmer_t align_kmer_mask;
 
     /* read set */
     seqset_t* S;
@@ -19,37 +23,61 @@ struct assembler_t_
     /* current read */
     twobit_t* x;
 
-    size_t k; /* k-mer size used for assembly */
+    /* k-mer size used for assembly */
+    size_t assemble_k;
 
-    bloom_t*     B; /* k-mer table */
+    /* k-mer size used for seeds of alignment */
+    size_t align_k;
+
+    /* k-mer table used for assembly */
+    bloom_t* B;
+
+    /* k-mer table used for alignment */
+    kmerhash_t* H;
 
     /* count required to be nominated as a seed candidate */
     unsigned int count_cutoff;
 };
 
 
-assembler_t* assembler_alloc(size_t k)
+assembler_t* assembler_alloc(size_t assemble_k, size_t align_k)
 {
     assembler_t* A = malloc_or_die(sizeof(assembler_t));
     assert(A != NULL);
 
-    A->mask = 0;
+    A->assemble_k = assemble_k;
+    A->align_k    = align_k;
+
+    A->assemble_kmer_mask = 0;
     size_t i;
-    for (i = 0; i < k; ++i) {
+    for (i = 0; i < A->assemble_k; ++i) {
 #ifdef WORDS_BIGENDIAN
-        A->mask = (A->mask >> 2) | 0x3;
+        A->assemble_kmer_mask = (A->assemble_kmer_mask >> 2) | 0x3;
 #else
-        A->mask = (A->mask << 2) | 0x3;
+        A->assemble_kmer_mask = (A->assemble_kmer_mask << 2) | 0x3;
 #endif
     }
 
+    A->align_kmer_mask = 0;
+    for (i = 0; i < A->align_k; ++i) {
+#ifdef WORDS_BIGENDIAN
+        A->align_kmer_mask = (A->align_kmer_mask >> 2) | 0x3;
+#else
+        A->align_kmer_mask = (A->align_kmer_mask << 2) | 0x3;
+#endif
+    }
+
+
     A->S = seqset_alloc();
 
-    A->k = k;
+
     // TODO: set n and m in some principled way
     A->B = bloom_alloc(8388608, 8);
 
     A->x = twobit_alloc();
+
+
+    A->H = kmerhash_alloc();
 
     A->count_cutoff = 2;
 
@@ -61,6 +89,7 @@ void assembler_free(assembler_t* A)
 {
     seqset_free(A->S);
     bloom_free(A->B);
+    kmerhash_free(A->H);
     twobit_free(A->x);
 }
 
@@ -97,10 +126,10 @@ static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* cont
 
 
     /* delete all kmers in the seed */
-    kmer_t x = twobit_get_kmer(seed, 0, A->k);
+    kmer_t x = twobit_get_kmer(seed, 0, A->assemble_k);
     size_t i;
-    for (i = A->k; i < twobit_len(seed); ++i) {
-        bloom_del(A->B, kmer_canonical((x << 2) | twobit_get(seed, i), A->k));
+    for (i = A->assemble_k; i < twobit_len(seed); ++i) {
+        bloom_del(A->B, kmer_canonical((x << 2) | twobit_get(seed, i), A->assemble_k));
     }
 
 
@@ -110,23 +139,23 @@ static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* cont
     kmer_t nt, nt_best = 0, xc, y;
 
 
-    x = twobit_get_kmer(seed, 0, A->k);
+    x = twobit_get_kmer(seed, 0, A->assemble_k);
     while (true) {
-        bloom_del(A->B, kmer_canonical(x, A->k));
+        bloom_del(A->B, kmer_canonical(x, A->assemble_k));
 
 #if WORDS_BIGENDIAN
-        x = (x << 2) & A->mask;
+        x = (x << 2) & A->assemble_kmer_mask;
 #else 
-        x = (x >> 2) & A->mask;
+        x = (x >> 2) & A->assemble_kmer_mask;
 #endif
         cnt_best = 0;
         for (nt = 0; nt < 4; ++nt) {
 #if WORDS_BIGENDIAN
-            y = nt >> (2 * (A->k - 1));
+            y = nt >> (2 * (A->assemble_k - 1));
 #else
-            y = nt << (2 * (A->k - 1));
+            y = nt << (2 * (A->assemble_k - 1));
 #endif
-            xc = kmer_canonical(x | y, A->k);
+            xc = kmer_canonical(x | y, A->assemble_k);
             cnt = bloom_get(A->B, xc);
 
             if (cnt > cnt_best) {
@@ -137,9 +166,9 @@ static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* cont
 
         if (cnt_best > 0) {
 #if WORDS_BIGENDIAN
-            y = nt_best >> (2 * (A->k - 1));
+            y = nt_best >> (2 * (A->assemble_k - 1));
 #else
-            y = nt_best << (2 * (A->k - 1));
+            y = nt_best << (2 * (A->assemble_k - 1));
 #endif
             x = x | y;
             twobit_append_kmer(contig, nt_best, 1);
@@ -150,18 +179,18 @@ static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* cont
     twobit_reverse(contig);
     twobit_append_twobit(contig, seed);
 
-    x = twobit_get_kmer(seed, twobit_len(seed) - A->k, A->k);
+    x = twobit_get_kmer(seed, twobit_len(seed) - A->assemble_k, A->assemble_k);
     while (true) {
-        bloom_del(A->B, kmer_canonical(x, A->k));
+        bloom_del(A->B, kmer_canonical(x, A->assemble_k));
 
 #if WORDS_BIGENDIAN
-        x = (x >> 2) & A->mask;
+        x = (x >> 2) & A->assemble_kmer_mask;
 #else 
-        x = (x << 2) & A->mask;
+        x = (x << 2) & A->assemble_kmer_mask;
 #endif
         cnt_best = 0;
         for (nt = 0; nt < 4; ++nt) {
-            xc = kmer_canonical(x | nt, A->k);
+            xc = kmer_canonical(x | nt, A->assemble_k);
             cnt = bloom_get(A->B, xc);
 
             if (cnt > cnt_best) {
@@ -190,6 +219,38 @@ static int seqset_value_cmp(const void* a_, const void* b_)
 }
 
 
+static void index_contigs(assembler_t* A, twobit_t** contigs, size_t n)
+{
+    fprintf(stderr, "indexing contigs ... ");
+    size_t i;
+    size_t len;
+    size_t pos;
+    kmer_t x, y;
+    twobit_t* contig;
+    for (i = 0; i < n; ++i) {
+        contig = contigs[i];
+        len = twobit_len(contig);
+        x = 0;
+        for (pos = 0; pos < len; ++pos) {
+
+#ifdef WORDS_BIGENDIAN
+            x = ((x >> 2) | twobit_get(contig, pos)) & A->align_kmer_mask;
+#else
+            x = ((x << 2) | twobit_get(contig, pos)) & A->align_kmer_mask;
+#endif
+
+            if (pos + 1 >= A->align_k) {
+                y = kmer_canonical(x, A->align_k);
+                kmerhash_put(A->H, y, i, x == y ? pos : -pos);
+            }
+        }
+    }
+
+    fprintf(stderr, "done.\n");
+}
+
+
+
 static void assembler_assemble(assembler_t* A)
 {
     /* dump reads and sort by abundance */
@@ -206,13 +267,13 @@ static void assembler_assemble(assembler_t* A)
         x = 0;
         for (j = 0; j < seqlen; ++j) {
 #ifdef WORDS_BIGENDIAN
-            x = ((x >> 2) | twobit_get(xs[i].seq, j)) & A->mask;
+            x = ((x >> 2) | twobit_get(xs[i].seq, j)) & A->assemble_kmer_mask;
 #else
-            x = ((x << 2) | twobit_get(xs[i].seq, j)) & A->mask;
+            x = ((x << 2) | twobit_get(xs[i].seq, j)) & A->assemble_kmer_mask;
 #endif
 
-            if (j + 1 >= A->k) {
-                y = kmer_canonical(x, A->k);
+            if (j + 1 >= A->assemble_k) {
+                y = kmer_canonical(x, A->assemble_k);
                 bloom_add(A->B, y, xs[i].cnt);
             }
         }
@@ -221,22 +282,42 @@ static void assembler_assemble(assembler_t* A)
 
     fprintf(stdout, "%zu unique reads\n", seqset_size(A->S));
 
+    size_t contigs_size = 512;
+    size_t contigs_len  = 0;
+    twobit_t** contigs = malloc_or_die(contigs_size * sizeof(twobit_t*));
+
     FILE* f = fopen("contig.fa", "w");
     twobit_t* contig = twobit_alloc();
 
     for (i = 0; i < n && xs[i].cnt >= A->count_cutoff; ++i) {
         assembler_make_contig(A, xs[i].seq, contig);
-        if (twobit_len(contig) < 3 * A->k) continue;
+        if (twobit_len(contig) < 3 * A->assemble_k) continue;
+
         /* TODO: when we discard a contig, it would be nice if we could return
          * its k-mers to the bloom filter */
+
+        if (contigs_len == contigs_size) {
+            contigs_size *= 2;
+            contigs = realloc_or_die(contigs, contigs_size * sizeof(twobit_t*));
+        }
+
+        contigs[contigs_len++] = twobit_dup(contig);
 
         fprintf(f, ">contig_%05zu\n", i);
         twobit_print(contig, f);
         fprintf(f, "\n\n");
     }
 
+
     twobit_free(contig);
     fclose(f);
+
+    index_contigs(A, contigs, contigs_len);
+
+    // TODO: align and compress, etc
+
+    for (i = 0; i < contigs_len; ++i) twobit_free(contigs[i]);
+    free(contigs);
 }
 
 
