@@ -9,6 +9,7 @@ faze_SOURCES = faze.c version.h \
 			   kmerhash.h    kmerhash.c \
 			   misc.h        misc.c \
 			   seqset.h      seqset.c \
+			   sw.h          sw.c \
 			   twobit.h      twobit.c \
 			   parse.h       parse.c \
 			   qual.h        qual.c

@@ -251,6 +251,50 @@ static void index_contigs(assembler_t* A, twobit_t** contigs, size_t n)
 
 
 
+static void align_to_contigs(assembler_t* A,
+                             twobit_t** contigs, size_t contigs_len,
+                             seqset_value_t* xs, size_t xs_len)
+{
+    size_t i, j, seqlen;
+    kmer_t x, y;
+
+    twobit_t* contig;
+
+    kmer_pos_t* pos;
+    size_t poslen;
+
+    for (i = 0; i < xs_len; ++i) {
+        seqlen = twobit_len(xs[i].seq);
+        x = 0;
+        for (j = 0; j < seqlen; ++j) {
+#ifdef WORDS_BIGENDIAN
+            x = ((x >> 2) | twobit_get(xs[i].seq, j)) & A->align_kmer_mask;
+#else
+            x = ((x << 2) | twobit_get(xs[i].seq, j)) & A->align_kmer_mask;
+#endif
+
+            y = kmer_canonical(x, A->align_k);
+
+            poslen = kmerhash_get(A->H, y, &pos);
+            while (poslen--) {
+                contig = contigs[pos->contig_idx];
+
+                // TODO:
+                // What do we do about N's in the sequence?
+
+
+                // TODO:
+                // Smith-waterman local alignment, anchored at the 
+                // seed.
+
+                pos++;
+            }
+        }
+    }
+}
+
+
+
 static void assembler_assemble(assembler_t* A)
 {
     /* dump reads and sort by abundance */
@@ -313,8 +357,18 @@ static void assembler_assemble(assembler_t* A)
     fclose(f);
 
     index_contigs(A, contigs, contigs_len);
+    align_to_contigs(A, contigs, contigs_len, xs, n);
+
+    /* TODO: free xs ? */
+
 
     // TODO: align and compress, etc
+
+    // What's next??
+    // 1. for every read in the sequence set, look for a seed and try to find an
+    //    alignment. This means we need a fast sw implementation. I very much
+    //    don't want to roll my own, but that might be the only viable option.
+    //    Maybe I can expand on the version I wrote for fastq-tools.
 
     for (i = 0; i < contigs_len; ++i) twobit_free(contigs[i]);
     free(contigs);

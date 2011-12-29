@@ -157,6 +157,12 @@ void kmerhash_put(kmerhash_t* H, kmer_t x, uint32_t contig_idx, int32_t contig_p
     while ((size_t) (c - c0) < H->slot_sizes[h]) {
         y = *(kmer_t*) c;
         if (x == y) {
+            len = *(uint8_t*) (c + sizeof(kmer_t));
+            if (len == 0xff) {
+                /* We can't fit any more values. Abort. */
+                return;
+            }
+
             old_size = H->slot_sizes[h];
             H->slot_sizes[h] += sizeof(kmer_pos_t);
             H->slots[h] = realloc_or_die(H->slots[h], H->slot_sizes[h]);
