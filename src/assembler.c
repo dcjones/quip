@@ -5,6 +5,7 @@
 #include "kmerhash.h"
 #include "misc.h"
 #include "seqset.h"
+#include "sw.h"
 #include "twobit.h"
 #include <assert.h>
 #include <math.h>
@@ -258,11 +259,27 @@ static void align_to_contigs(assembler_t* A,
     size_t i, j, seqlen;
     kmer_t x, y;
 
-    twobit_t* contig;
-
     kmer_pos_t* pos;
     size_t poslen;
 
+    /* create an alignment structure for each contig */
+    sw_t** sws = malloc_or_die(contigs_len * sizeof(sw_t*));
+    for (i = 0; i < contigs_len; ++i) {
+        sws[i] = sw_alloc(contigs[i]);
+    }
+
+    /* create an alignment structure for the reverse complement of each contig */
+    sw_t** sws_rc = malloc_or_die(contigs_len * sizeof(sw_t*));
+    for (i = 0; i < contigs_len; ++i) {
+
+        /* TODO: reverse complement */
+
+        sws_rc[i] = sw_alloc(contigs[i]);
+    }
+
+
+
+    /* align every read! */
     for (i = 0; i < xs_len; ++i) {
         seqlen = twobit_len(xs[i].seq);
         x = 0;
@@ -277,20 +294,31 @@ static void align_to_contigs(assembler_t* A,
 
             poslen = kmerhash_get(A->H, y, &pos);
             while (poslen--) {
-                contig = contigs[pos->contig_idx];
+
+                if (pos->contig_pos < 0) {
+                    /* TODO: align to reverse complement */
+                }
+                else {
+                    sw_align(sws[pos->contig_idx],
+                             xs[i].seq,
+                             pos->contig_pos, j, A->align_k);
+                }
 
                 // TODO:
                 // What do we do about N's in the sequence?
-
-
-                // TODO:
-                // Smith-waterman local alignment, anchored at the 
-                // seed.
 
                 pos++;
             }
         }
     }
+
+
+    for (i = 0; i < contigs_len; ++i) {
+        sw_free(sws[i]);
+        sw_free(sws_rc[i]);
+    }
+
+    free(sws);
 }
 
 

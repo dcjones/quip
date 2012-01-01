@@ -1,5 +1,5 @@
 
-bin_PROGRAMS=quip kmerhash_test
+bin_PROGRAMS=quip sw_test
 
 quip_SOURCES = quip.c version.h \
 			   assembler.h   assembler.c \
@@ -17,10 +17,12 @@ quip_SOURCES = quip.c version.h \
 quip_LDADD = -lm
 
 
-kmerhash_test_SOURCES=kmerhash_test.c \
-					  misc.h misc.c \
-					  kmer.h kmer.c \
-					  kmerhash.h kmerhash.c
+sw_test_SOURCES=sw_test.c \
+				misc.h misc.c \
+				kmer.h kmer.c \
+				twobit.h twobit.c \
+				sw.h sw.c
+				
+sw_test_LDADD = -lm
 
-kmerhash_test_LDADD = -lm
 
