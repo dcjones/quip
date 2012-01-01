@@ -1,5 +1,5 @@
 /*
- * This file is part of fazer.
+ * This file is part of quip.
  *
  * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
@@ -16,8 +16,8 @@
  */
 
 
-#ifndef FAZER_HASH
-#define FAZER_HASH
+#ifndef QUIP_HASH
+#define QUIP_HASH
 
 #include "kmer.h"
 

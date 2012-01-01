@@ -1,5 +1,5 @@
 /*
- * This file is part of fazer.
+ * This file is part of quip.
  *
  * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
@@ -11,8 +11,8 @@
  * Nucleotide sequences encoded two bits per nucleotide.
  */
 
-#ifndef FAZER_TWOBIT
-#define FAZER_TWOBIT
+#ifndef QUIP_TWOBIT
+#define QUIP_TWOBIT
 
 #include "kmer.h"
 #include <stdlib.h>

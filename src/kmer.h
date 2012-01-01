@@ -1,6 +1,6 @@
 
-#ifndef FAZER_KMER
-#define FAZER_KMER
+#ifndef QUIP_KMER
+#define QUIP_KMER
 
 #include <stdlib.h>
 #include <stdint.h>

@@ -1,5 +1,5 @@
 /*
- * This file is part of fazer.
+ * This file is part of quip.
  *
  * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
@@ -15,8 +15,8 @@
  */
 
 
-#ifndef FAZER_BLOOM
-#define FAZER_BLOOM
+#ifndef QUIP_BLOOM
+#define QUIP_BLOOM
 
 #include "kmer.h"
 #include <stdlib.h>

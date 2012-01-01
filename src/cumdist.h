@@ -1,5 +1,5 @@
 /*
- * This file is part of fazer.
+ * This file is part of quip.
  *
  * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
@@ -16,8 +16,8 @@
  *
  */
 
-#ifndef FAZER_CUMDIST
-#define FAZER_CUMDIST
+#ifndef QUIP_CUMDIST
+#define QUIP_CUMDIST
 
 #include <stdlib.h>
 #include <stdint.h>

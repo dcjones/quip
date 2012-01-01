@@ -1,8 +1,8 @@
 
-#ifndef FAZER_VERSION_H
-#define FAZER_VERSION_H
+#ifndef QUIP_VERSION_H
+#define QUIP_VERSION_H
 
-#define FAZER_VERSION "@VERSION@"
+#define QUIP_VERSION "@VERSION@"
 
 #endif
 

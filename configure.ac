@@ -1,6 +1,6 @@
 
-AC_INIT( [fazer], [0.1], [dcjones@cs.washington.ed] )
-AM_INIT_AUTOMAKE( [foreign -Wall -Werror] )
+AC_INIT([quip], [0.0], [dcjones@cs.washington.ed])
+AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 
 AC_CONFIG_MACRO_DIR([m4])
@@ -8,6 +8,12 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_PROG_CC
 AM_PROG_CC_C_O
 AC_C_BIGENDIAN
+
+AC_TYPE_UINT8_T
+AC_TYPE_INT32_T
+AC_TYPE_UINT32_T
+AC_TYPE_UINT64_T
+AC_TYPE_SIZE_T
 
 opt_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O3"
 dbg_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O0"
@@ -33,9 +39,6 @@ AC_CHECK_FUNC(fileno, ,
 # check getopt
 AC_CHECK_HEADER(getopt.h, ,
                 AC_MSG_ERROR([The posix getopt.h header is needed.]))
-
-
-# TODO: check for uint64_t
 
 
 CXXFLAGS=$CFLAGS

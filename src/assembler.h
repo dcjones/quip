@@ -1,5 +1,5 @@
 /*
- * This file is part of fazer.
+ * This file is part of quip.
  *
  * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
@@ -13,8 +13,8 @@
  */
 
 
-#ifndef FAZER_ASSEMBLER
-#define FAZER_ASSEMBLER
+#ifndef QUIP_ASSEMBLER
+#define QUIP_ASSEMBLER
 
 #include <stdlib.h>
 #include <stdio.h>

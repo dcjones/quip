@@ -1,5 +1,5 @@
 /*
- * This file is part of fazer.
+ * This file is part of quip.
  *
  * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
@@ -11,8 +11,8 @@
  * Statistical modeling of sequence quality scores.
  */
 
-#ifndef FAZER_QUAL
-#define FAZER_QUAL
+#ifndef QUIP_QUAL
+#define QUIP_QUAL
 
 #include "parse.h"
 #include <stdint.h>
