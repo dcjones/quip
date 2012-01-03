@@ -15,6 +15,8 @@
 #include <limits.h>
 
 
+typedef uint16_t score_t;
+
 typedef enum edit_op_t_
 {
     EDIT_MATCH,
@@ -28,16 +30,23 @@ struct sw_t_
 {
     uint8_t* subject;
     uint8_t* query;
-    int size;
 
-    /* matrix columns */
-    int* ws;
-    int* ys;
-    int* wxyzs;
+    int n; /* subject length */
+    int m; /* query length */
 
-    /* path */
-    edit_op_t* ps;
-    int path_len;
+    /* minimum cost alignment matricies */
+
+    /* alignments ending in some number of matches */
+    score_t* M;
+
+    /* alignments ending in some number of subject gaps */
+    score_t* S;
+
+    /* alignments ending in some number of query gaps */
+    score_t* Q;
+
+    /* overall minimum cost alignment */
+    score_t* F;
 };
 
 
@@ -53,27 +62,26 @@ struct sw_t_
  */
 
 /* TODO: a more realisitic scoring system */
-static const int score_neg_inf    = INT_MIN / 2;
-static const int score_pos_inf    = INT_MAX / 2;
-static const int score_q_gap_open = 16;
-static const int score_q_gap_ext  = 0;
-static const int score_s_gap_open = 8;
-static const int score_s_gap_ext  = 8;
-static const int score_match_open = 16;
-static const int score_match_ext  = 0;
-static const int score_mismatch   = 8;
+static const score_t score_inf        = UINT16_MAX / 2;
+static const score_t score_q_gap_open = 16;
+static const score_t score_q_gap_ext  = 0;
+static const score_t score_s_gap_open = 8;
+static const score_t score_s_gap_ext  = 8;
+static const score_t score_match_open = 16;
+static const score_t score_match_ext  = 0;
+static const score_t score_mismatch   = 8;
 
 
 
 
-static inline int imin(int a, int b)
+static inline score_t score_min(score_t a, score_t b)
 {
     return a < b ? a : b;
 }
 
-static inline int imin4(int a, int b, int c, int d)
+static inline score_t score_min4(score_t a, score_t b, score_t c, score_t d)
 {
-    return imin(imin(a,b), imin(c,d));
+    return score_min(score_min(a,b), score_min(c,d));
 }
 
 
@@ -81,24 +89,21 @@ sw_t* sw_alloc(const twobit_t* subject)
 {
     sw_t* sw = malloc_or_die(sizeof(sw_t));
 
-    sw->size = (int) twobit_len(subject);
+    sw->n = (int) twobit_len(subject);
 
-    sw->subject = malloc_or_die(sw->size * sizeof(uint8_t));
-
-    /* In this particular application, query sequences can never be longer that
-     * the subject sequence, so we reserve */
-    sw->query = malloc_or_die(sw->size * sizeof(uint8_t));
+    sw->subject = malloc_or_die(sw->n * sizeof(uint8_t));
 
     int i;
-    for (i = 0; i < sw->size; ++i) sw->subject[i] = twobit_get(subject, i);
+    for (i = 0; i < sw->n; ++i) sw->subject[i] = twobit_get(subject, i);
 
-    sw->ws    = malloc_or_die(sw->size * sizeof(int));
-    sw->ys    = malloc_or_die(sw->size * sizeof(int));
-    sw->wxyzs = malloc_or_die(sw->size * sizeof(int));
-
-
-    sw->ps = malloc_or_die(sw->size * sizeof(edit_op_t));
-    sw->path_len = 0;
+    /* We don't know the query length in advance, so these are all allocated
+     * and/or expanded when needed. */
+    sw->m = 0;
+    sw->query = NULL;
+    sw->M  = NULL;
+    sw->S = NULL;
+    sw->Q = NULL;
+    sw->F  = NULL;
 
     return sw;
 }
@@ -108,312 +113,154 @@ void sw_free(sw_t* sw)
 {
     free(sw->subject);
     free(sw->query);
-    free(sw->ws);
-    free(sw->ys);
-    free(sw->wxyzs);
-    free(sw->ps);
+    free(sw->M);
+    free(sw->S);
+    free(sw->Q);
+    free(sw->F);
     free(sw);
 }
 
 
 
-/* Forward alignment restricted to [su, sv] in the subject sequence and [qu, qv]
- * in the query sequence. If 'anchor' is true, the alignment must begin with a
- * match or mismatch. */
-static int sw_align_foreward(sw_t* sw, int su, int sv, int qu, int qv, bool anchor)
+
+static void sw_align_sub(sw_t* sw, int su, int sv, int qu, int qv)
 {
-    int i, j;
-
     /* for convenience */
-    int* ws = sw->ws;
-    int x;
-    int* ys = sw->ys;
-    int z;
-    int* wxyzs = sw->wxyzs;
+    const int k = sw->m + 1;
 
-    int y0, y1, wxyz0, wxyz_min;
+    int i, j, idx;
+    for (i = su + 1; i <= sv + 1; ++i) {
+        idx = i * k + qu + 1;
 
-
-    /* initialize ws to prohibit openining with a subject gap extension */
-    for (i = su; i <= sv; ++i) ws[i] = score_pos_inf;
-
-    /* initialize ys to prohibit opening with a match extension */
-    for (i = su; i < sv; ++i) ys[i] = score_pos_inf;
-
-    /* initialize wxyzs to allow starting from any position in the subject
-     * sequence */
-    memset(wxyzs + su, 0, (sv - su + 1) * sizeof(int));
-
-
-    for (j = qu; j <= qv; ++j) {
-
-        wxyz_min = score_pos_inf;
-
-        /* first row special case */
-
-        /* subject gap */
-        ws[su] = imin(wxyzs[su] + score_s_gap_open, ws[su] + score_s_gap_ext);
-
-        /* query gap */
-        x = score_pos_inf;
-
-        /* mismatch */
-        z = score_mismatch;
-
-        /* match */
-        if (j == qu) {
-            if (sw->subject[su] == sw->query[qu]) {
-                ys[su] = score_match_open;
+        for (j = qu + 1; j <= qv + 1; ++j, ++idx) {
+            if (sw->subject[i - 1] == sw->query[j - 1]) {
+                sw->M[idx] = score_min(sw->M[(i - 1) * k + (j - 1)] + score_match_ext,
+                                       sw->F[(i - 1) * k + (j - 1)] + score_match_open);
             }
             else {
-                ys[su] = score_pos_inf;
+                sw->M[idx] = score_inf;
             }
-        }
-        else {
-            ys[su] = score_pos_inf;
-        }
 
-        wxyz0 = wxyzs[su];
+            sw->Q[idx] = score_min(sw->Q[(i - 1) * k + j] + score_q_gap_ext,
+                                   sw->F[(i - 1) * k + j] + score_q_gap_open);
 
-        if (j == qu && anchor) {
-            wxyzs[su] = imin(ys[su], z);
-        }
-        else {
-            wxyzs[su] = imin4(ws[su], x, ys[su], z);
-        }
+            sw->S[idx] = score_min(sw->S[i * k + (j - 1)] + score_s_gap_ext,
+                                   sw->F[i * k + (j - 1)] + score_s_gap_open);
 
-        y0 = score_pos_inf;
-        wxyz_min = imin(wxyz_min, wxyzs[su]);
-
-
-        for (i = su + 1; i <= sv; ++i) {
-            /* subject gap */
-            ws[i] = imin(wxyzs[i] + score_s_gap_open, ws[i] + score_s_gap_ext);
-
-            /* query gap */
-            x = imin(wxyzs[i - 1] + score_q_gap_open, x + score_q_gap_ext);
-
-            /* match */
-            y1 = ys[i];
-            if (sw->subject[i] == sw->query[j]) {
-                ys[i] = imin(wxyz0 + score_match_open, y0 + score_match_ext);
-            }
-            else ys[i] = score_pos_inf;
-            y0 = y1;
-
-            /* mismatch */
-            z = wxyz0 + score_mismatch;
-
-            wxyz0 = wxyzs[i];
-            wxyzs[i] = imin4(ws[i], x, ys[i], z);
-            wxyz_min = imin(wxyz_min, wxyzs[i]);
+            sw->F[idx] = score_min4(sw->F[(i - 1) * k + (j - 1)] + score_mismatch,
+                                    sw->M[idx], sw->Q[idx], sw->S[idx]);
         }
     }
+}
 
-    return wxyz_min;
+
+static void sw_ensure_query_len(sw_t* sw, int m)
+{
+    if (sw->m < m)  {
+        sw->m = m;
+        sw->query = realloc_or_die(sw->query, sw->m * sizeof(uint8_t));
+        sw->M = realloc_or_die(sw->M, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
+        sw->S = realloc_or_die(sw->S, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
+        sw->Q = realloc_or_die(sw->Q, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
+        sw->F = realloc_or_die(sw->F, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
+    }
 }
 
 
 
-static int sw_align_backward(sw_t* sw, int su, int sv, int qu, int qv, bool anchor)
+
+int sw_seeded_align(sw_t* sw, const twobit_t* query,
+                    int spos, int qpos, int seedlen)
 {
-    int i, j;
+    int i, qlen = (int) twobit_len(query);
 
-    /* for convenience */
-    int* ws = sw->ws;
-    int x;
-    int* ys = sw->ys;
-    int z;
-    int* wxyzs = sw->wxyzs;
+    if (spos + seedlen + (qlen - qpos - seedlen + 1) >= sw->n) return score_inf;
 
-    int y0, y1, wxyz0, wxyz_min;
+    sw_ensure_query_len(sw, qlen);
 
-    /* initialize ws to prohibit openining with a subject gap extension */
-    for (i = su; i <= sv; ++i) ws[i] = score_pos_inf;
-
-    /* initialize ys to prohibit opening with a match extension */
-    for (i = su; i < sv; ++i) ys[i] = score_pos_inf;
-
-    /* initialize wxyzs to allow starting from any position in the subject
-     * sequence */
-    memset(wxyzs + su, 0, (sv - su + 1) * sizeof(int));
-
-
-    for (j = qv; j >= qu; --j) {
-
-        wxyz_min = score_pos_inf;
-
-        /* last row special case ? */
-
-        /* subject gap */
-        ws[sv] = imin(wxyzs[sv] + score_s_gap_open, ws[sv] + score_s_gap_ext);
-
-        /* query gap */
-        x = score_pos_inf;
-
-        /* mismatch */
-        z = score_mismatch;
-
-        /* match */
-        if (j == qv) {
-            if (sw->subject[sv] == sw->query[qv]) {
-                ys[sv] = score_match_open;
-            }
-            else {
-                ys[sv] = score_pos_inf;
-            }
-        }
-        else {
-            ys[sv] = score_pos_inf;
-        }
-
-        wxyz0 = wxyzs[sv];
-
-        if (j == qv && anchor) {
-            wxyzs[sv] = imin(ys[sv], z);
-        }
-        else {
-            wxyzs[sv] = imin4(ws[sv], x, ys[sv], z);
-        }
-
-        y0 = score_pos_inf;
-        wxyz_min = imin(wxyz_min, wxyzs[sv]);
-
-
-        for (i = sv - 1; i >= su; --i) {
-            /* subject gap */
-            ws[i] = imin(wxyzs[i] + score_s_gap_open, ws[i] + score_s_gap_ext);
-
-            /* query gap */
-            x = imin(wxyzs[i + 1] + score_q_gap_open, x + score_q_gap_ext);
-
-            /* match */
-            y1 = ys[i];
-            if (sw->subject[i] == sw->query[j]) {
-                ys[i] = imin(wxyz0 + score_match_open, y0 + score_match_ext);
-            }
-            else ys[i] = score_pos_inf;
-            y0 = y1;
-
-            /* mismatch */
-            z = wxyz0 + score_mismatch;
-
-            wxyz0 = wxyzs[i];
-            wxyzs[i] = imin4(ws[i], x, ys[i], z);
-            wxyz_min = imin(wxyz_min, wxyzs[i]);
-        }
-    }
-
-
-    return wxyz_min;
-}
-
-
-static void sw_align_path(sw_t* sw,
-                          int su, int sv, int qu, int qv,
-                          bool anchor00, bool anchor11)
-{
-    int q;
-
-    /* TODO:
-     * Can we actually divide and conqueror with sv - su == 1,
-     * or with qv - qu == 1?
-     */
-
-    if (sv - su == 0) {
-        // TODO
-        return;
-    }
-
-    if (qv - qu == 0) { 
-        // TODO
-        return;
-    }
-
-    sw_align_foreward(sw, su, sv, qu, qu + (qv - qu) / 2, anchor00);
-
-    // TODO: do something with wxyzs
-
-    sw_align_backward(sw, su, sv, qu + (qv - qu) / 2 + 1, qv, anchor11);
-
-    // TODO: find 'q'
-
-    // TODO: push q to sw->ps
-
-    sw_align_path(sw, su, q, qu, qu + (qv - qu) / 2, anchor00, true);
-    sw_align_path(sw, q, sv, qu + (qv - qu) / 2  + 1, qv, true, anchor11);
-
-    // TODO: rearrange the path, perhaps ?
-}
-
-
-
-int sw_align(sw_t* sw, const twobit_t* query,
-             int spos, int qpos, int seedlen)
-{
-    size_t i, n = twobit_len(query);
-    for (i = 0; i < n; ++i) {
+    for (i = 0; i <= qpos; ++i) {
         sw->query[i] = twobit_get(query, i);
     }
 
-    /* we bound the extent of the alignment within the subject sequence, making
-     * the algorithm O(m^2) rather than O(mn)
-     */
+    assert(sw->query[qpos] == sw->subject[spos]);
 
-    /* least allowable subject position */
+    for (i = qpos + seedlen; i < qlen; ++i) {
+        sw->query[i] = twobit_get(query, i);
+    }
+
+
+    /* Align up to the seed.
+     * =====================
+     * */
+
+    /* We limit of the amount of subject sequence consumed in the alignment,
+     * to make the run time O(m^2), rather than O(mn) */
     int s0 = spos - 2 * qpos;
     if (s0 < 0) s0 = 0;
 
-    /* greatest allowable subject position */
-    int s1 = spos + seedlen + 2 * ((int) n - qpos + seedlen);
-    if (s1 >= sw->size) s1 = sw->size - 1;
+    int s1 = spos + seedlen + 2 * (qlen - qpos - seedlen + 1);
+    if (s1 >= sw->n) s1 = sw->n - 1;
 
-    /* align sequence left of the seed */
-    sw_align_path(sw, s0, spos, 0, qpos, false, true);
 
-    /* align to the right of the seed */
-    sw_align_path(sw, spos + seedlen - 1, s1, qpos + seedlen - 1, (int) n - 1, true, false);
+    /* initialize column 0 */
+    int idx;
+    for (i = s0; i <= spos + 1; ++i) {
+        idx = i * (sw->m + 1);
+        sw->M[idx] = score_inf;
+        sw->S[idx] = score_inf;
+        sw->Q[idx] = score_inf;
+        sw->F[idx] = 0;
+    }
 
-    /* TODO score */
+    /* initialize row 0 */
+    for (i = 1; i < qpos + 1; ++i) {
+        idx = s0 * (sw->m + 1) + i;
+        sw->M[idx] = score_inf;
+        sw->S[idx] = score_inf;
+        sw->Q[idx] = score_q_gap_open + (i - 1) * score_q_gap_ext;
+        sw->F[idx] = sw->Q[idx];
+    }
 
-    return 0;
+    sw_align_sub(sw, s0, spos, 0, qpos);
+
+
+
+    /* Align from the seed.
+     * ====================
+     */
+
+    int idx2;
+    idx  = (spos + 1) * (sw->m + 1) + (qpos + 1);
+    idx2 = (spos + seedlen) * (sw->m + 1) + (qpos + seedlen);
+    sw->F[idx2] = sw->M[idx2] = sw->M[idx] + (seedlen - 1) * score_match_ext;
+    assert(sw->F[idx2] < score_inf);
+
+    /* initialize column 0 */
+    for (i = spos + seedlen + 1; i <= s1 + 1; ++i) {
+        idx = i * (sw->m + 1) + qpos + seedlen;
+        sw->M[idx] = score_inf;
+        sw->S[idx] = score_inf;
+        sw->Q[idx] = sw->F[idx2] + score_q_gap_open + (i - (spos + seedlen)) * score_q_gap_ext;
+        sw->F[idx] = sw->Q[idx];
+    }
+
+    /* initialize row 0 */
+    for (i = qpos + seedlen + 1; i < qlen + 1; ++i) {
+        idx = (spos + seedlen) * (sw->m + 1) + i;
+        sw->M[idx] = score_inf;
+        sw->S[idx] = sw->F[idx2] + score_s_gap_open + (i - (qpos + seedlen + 1)) * score_s_gap_ext;
+        sw->Q[idx] = score_inf;
+        sw->F[idx] = sw->S[idx];
+    }
+
+    sw_align_sub(sw, spos + seedlen, s1, qpos + seedlen, qlen - 1);
+
+    score_t s = score_inf;
+    for (i = spos + seedlen; i <= s1; ++i) {
+        s = score_min(s, sw->F[i * (sw->m + 1) + qlen]);
+    }
+
+    return s;
 }
-
-
-
-
-sw_t* sw_alloc_char(const char* subject)
-{
-    sw_t* sw = malloc_or_die(sizeof(sw_t));
-
-    sw->size = (int) strlen(subject);
-
-    sw->subject = malloc_or_die(sw->size * sizeof(uint8_t));
-
-    /* In this particular application, query sequences can never be longer that
-     * the subject sequence, so we reserve */
-    sw->query = malloc_or_die(sw->size * sizeof(uint8_t));
-
-    memcpy(sw->subject, subject, sw->size);
-
-    sw->ws    = malloc_or_die(sw->size * sizeof(int));
-    sw->ys    = malloc_or_die(sw->size * sizeof(int));
-    sw->wxyzs = malloc_or_die(sw->size * sizeof(int));
-
-    return sw;
-
-}
-
-
-int sw_align_char(sw_t* sw, const char* query)
-{
-    size_t n = strlen(query);
-    memcpy(sw->query, query, n);
-
-    sw_align_foreward(sw, 0, sw->size - 1, 0, n - 1, false);
-
-    return 0;
-}
-
 
 

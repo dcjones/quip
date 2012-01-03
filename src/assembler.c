@@ -242,7 +242,8 @@ static void index_contigs(assembler_t* A, twobit_t** contigs, size_t n)
 
             if (pos + 1 >= A->align_k) {
                 y = kmer_canonical(x, A->align_k);
-                kmerhash_put(A->H, y, i, x == y ? pos : -pos);
+                if (x == y) kmerhash_put(A->H, y, i, pos + 1 - A->align_k);
+                else        kmerhash_put(A->H, y, i, - (int32_t) (pos + 2 - A->align_k));
             }
         }
     }
@@ -290,24 +291,30 @@ static void align_to_contigs(assembler_t* A,
             x = ((x << 2) | twobit_get(xs[i].seq, j)) & A->align_kmer_mask;
 #endif
 
-            y = kmer_canonical(x, A->align_k);
+            if (j + 1 >= A->align_k) {
+                y = kmer_canonical(x, A->align_k);
 
-            poslen = kmerhash_get(A->H, y, &pos);
-            while (poslen--) {
+                poslen = kmerhash_get(A->H, y, &pos);
+                while (poslen--) {
 
-                if (pos->contig_pos < 0) {
+                    if (pos->contig_pos < 0 && x != y) {
+                        sw_seeded_align(sws[pos->contig_idx],
+                                        xs[i].seq,
+                                        -pos->contig_pos - 1,
+                                        j + 1 - A->align_k,
+                                        A->align_k);
+                    }
+                    /*else if (pos->contig_pos >= 0 && x == y) {*/
+                        /*sw_seeded_align(sws[pos->contig_idx],*/
+                                        /*xs[i].seq,*/
+                                        /*pos->contig_pos,*/
+                                        /*j + 1 - A->align_k,*/
+                                        /*A->align_k);*/
+                    /*}*/
                     /* TODO: align to reverse complement */
-                }
-                else {
-                    sw_align(sws[pos->contig_idx],
-                             xs[i].seq,
-                             pos->contig_pos, j, A->align_k);
-                }
 
-                // TODO:
-                // What do we do about N's in the sequence?
-
-                pos++;
+                    pos++;
+                }
             }
         }
     }
