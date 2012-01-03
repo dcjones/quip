@@ -22,6 +22,18 @@ struct twobit_t_
 };
 
 
+void twobit_reserve(twobit_t* s, size_t seqlen)
+{
+    if (s->n < kmers_needed(s->len + seqlen)) {
+        size_t new_n = s->n;
+        while (new_n < kmers_needed(s->len + seqlen)) new_n *= 2;
+        s->seq = realloc_or_die(s->seq, new_n * sizeof(kmer_t));
+        memset(s->seq + s->n, 0, (new_n - s->n) * sizeof(kmer_t));
+        s->n = new_n;
+    }
+}
+
+
 twobit_t* twobit_alloc_n(size_t len)
 {
     twobit_t* s = malloc_or_die(sizeof(twobit_t));
@@ -92,14 +104,7 @@ void twobit_append(twobit_t* s, const char* seqstr)
 
 void twobit_append_n(twobit_t* s, const char* seqstr, size_t seqlen)
 {
-    /* expand, if more space is needed */
-    if (s->n < kmers_needed(s->len + seqlen)) {
-        size_t new_n = s->n;
-        while (new_n < kmers_needed(s->len + seqlen)) new_n *= 2;
-        s->seq = realloc_or_die(s->seq, new_n * sizeof(kmer_t));
-        memset(s->seq + s->n, 0, (new_n - s->n) * sizeof(kmer_t));
-        s->n = new_n;
-    }
+    twobit_reserve(s, seqlen);
 
     kmer_t c;
     size_t idx, off;
@@ -272,6 +277,19 @@ int twobit_cmp(const twobit_t* a, const twobit_t* b)
     return memcmp(a->seq, b->seq, kmers_needed(a->len) * sizeof(kmer_t));
 }
 
+
+
+void twobit_revcomp(twobit_t* dest, const twobit_t* src)
+{
+    twobit_reserve(dest, src->len);
+
+    size_t i;
+    for (i = 0; i < src->len; ++i) {
+        twobit_set(dest, src->len - i - 1, kmer_comp(twobit_get(src, i), 1));
+    }
+
+    dest->len = src->len;
+}
 
 
 

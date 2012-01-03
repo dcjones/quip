@@ -61,15 +61,14 @@ struct sw_t_
  * length encoding scheme is used.
  */
 
-/* TODO: a more realisitic scoring system */
 static const score_t score_inf        = UINT16_MAX / 2;
-static const score_t score_q_gap_open = 16;
+static const score_t score_q_gap_open = 2;
 static const score_t score_q_gap_ext  = 0;
-static const score_t score_s_gap_open = 8;
-static const score_t score_s_gap_ext  = 8;
-static const score_t score_match_open = 16;
+static const score_t score_s_gap_open = 1;
+static const score_t score_s_gap_ext  = 1;
+static const score_t score_match_open = 2;
 static const score_t score_match_ext  = 0;
-static const score_t score_mismatch   = 8;
+static const score_t score_mismatch   = 1;
 
 
 
@@ -100,10 +99,10 @@ sw_t* sw_alloc(const twobit_t* subject)
      * and/or expanded when needed. */
     sw->m = 0;
     sw->query = NULL;
-    sw->M  = NULL;
+    sw->M = NULL;
     sw->S = NULL;
     sw->Q = NULL;
-    sw->F  = NULL;
+    sw->F = NULL;
 
     return sw;
 }
@@ -182,11 +181,11 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
         sw->query[i] = twobit_get(query, i);
     }
 
-    assert(sw->query[qpos] == sw->subject[spos]);
-
     for (i = qpos + seedlen; i < qlen; ++i) {
         sw->query[i] = twobit_get(query, i);
     }
+
+    assert(sw->query[qpos] == sw->subject[spos]);
 
 
     /* Align up to the seed.

@@ -270,17 +270,21 @@ static void align_to_contigs(assembler_t* A,
     }
 
     /* create an alignment structure for the reverse complement of each contig */
+    twobit_t* rc_seq = twobit_alloc();
     sw_t** sws_rc = malloc_or_die(contigs_len * sizeof(sw_t*));
     for (i = 0; i < contigs_len; ++i) {
-
-        /* TODO: reverse complement */
-
-        sws_rc[i] = sw_alloc(contigs[i]);
+        twobit_revcomp(rc_seq, contigs[i]);
+        sws_rc[i] = sw_alloc(rc_seq);
     }
-
+    twobit_free(rc_seq);
 
 
     /* align every read! */
+
+    sw_t* sw;
+    int qpos, spos;
+
+
     for (i = 0; i < xs_len; ++i) {
         seqlen = twobit_len(xs[i].seq);
         x = 0;
@@ -293,26 +297,33 @@ static void align_to_contigs(assembler_t* A,
 
             if (j + 1 >= A->align_k) {
                 y = kmer_canonical(x, A->align_k);
-
+                qpos = j + 1 - A->align_k;
                 poslen = kmerhash_get(A->H, y, &pos);
+
                 while (poslen--) {
 
-                    if (pos->contig_pos < 0 && x != y) {
-                        sw_seeded_align(sws[pos->contig_idx],
-                                        xs[i].seq,
-                                        -pos->contig_pos - 1,
-                                        j + 1 - A->align_k,
-                                        A->align_k);
+                    if (pos->contig_pos >= 0) {
+                        if (x == y) {
+                            spos = pos->contig_pos;
+                            sw   = sws[pos->contig_idx];
+                        }
+                        else {
+                            spos = (int) twobit_len(contigs[pos->contig_idx]) - pos->contig_pos - A->align_k;
+                            sw   = sws_rc[pos->contig_idx];
+                        }
                     }
-                    /*else if (pos->contig_pos >= 0 && x == y) {*/
-                        /*sw_seeded_align(sws[pos->contig_idx],*/
-                                        /*xs[i].seq,*/
-                                        /*pos->contig_pos,*/
-                                        /*j + 1 - A->align_k,*/
-                                        /*A->align_k);*/
-                    /*}*/
-                    /* TODO: align to reverse complement */
+                    else {
+                        if (x == y) {
+                            spos = (int) twobit_len(contigs[pos->contig_idx]) + pos->contig_pos - (A->align_k - 1);
+                            sw   = sws_rc[pos->contig_idx];
+                        }
+                        else {
+                            spos = -pos->contig_pos - 1;
+                            sw   = sws[pos->contig_idx];
+                        }
+                    }
 
+                    sw_seeded_align(sw, xs[i].seq, spos, qpos, A->align_k);
                     pos++;
                 }
             }

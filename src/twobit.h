@@ -26,6 +26,7 @@ twobit_t* twobit_alloc_n(size_t n);
 void      twobit_free(twobit_t*);
 twobit_t* twobit_dup(const twobit_t*);
 void      twobit_clear(twobit_t*);
+void      twobit_reserve(twobit_t* s, size_t seqlen);
 
 size_t twobit_len(const twobit_t*);
 void   twobit_copy(twobit_t*, const char*);
@@ -43,6 +44,7 @@ kmer_t twobit_get(const twobit_t*, size_t i);
 kmer_t twobit_get_kmer(const twobit_t*, size_t i, size_t k);
 void   twobit_print(const twobit_t*, FILE*);
 int    twobit_cmp(const twobit_t*, const twobit_t*);
+void   twobit_revcomp(twobit_t* dest, const twobit_t* src);
 
 uint32_t twobit_hash(const twobit_t*);
 
