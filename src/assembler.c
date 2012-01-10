@@ -376,7 +376,9 @@ static void align_to_contigs(assembler_t* A,
 
 
 
-static void assembler_assemble(assembler_t* A)
+void assembler_assemble(assembler_t* A,
+                        quip_block_writer_t writer,
+                        void* writer_data)
 {
     /* dump reads and sort by abundance */
     seqset_value_t* xs = seqset_dump(A->S);
@@ -405,13 +407,11 @@ static void assembler_assemble(assembler_t* A)
     }
 
 
-    fprintf(stdout, "%zu unique reads\n", seqset_size(A->S));
-
+    /* assemble contigs */
     size_t contigs_size = 512;
     size_t contigs_len  = 0;
     twobit_t** contigs = malloc_or_die(contigs_size * sizeof(twobit_t*));
 
-    FILE* f = fopen("contig.fa", "w");
     twobit_t* contig = twobit_alloc();
 
     for (i = 0; i < n && xs[i].cnt >= A->count_cutoff; ++i) {
@@ -427,41 +427,31 @@ static void assembler_assemble(assembler_t* A)
         }
 
         contigs[contigs_len++] = twobit_dup(contig);
-
-        fprintf(f, ">contig_%05zu\n", i);
-        twobit_print(contig, f);
-        fprintf(f, "\n\n");
     }
 
-
     twobit_free(contig);
-    fclose(f);
 
+
+    /* align reads to contigs */
     index_contigs(A, contigs, contigs_len);
     align_to_contigs(A, contigs, contigs_len, xs, n);
 
-    /* TODO: free xs ? */
 
+    /* write compressed data */
 
-    // TODO: align and compress, etc
+    // TODO
 
-    // What's next??
-    // 1. for every read in the sequence set, look for a seed and try to find an
-    //    alignment. This means we need a fast sw implementation. I very much
-    //    don't want to roll my own, but that might be the only viable option.
-    //    Maybe I can expand on the version I wrote for fastq-tools.
 
     for (i = 0; i < contigs_len; ++i) twobit_free(contigs[i]);
     free(contigs);
+
+    return contigs;
 }
 
 
-void assembler_write(assembler_t* A, FILE* fout)
+void assembler_clear(assembler_t* A)
 {
-    assembler_assemble(A);
-
-    fprintf(fout, "IOU: compressed data\n");
+    // TODO
 }
-
 
 

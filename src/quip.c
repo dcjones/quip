@@ -1,17 +1,17 @@
 /*
  * This file is part of quip.
  *
- * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ * Copyright (c) 2012 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
  */
 
 
 #include "config.h"
+#include "quip.h"
 #include "assembler.h"
 #include "kmer.h"
 #include "misc.h"
 #include "parse.h"
-#include "qual.h"
 #include <getopt.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -56,11 +56,9 @@ void print_version()
 }
 
 
-
-void qual_writer(void* param, uint8_t* data, size_t datalen)
+static void block_writer(void* param, const uint8_t* data, size_t datalen)
 {
-    size_t* cnt = (size_t*) param;
-    *cnt += datalen;
+    fwrite(data, 1, datalen, (FILE*) param);
 }
 
 
@@ -100,14 +98,27 @@ static int quip_compress(char** fns, size_t fn_count)
     FILE *fin, *fout;
     size_t i;
 
+    seq_t* r = fastq_alloc_seq();
+    fastq_t* fq;
+
+    quip_compressor_t* C;
+
     if (fn_count == 0) {
-        fin  = stdin;
-        fout = stdout;
+        quip_write_header(stdout);
+        C = quip_comp_alloc(block_writer, stdout);
 
-        // TODO
+        fq = fastq_open(stdin);
 
+        while (fastq_next(fq, r)) {
+            quip_comp_addseq(C, r);
+        }
+
+        fastq_close(fq);
+        quip_comp_free(C);
     }
     else {
+        if (stdout_flag) quip_write_header(stdout);
+
         for (i = 0; i < fn_count; ++i) {
             fn = fns[i];
             fin = fopen_attempt(fn, "rb");
@@ -119,14 +130,28 @@ static int quip_compress(char** fns, size_t fn_count)
                 sprintf(out_fn, "%s.qp", fn);
                 fout = fopen_attempt(out_fn, "wb");
                 free(out_fn);
+
+                quip_write_header(fout);
             }
 
-            // TODO
+            C = quip_comp_alloc(block_writer, fout);
 
+            fq = fastq_open(fin);
+
+            while (fastq_next(fq, r)) {
+                quip_comp_addseq(C, r);
+            }
+
+
+            fastq_close(fq);
             fclose(fin);
+
+            quip_comp_free(C);
             if (!stdout_flag) fclose(fout);
         }
     }
+
+    fastq_free_seq(r);
 
     return EXIT_SUCCESS;
 }

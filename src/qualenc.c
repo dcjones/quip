@@ -1,5 +1,5 @@
 
-#include "qual.h"
+#include "qualenc.h"
 #include "cumdist.h"
 #include "misc.h"
 #include <stdlib.h>
@@ -84,12 +84,12 @@ struct qualenc_t_
     size_t buflen;
     size_t bufpos; /* next vacant buffer position */
 
-    qualenc_writer_t writer;
+    quip_block_writer_t writer;
     void* writer_data;
 };
 
 
-qualenc_t* qualenc_alloc(qualenc_writer_t writer, void* writer_data)
+qualenc_t* qualenc_alloc(quip_block_writer_t writer, void* writer_data)
 {
     qualenc_t* E = malloc_or_die(sizeof(qualenc_t));
     E->M = qualmodel_alloc();
@@ -222,46 +222,6 @@ static void qualenc_encode_qk(qualenc_t* E,
 }
 
 
-#if 0
-static int cmpuc(const void* a, const void* b)
-{
-    return *(char*) a - *(char*) b;
-}
-
-
-static unsigned char stupid_mode(unsigned char* qs, size_t n)
-{
-    size_t cnt = 1;
-    size_t cnt_max = 0;
-    unsigned char q;
-    unsigned char q_max = 0;
-
-    q = qs[n - 1];
-    int i;
-    for (i = n - 2; i >= 0; --i) {
-        if (qs[i] == q) {
-            ++cnt;
-        }
-        else {
-            if (cnt > cnt_max) {
-                q_max = q;
-                cnt_max = cnt;
-                cnt = 1;
-                q = qs[i];
-            }
-        }
-    }
-
-    if (cnt > cnt_max) {
-        q_max = q;
-        cnt_max = cnt;
-    }
-
-    return q_max;
-}
-#endif
-
-
 void qualenc_encode(qualenc_t* E, const seq_t* x)
 {
     if (x->qual.n == 0) return;
@@ -300,10 +260,10 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 }
 
 
-void qualenc_finish(qualenc_t* E)
+void qualenc_clear(qualenc_t* E)
 {
-    /* evict the buffer */
     E->writer(E->writer_data, E->buf, E->bufpos);
+    E->bufpos = 0;
 }
 
 

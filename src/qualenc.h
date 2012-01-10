@@ -14,19 +14,18 @@
 #ifndef QUIP_QUAL
 #define QUIP_QUAL
 
+#include "quip.h"
 #include "parse.h"
 #include <stdint.h>
 
 
 typedef struct qualenc_t_ qualenc_t;
 
-typedef void (*qualenc_writer_t) (void*, uint8_t*, size_t);
-
-qualenc_t* qualenc_alloc(qualenc_writer_t, void* writer_data);
+qualenc_t* qualenc_alloc(quip_block_writer_t writer, void* writer_data);
 void       qualenc_free(qualenc_t*);
 
 void qualenc_encode(qualenc_t*, const seq_t*);
-void qualenc_finish(qualenc_t*);
+void qualenc_clear(qualenc_t*);
 
 
 #endif
