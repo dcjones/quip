@@ -1,10 +1,61 @@
+/*
+ * This file is part of quip.
+ *
+ * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ *
+ */
 
+
+#include "config.h"
 #include "assembler.h"
 #include "kmer.h"
 #include "misc.h"
 #include "parse.h"
 #include "qual.h"
+#include <getopt.h>
+#include <errno.h>
+#include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
+
+#if defined(MSDOS) || defined(OS2) || defined(WIN32) || defined(__CYGWIN__)
+#  include <fcntl.h>
+#  include <io.h>
+#  define SET_BINARY_MODE(file) setmode(fileno(file), O_BINARY)
+#else
+#  define SET_BINARY_MODE(file)
+#endif
+
+
+
+const char* prog_name;
+
+bool stdout_flag     = false;
+bool decompress_flag = false;
+bool keep_flag       = true;
+
+
+
+void print_help()
+{
+    printf(
+"Usage: quip [OPTION]... [FILE]...\n"
+"Compress or decompress FASTQ sequence files with extreme prejudice.\n\n"
+"  -c, --stdout       write on standard output, keep original files unchanged\n"
+"  -d, --decompress   decompress\n"
+"  -k, --keep         do not delete the input file(s)\n"
+"  -h, --help         print this message\n"
+"  -V, --version      display program version\n\n"
+"Report bugs to <dcjones@cs.washington.edu>.\n");
+}
+
+
+void print_version()
+{
+    printf("quip %s\n", VERSION);
+}
+
+
 
 void qual_writer(void* param, uint8_t* data, size_t datalen)
 {
@@ -13,55 +64,143 @@ void qual_writer(void* param, uint8_t* data, size_t datalen)
 }
 
 
+/* Call fopen, and print an appropriate error message if need be. */
+static FILE* fopen_attempt(const char* fn, const char* mode)
+{
+    FILE* f = fopen(fn, mode);
+    if (f) return f;
+
+
+    switch (errno) {
+        case EACCES:
+            fprintf(stderr, "%s: %s: Permission denied.\n", prog_name, fn);
+            break;
+
+        case ENOENT:
+            fprintf(stderr, "%s: %s: No such file.\n", prog_name, fn);
+            break;
+
+        default:
+            fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, fn);
+    }
+
+
+    return NULL;
+}
+
+
+static int quip_compress(char** fns, size_t fn_count)
+{
+    if (stdout_flag) {
+        SET_BINARY_MODE(stdout);
+    }
+
+    const char* fn;
+    char* out_fn;
+    FILE *fin, *fout;
+    size_t i;
+
+    if (fn_count == 0) {
+        fin  = stdin;
+        fout = stdout;
+
+        // TODO
+
+    }
+    else {
+        for (i = 0; i < fn_count; ++i) {
+            fn = fns[i];
+            fin = fopen_attempt(fn, "rb");
+            if (!fin) continue;
+
+            if (stdout_flag) fout = stdout;
+            else {
+                out_fn = malloc_or_die((strlen(fn) + 3) * sizeof(char));
+                sprintf(out_fn, "%s.qp", fn);
+                fout = fopen_attempt(out_fn, "wb");
+                free(out_fn);
+            }
+
+            // TODO
+
+            fclose(fin);
+            if (!stdout_flag) fclose(fout);
+        }
+    }
+
+    return EXIT_SUCCESS;
+}
+
+
+static int quip_decompress(char** fns, size_t fn_count)
+{
+    // TODO
+    return EXIT_SUCCESS;
+}
+
+
+
+
 int main(int argc, char* argv[])
 {
+    static struct option long_options[] = 
+    {
+        {"stdout",     no_argument, NULL, 'c'},
+        {"decompress", no_argument, NULL, 'd'},
+        {"keep",       no_argument, NULL, 'k'},
+        {"help",       no_argument, NULL, 'h'},
+        {"version",    no_argument, NULL, 'V'}
+    };
+
+    int opt, opt_idx;
+
+    prog_name = argv[0];
+
+    if (strcmp(argv[0], "unquip") == 0) decompress_flag = true;
+
+    while (1) {
+        opt = getopt_long(argc, argv, "cdkhV", long_options, &opt_idx);
+
+        if (opt == -1) break;
+
+        switch (opt) {
+            case 'c':
+                stdout_flag = true;
+                break;
+
+            case 'd':
+                decompress_flag = true;
+                break;
+
+            case 'k':
+                keep_flag = true;
+                break;
+
+            case 'h':
+                print_help();
+                return EXIT_SUCCESS;
+
+            case 'V':
+                print_version();
+                return EXIT_SUCCESS;
+
+            case '?':
+                return EXIT_FAILURE;
+
+            default:
+                abort();
+        }
+    }
+
+    /* initialize reverse complement lookup tables */
     kmer_init();
 
-    FILE* fin;
-
-    if (argc > 1) fin = fopen_or_die(argv[1], "r");
-    else          fin = stdin;
-
-
-    const size_t assemble_k = 25;
-    const size_t align_k    = 20;
-    assembler_t* A = assembler_alloc(assemble_k, align_k);
-
-
-    fastq_t* fqf = fastq_open(fin);
-    seq_t* read = fastq_alloc_seq();
-
-    size_t cnt = 0;
-
-    size_t qual_bytes = 0;
-    size_t qual_compressed_bytes = 0;
-    qualenc_t* E = qualenc_alloc(qual_writer, &qual_compressed_bytes);
-
-
-    while (fastq_next(fqf, read)) {
-        if (++cnt % 100000 == 0) {
-            fprintf(stdout, "%zu reads\n", cnt);
-        }
-        assembler_add_seq(A, read->seq.s, read->seq.n);
-        qual_bytes += read->qual.n;
-        /*qualenc_encode(E, read);*/
-    }
-    qualenc_finish(E);
-
-    fastq_free_seq(read);
-    fastq_close(fqf);
-
-    qualenc_free(E);
-
-    printf("%zu\t%zu\n", qual_bytes, qual_compressed_bytes);
-    printf("%0.2f%% compression\n", 100.0 * (double) qual_compressed_bytes / (double) qual_bytes);
-
-
-    assembler_write(A, stdout);
-    assembler_free(A);
+    int ret;
+    if (decompress_flag) ret = quip_decompress(argv + optind, argc - optind);
+    else                 ret = quip_compress(argv + optind, argc - optind);
 
     kmer_free();
 
-    return 0;
+    return ret;
 }
 
