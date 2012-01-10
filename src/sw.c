@@ -17,14 +17,6 @@
 
 typedef uint16_t score_t;
 
-typedef enum edit_op_t_
-{
-    EDIT_MATCH,
-    EDIT_MISMATCH,
-    EDIT_Q_GAP,
-    EDIT_S_GAP
-} edit_op_t;
-
 
 struct sw_t_
 {
@@ -33,6 +25,9 @@ struct sw_t_
 
     int n; /* subject length */
     int m; /* query length */
+
+    int qlen;
+    int last_spos;
 
     /* minimum cost alignment matricies */
 
@@ -172,8 +167,9 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
                     int spos, int qpos, int seedlen)
 {
     int i, qlen = (int) twobit_len(query);
+    sw->qlen = qlen;
 
-    if (spos + seedlen + (qlen - qpos - seedlen + 1) >= sw->n) return score_inf;
+    if (spos + seedlen + (qlen - qpos - seedlen + 1) >= sw->n) return -1;
 
     sw_ensure_query_len(sw, qlen);
 
@@ -256,10 +252,80 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
 
     score_t s = score_inf;
     for (i = spos + seedlen; i <= s1; ++i) {
+        if (sw->F[i * (sw->m + 1) + qlen] < s) {
+            s = sw->F[i * (sw->m + 1) + qlen];
+            sw->last_spos = i;
+        }
         s = score_min(s, sw->F[i * (sw->m + 1) + qlen]);
     }
 
     return s;
 }
+
+
+void sw_trace(sw_t* sw, sw_alignment_t* aln)
+{
+    aln->len = 0;
+    int i, j;
+    int i_next, j_next;
+    edit_op_t op;
+
+    i = sw->last_spos;
+    j = sw->qlen;
+
+    score_t s = sw->F[i * (sw->m + 1) + j];
+
+    while (j > 0) {
+        if (aln->size < aln->len + 1) {
+            if (aln->size == 0) aln->size = 16;
+            else aln->size *= 2;
+            aln->ops = realloc_or_die(aln->ops, aln->size * sizeof(edit_op_t));
+        }
+
+        s = sw->F[i * (sw->m + 1) + j - 1];
+        i_next = i;
+        j_next = j - 1;
+        op = EDIT_S_GAP;
+
+        if (i > 0) {
+            if (sw->F[(i - 1) * (sw->m + 1) + j] < s) {
+                s = sw->F[(i - 1) * (sw->m + 1) + j];
+                i_next = i - 1;
+                j_next = j;
+                op = EDIT_Q_GAP;
+            }
+
+            if (sw->F[(i - 1) * (sw->m + 1) + (j - 1)] < s) {
+                s = sw->F[(i - 1) * (sw->m + 1) + (j - 1)];
+                i_next = i - 1;
+                j_next = j - 1;
+
+                /* match or mismatch */
+                op = sw->subject[i - 1] == sw->query[j - 1] ? EDIT_MATCH : EDIT_MISMATCH;
+            }
+        }
+
+        aln->ops[aln->len++] = op;
+
+        i = i_next;
+        j = j_next;
+    }
+
+    /* reverse the order of edit operations */
+    i = 0;
+    j = aln->len - 1;
+    while (i < j) {
+        op = aln->ops[i];
+        aln->ops[i] = aln->ops[j];
+        aln->ops[j] = op;
+        ++i;
+        --j;
+    }
+
+    aln->spos = i;
+}
+
+
+
 
 

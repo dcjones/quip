@@ -14,7 +14,7 @@ quip_SOURCES = quip.c version.h \
 			   parse.h       parse.c \
 			   qual.h        qual.c
 
-quip_LDADD = -lm
+quip_LDADD =
 
 
 sw_test_SOURCES=sw_test.c \
@@ -23,6 +23,6 @@ sw_test_SOURCES=sw_test.c \
 				twobit.h twobit.c \
 				sw.h sw.c
 				
-sw_test_LDADD = -lm
+sw_test_LDADD =
 
 

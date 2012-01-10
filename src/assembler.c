@@ -8,7 +8,8 @@
 #include "sw.h"
 #include "twobit.h"
 #include <assert.h>
-#include <math.h>
+#include <limits.h>
+#include <string.h>
 
 struct assembler_t_
 {
@@ -257,6 +258,14 @@ static void align_to_contigs(assembler_t* A,
                              twobit_t** contigs, size_t contigs_len,
                              seqset_value_t* xs, size_t xs_len)
 {
+    /* An alignment is attempted from this many seeds spaced evenly across the
+     * read. */
+    const size_t seed_cnt = 3;
+
+    /* We only consider at most the  first positions that a k-mer hashes to. */
+    const size_t max_kmer_pos = 5;
+
+
     size_t i, j, seqlen;
     kmer_t x, y;
 
@@ -285,50 +294,73 @@ static void align_to_contigs(assembler_t* A,
     int qpos, spos;
 
 
+    /* minimum cost alignment */
+    int aln_score, min_aln_score;
+    sw_alignment_t aln;
+    int aln_strand;
+
+    memset(&aln, 0, sizeof(sw_alignment_t));
+
+    size_t aln_cnt = 0;
+
     for (i = 0; i < xs_len; ++i) {
         seqlen = twobit_len(xs[i].seq);
-        x = 0;
-        for (j = 0; j < seqlen; ++j) {
-#ifdef WORDS_BIGENDIAN
-            x = ((x >> 2) | twobit_get(xs[i].seq, j)) & A->align_kmer_mask;
-#else
-            x = ((x << 2) | twobit_get(xs[i].seq, j)) & A->align_kmer_mask;
-#endif
+        assert(seqlen >= A->align_k);
 
-            if (j + 1 >= A->align_k) {
-                y = kmer_canonical(x, A->align_k);
-                qpos = j + 1 - A->align_k;
-                poslen = kmerhash_get(A->H, y, &pos);
+        aln.len = 0;
+        min_aln_score = INT_MAX;
 
-                while (poslen--) {
+        for (j = 0; j < seed_cnt; ++j) {
+            qpos = (int) (j * (seqlen - A->align_k) / (seed_cnt - 1));
+            x = twobit_get_kmer(xs[i].seq, qpos, A->align_k);
+            y = kmer_canonical(x, A->align_k);
+            poslen = kmerhash_get(A->H, y, &pos);
+            if (poslen > max_kmer_pos) poslen = max_kmer_pos;
 
-                    if (pos->contig_pos >= 0) {
-                        if (x == y) {
-                            spos = pos->contig_pos;
-                            sw   = sws[pos->contig_idx];
-                        }
-                        else {
-                            spos = (int) twobit_len(contigs[pos->contig_idx]) - pos->contig_pos - A->align_k;
-                            sw   = sws_rc[pos->contig_idx];
-                        }
+            while (poslen--) {
+                if (pos->contig_pos >= 0) {
+                    if (x == y) {
+                        spos = pos->contig_pos;
+                        sw   = sws[pos->contig_idx];
                     }
                     else {
-                        if (x == y) {
-                            spos = (int) twobit_len(contigs[pos->contig_idx]) + pos->contig_pos - (A->align_k - 1);
-                            sw   = sws_rc[pos->contig_idx];
-                        }
-                        else {
-                            spos = -pos->contig_pos - 1;
-                            sw   = sws[pos->contig_idx];
-                        }
+                        spos = (int) twobit_len(contigs[pos->contig_idx]) - pos->contig_pos - A->align_k;
+                        sw   = sws_rc[pos->contig_idx];
                     }
-
-                    sw_seeded_align(sw, xs[i].seq, spos, qpos, A->align_k);
-                    pos++;
                 }
+                else {
+                    if (x == y) {
+                        spos = (int) twobit_len(contigs[pos->contig_idx]) + pos->contig_pos - (A->align_k - 1);
+                        sw   = sws_rc[pos->contig_idx];
+                    }
+                    else {
+                        spos = -pos->contig_pos - 1;
+                        sw   = sws[pos->contig_idx];
+                    }
+                }
+
+                aln_score = sw_seeded_align(sw, xs[i].seq, spos, qpos, A->align_k);
+
+                if (aln_score >= 0 && min_aln_score > aln_score) {
+                    min_aln_score = aln_score;
+                    sw_trace(sw, &aln);
+
+                    if (pos->contig_pos >= 0) aln_strand = x == y ? 0 : 1;
+                    else                     aln_strand = x == y ? 1 : 0;
+                }
+
+                pos++;
             }
         }
+
+        // XXX: report some rough statistics
+        if (min_aln_score < (int) (seqlen / 2)) {
+            ++aln_cnt;
+        }
     }
+
+    fprintf(stderr, "%zu / %zu (%0.2f%%) reads aligned.\n",
+                    aln_cnt, xs_len, 100.0 * (double) aln_cnt / (double) xs_len);
 
 
     for (i = 0; i < contigs_len; ++i) {
@@ -337,6 +369,9 @@ static void align_to_contigs(assembler_t* A,
     }
 
     free(sws);
+    free(sws_rc);
+
+    free(aln.ops);
 }
 
 
