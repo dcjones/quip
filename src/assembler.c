@@ -53,20 +53,12 @@ assembler_t* assembler_alloc(size_t assemble_k, size_t align_k)
     A->assemble_kmer_mask = 0;
     size_t i;
     for (i = 0; i < A->assemble_k; ++i) {
-#ifdef WORDS_BIGENDIAN
-        A->assemble_kmer_mask = (A->assemble_kmer_mask >> 2) | 0x3;
-#else
         A->assemble_kmer_mask = (A->assemble_kmer_mask << 2) | 0x3;
-#endif
     }
 
     A->align_kmer_mask = 0;
     for (i = 0; i < A->align_k; ++i) {
-#ifdef WORDS_BIGENDIAN
-        A->align_kmer_mask = (A->align_kmer_mask >> 2) | 0x3;
-#else
         A->align_kmer_mask = (A->align_kmer_mask << 2) | 0x3;
-#endif
     }
 
 
@@ -145,18 +137,10 @@ static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* cont
     while (true) {
         bloom_del(A->B, kmer_canonical(x, A->assemble_k));
 
-#if WORDS_BIGENDIAN
-        x = (x << 2) & A->assemble_kmer_mask;
-#else 
         x = (x >> 2) & A->assemble_kmer_mask;
-#endif
         cnt_best = 0;
         for (nt = 0; nt < 4; ++nt) {
-#if WORDS_BIGENDIAN
-            y = nt >> (2 * (A->assemble_k - 1));
-#else
             y = nt << (2 * (A->assemble_k - 1));
-#endif
             xc = kmer_canonical(x | y, A->assemble_k);
             cnt = bloom_get(A->B, xc);
 
@@ -167,11 +151,7 @@ static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* cont
         }
 
         if (cnt_best > 0) {
-#if WORDS_BIGENDIAN
-            y = nt_best >> (2 * (A->assemble_k - 1));
-#else
             y = nt_best << (2 * (A->assemble_k - 1));
-#endif
             x = x | y;
             twobit_append_kmer(contig, nt_best, 1);
         }
@@ -185,11 +165,7 @@ static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* cont
     while (true) {
         bloom_del(A->B, kmer_canonical(x, A->assemble_k));
 
-#if WORDS_BIGENDIAN
-        x = (x >> 2) & A->assemble_kmer_mask;
-#else 
         x = (x << 2) & A->assemble_kmer_mask;
-#endif
         cnt_best = 0;
         for (nt = 0; nt < 4; ++nt) {
             xc = kmer_canonical(x | nt, A->assemble_k);
@@ -235,11 +211,7 @@ static void index_contigs(assembler_t* A, twobit_t** contigs, size_t n)
         x = 0;
         for (pos = 0; pos < len; ++pos) {
 
-#ifdef WORDS_BIGENDIAN
-            x = ((x >> 2) | twobit_get(contig, pos)) & A->align_kmer_mask;
-#else
             x = ((x << 2) | twobit_get(contig, pos)) & A->align_kmer_mask;
-#endif
 
             if (pos + 1 >= A->align_k) {
                 y = kmer_canonical(x, A->align_k);
@@ -346,7 +318,7 @@ static void align_to_contigs(assembler_t* A,
                     sw_trace(sw, &aln);
 
                     if (pos->contig_pos >= 0) aln_strand = x == y ? 0 : 1;
-                    else                     aln_strand = x == y ? 1 : 0;
+                    else                      aln_strand = x == y ? 1 : 0;
                 }
 
                 pos++;
@@ -397,11 +369,7 @@ void assembler_assemble(assembler_t* A,
         seqlen = twobit_len(xs[i].seq);
         x = 0;
         for (j = 0; j < seqlen; ++j) {
-#ifdef WORDS_BIGENDIAN
-            x = ((x >> 2) | twobit_get(xs[i].seq, j)) & A->assemble_kmer_mask;
-#else
             x = ((x << 2) | twobit_get(xs[i].seq, j)) & A->assemble_kmer_mask;
-#endif
 
             if (j + 1 >= A->assemble_k) {
                 y = kmer_canonical(x, A->assemble_k);
@@ -444,8 +412,6 @@ void assembler_assemble(assembler_t* A,
 
     for (i = 0; i < contigs_len; ++i) twobit_free(contigs[i]);
     free(contigs);
-
-    return contigs;
 }
 
 

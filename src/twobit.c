@@ -116,11 +116,7 @@ void twobit_append_n(twobit_t* s, const char* seqstr, size_t seqlen)
         idx = (s->len + i) / (4 * sizeof(kmer_t));
         off = (s->len + i) % (4 * sizeof(kmer_t));
 
-#ifdef WORDS_BIGENDIAN
-        s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 >> (2 * off))) | (c >> (2 * off));
-#else
         s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 << (2 * off))) | (c << (2 * off));
-#endif
     }
 
     s->len += seqlen;
@@ -142,13 +138,8 @@ void twobit_append_kmer(twobit_t* s, kmer_t x, size_t k)
         idx = (s->len + i) / (4 * sizeof(kmer_t));
         off = (s->len + i) % (4 * sizeof(kmer_t));
 
-#ifdef WORDS_BIGENDIAN
-        s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 >> (2 * off))) | ((x & 0x3) >> (2 * off));
-        x <<= 2;
-#else
         s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 << (2 * off))) | ((x & 0x3) << (2 * off));
         x >>= 2;
-#endif
     }
 
     s->len += k;
@@ -172,11 +163,7 @@ void twobit_append_twobit(twobit_t* s, const twobit_t* t)
         idx = (s->len + i) / (4 * sizeof(kmer_t));
         off = (s->len + i) % (4 * sizeof(kmer_t));
 
-#ifdef WORDS_BIGENDIAN
-        s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 >> (2 * off))) | (twobit_get(t, i) >> (2 * off));
-#else
         s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 << (2 * off))) | (twobit_get(t, i) << (2 * off));
-#endif
     }
 
     s->len += t->len;
@@ -206,11 +193,7 @@ void twobit_setc(twobit_t* s, size_t i, char seqc)
     kmer_t c = chartokmer(seqc); 
     if (c > 3) return;
 
-#ifdef WORDS_BIGENDIAN
-    s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 >> (2 * off))) | (c >> (2 * off));
-#else
     s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 << (2 * off))) | (c << (2 * off));
-#endif
 
 }
 
@@ -220,11 +203,7 @@ void twobit_set(twobit_t* s, size_t i, kmer_t x)
     size_t idx = i / (4 * sizeof(kmer_t));
     size_t off = i % (4 * sizeof(kmer_t));
 
-#ifdef WORDS_BIGENDIAN
-    s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 >> (2 * off))) | (x >> (2 * off));
-#else
     s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 << (2 * off))) | (x << (2 * off));
-#endif
 
 }
 
@@ -234,11 +213,7 @@ kmer_t twobit_get(const twobit_t* s, size_t i)
     size_t idx = i / (4 * sizeof(kmer_t));
     size_t off = i % (4 * sizeof(kmer_t));
 
-#ifdef WORDS_BIGENDIAN
-    return (s->seq[idx] << (2 * off)) & 0x3;
-#else
     return (s->seq[idx] >> (2 * off)) & 0x3;
-#endif
 }
 
 
@@ -247,11 +222,7 @@ kmer_t twobit_get_kmer(const twobit_t* s, size_t i, size_t k)
     kmer_t x = 0;
     size_t j;
     for (j = i; j < i + k; ++j) {
-#ifdef WORDS_BIGENDIAN
-        x = (x >> 2) | twobit_get(s, j);
-#else
         x = (x << 2) | twobit_get(s, j);
-#endif
     }
 
     return x;

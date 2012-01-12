@@ -18,31 +18,19 @@ void kmer_init()
     kmer_t x;
     complement2 = malloc_or_die(0x100 * sizeof(kmer_t));
     for (x = 0; x <= 0xff; ++x) {
-#if WORDS_BIGENDIAN
-        complement2[x] = (complement1[x & 0x3] >> 2) | complement1[(x << 2)];
-#else
         complement2[x] = (complement1[x & 0x3] << 2) | complement1[(x >> 2)];
-#endif
     }
 
 
     complement4 = malloc_or_die(0x1000 * sizeof(kmer_t));
     for (x = 0; x <= 0xff; ++x) {
-#if WORDS_BIGENDIAN
-        complement4[x] = (complement2[x & 0xf] >> 4) | complement2[x << 4];
-#else
         complement4[x] = (complement2[x & 0xf] << 4) | complement2[x >> 4];
-#endif
     }
 
 
     complement8 = malloc_or_die(0x10000 * sizeof(kmer_t));
     for (x = 0; x <= 0xffff; ++x) {
-#if WORDS_BIGENDIAN
-        complement8[x] = (complement4[x & 0xff] >> 8) | complement4[x << 8];
-#else
         complement8[x] = (complement4[x & 0xff] << 8) | complement4[x >> 8];
-#endif
     }
 }
 
@@ -55,28 +43,6 @@ void kmer_free()
 }
 
 
-/* TODO:
- * mabye we can build a lookup table to do reverse complements
- * of very large chunks of the kmer at a time
- */
-
-
-#if 0
-static kmer_t kmer_high_order(kmer_t x, size_t k)
-{
-#ifdef WORDS_BIGENDIAN
-    return x << (2 * (k - 1));
-#else
-    return x >> (2 * (k - 1));
-#endif
-}
-
-
-static kmer_t kmer_low_order(kmer_t x)
-{
-    return x & 0x3;
-}
-#endif
 
 
 kmer_t chartokmer(char c)
@@ -110,11 +76,7 @@ kmer_t strtokmer(const char* s)
     while (*s && k++ < 4 * sizeof(kmer_t)) {
         x_i = chartokmer(*s);
         if (x_i > 3) break;
-#ifdef WORDS_BIGENDIAN
-        x = (x >> 2) | x_i;
-#else
         x = (x << 2) | x_i;
-#endif
     }
 
     return x;
@@ -126,11 +88,7 @@ void kmertostr(kmer_t x, char* s, size_t k)
     size_t i = 0;
     for (i = 0; i < k; ++i) {
         s[k - i - 1] = kmertochar((x & 0x3));
-#ifdef WORDS_BIGENDIAN
-        x <<= 2;
-#else
         x >>= 2;
-#endif
     }
 
     s[i] = '\0';
@@ -142,11 +100,7 @@ kmer_t kmer_get_nt(kmer_t* x, size_t i)
     size_t idx = (4 * sizeof(kmer_t)) / i;
     size_t off = (4 * sizeof(kmer_t)) % i;
 
-#ifdef WORDS_BIGENDIAN
-    return 0x3 & (x[idx] << off);
-#else
     return 0x3 & (x[idx] >> off);
-#endif
 }
 
 
@@ -154,13 +108,8 @@ kmer_t kmer_comp(kmer_t x, size_t k)
 {
     kmer_t y = 0;
     while (k--) {
-#ifdef WORDS_BIGENDIAN
-        y = (y >> 2) | complement1[x & 0x3];
-        x <<= 2;
-#else
         y = (y << 2) | complement1[x & 0x3]; 
         x >>= 2;
-#endif
     }
 
     return y;
