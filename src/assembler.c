@@ -353,6 +353,10 @@ static void align_to_contigs(assembler_t* A,
             }
         }
 
+        // TODO: 
+        // If there is a good alignment, write it.
+        // Otherwise, compress the sequence.
+
         // XXX: report some rough statistics
         if (min_aln_score < (int) (seqlen / 2)) {
             ++aln_cnt;
@@ -431,15 +435,11 @@ void assembler_assemble(assembler_t* A,
 
     twobit_free(contig);
 
+    /* TODO: write compressed contigs */
 
     /* align reads to contigs */
     index_contigs(A, contigs, contigs_len);
     align_to_contigs(A, contigs, contigs_len, xs, n);
-
-
-    /* write compressed data */
-
-    // TODO
 
 
     for (i = 0; i < contigs_len; ++i) twobit_free(contigs[i]);

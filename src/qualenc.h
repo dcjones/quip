@@ -11,8 +11,8 @@
  * Statistical modeling of sequence quality scores.
  */
 
-#ifndef QUIP_QUAL
-#define QUIP_QUAL
+#ifndef QUIP_QUALENC
+#define QUIP_QUALENC
 
 #include "quip.h"
 #include "parse.h"
