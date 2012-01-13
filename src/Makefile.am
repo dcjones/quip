@@ -10,6 +10,7 @@ quip_SOURCES = quip.c version.h \
 			   kmer.h        kmer.c \
 			   kmerhash.h    kmerhash.c \
 			   misc.h        misc.c \
+			   seqenc.h      seqenc.c \
 			   seqset.h      seqset.c \
 			   sw.h          sw.c \
 			   twobit.h      twobit.c \
