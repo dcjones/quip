@@ -16,7 +16,7 @@ const size_t assembler_k = 25;
 const size_t aligner_k = 15;
 
 /* approximate number of bases per block */
-const size_t block_size = 10000000;
+const size_t block_size = 100000000;
 
 
 void quip_write_header(FILE* f)
@@ -124,16 +124,16 @@ void quip_comp_addseq(quip_compressor_t* C, seq_t* seq)
 
 void quip_comp_flush(quip_compressor_t* C)
 {
-    idenc_clear(C->idenc);
+    idenc_flush(C->idenc);
     C->writer(C->writer_data, C->idbuf, C->idbuf_len);
     C->idbuf_len = 0;
 
-    qualenc_clear(C->qualenc);
+    qualenc_flush(C->qualenc);
     C->writer(C->writer_data, C->qualbuf, C->qualbuf_len);
     C->qualbuf_len = 0;
 
     assembler_assemble(C->assembler, C->writer, C->writer_data);
-    assembler_clear(C->assembler);
+    assembler_flush(C->assembler);
 
     C->buffered_bases = 0;
 }
@@ -141,6 +141,7 @@ void quip_comp_flush(quip_compressor_t* C)
 
 void quip_comp_free(quip_compressor_t* C)
 {
+    quip_comp_flush(C);
     idenc_free(C->idenc);
     qualenc_free(C->qualenc);
     assembler_free(C->assembler);

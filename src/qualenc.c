@@ -64,11 +64,11 @@ void qualmodel_free(qualmodel_t* M)
 unsigned char ascii_to_nucnum(char x)
 {
     switch (x) {
-        case 'A': return 0;
-        case 'C': return 1;
-        case 'G': return 2;
-        case 'T': return 3;
-        default:  return 4;
+        case 'A': case 'a': case 'U': case 'u': return 1;
+        case 'C': case 'c': return 2;
+        case 'G': case 'g': return 3;
+        case 'T': case 't': return 4;
+        default:  return 0;
     }
 }
 
@@ -158,7 +158,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 }
 
 
-void qualenc_clear(qualenc_t* E)
+void qualenc_flush(qualenc_t* E)
 {
     // TODO
 }

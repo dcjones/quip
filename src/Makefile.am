@@ -1,5 +1,7 @@
 
-bin_PROGRAMS=quip sw_test
+SUBDIRS = lzma
+
+bin_PROGRAMS=quip
 
 quip_SOURCES = quip.c version.h \
 			   ac.h          ac.c \
@@ -18,15 +20,5 @@ quip_SOURCES = quip.c version.h \
 			   qualenc.h     qualenc.c \
 			   quiplib.c     quip.h
 
-quip_LDADD =
-
-
-sw_test_SOURCES=sw_test.c \
-				misc.h misc.c \
-				kmer.h kmer.c \
-				twobit.h twobit.c \
-				sw.h sw.c
-				
-sw_test_LDADD =
-
+quip_LDADD = lzma/liblzma.la
 

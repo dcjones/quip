@@ -7,8 +7,8 @@
 
 
 /*
- * qualenc:
- * Statistical modeling of sequence ids.
+ * idenc:
+ * Compression and decompression of sequenc ids.
  */
 
 #ifndef QUIP_IDENC
@@ -25,7 +25,7 @@ idenc_t* idenc_alloc(quip_block_writer_t writer, void* writer_data);
 void     idenc_free(idenc_t*);
 
 void idenc_encode(idenc_t*, const seq_t*);
-void idenc_clear(idenc_t*);
+void idenc_flush(idenc_t*);
 
 #endif
 

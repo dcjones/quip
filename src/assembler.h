@@ -31,7 +31,7 @@ void assembler_add_seq(assembler_t*, const char* seq, size_t seqlen);
 void assembler_assemble(assembler_t* A,
                         quip_block_writer_t writer,
                         void* writer_data);
-void assembler_clear(assembler_t*);
+void assembler_flush(assembler_t*);
 
 #endif
 

@@ -415,7 +415,7 @@ void assembler_assemble(assembler_t* A,
 }
 
 
-void assembler_clear(assembler_t* A)
+void assembler_flush(assembler_t* A)
 {
     // TODO
 }
