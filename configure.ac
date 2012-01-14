@@ -57,8 +57,6 @@ AC_CHECK_HEADER(getopt.h, ,
                 AC_MSG_ERROR([The posix getopt.h header is needed.]))
 
 
-CXXFLAGS=$CFLAGS
-
 AC_CONFIG_FILES([Makefile
                  src/Makefile
                  src/lzma/Makefile

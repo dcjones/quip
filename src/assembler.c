@@ -4,6 +4,7 @@
 #include "kmer.h"
 #include "kmerhash.h"
 #include "misc.h"
+#include "seqenc.h"
 #include "seqset.h"
 #include "sw.h"
 #include "twobit.h"
@@ -13,6 +14,10 @@
 
 struct assembler_t_
 {
+    /* function to write compressed output */
+    quip_block_writer_t writer;
+    void* writer_data;
+
     /* kmer bit-mask used in assembly */
     kmer_t assemble_kmer_mask;
 
@@ -39,13 +44,21 @@ struct assembler_t_
 
     /* count required to be nominated as a seed candidate */
     unsigned int count_cutoff;
+
+    /* nucleotide sequence encoder */
+    seqenc_t* seqenc;
 };
 
 
-assembler_t* assembler_alloc(size_t assemble_k, size_t align_k)
+assembler_t* assembler_alloc(
+        quip_block_writer_t writer, void* writer_data,
+        size_t assemble_k, size_t align_k)
 {
     assembler_t* A = malloc_or_die(sizeof(assembler_t));
     assert(A != NULL);
+
+    A->writer = writer;
+    A->writer_data = writer_data;
 
     A->assemble_k = assemble_k;
     A->align_k    = align_k;
@@ -61,9 +74,7 @@ assembler_t* assembler_alloc(size_t assemble_k, size_t align_k)
         A->align_kmer_mask = (A->align_kmer_mask << 2) | 0x3;
     }
 
-
     A->S = seqset_alloc();
-
 
     // TODO: set n and m in some principled way
     A->B = bloom_alloc(8388608, 8);
@@ -75,6 +86,8 @@ assembler_t* assembler_alloc(size_t assemble_k, size_t align_k)
 
     A->count_cutoff = 2;
 
+    A->seqenc = seqenc_alloc(2, writer, writer_data);
+
     return A;
 }
 
@@ -85,6 +98,7 @@ void assembler_free(assembler_t* A)
     bloom_free(A->B);
     kmerhash_free(A->H);
     twobit_free(A->x);
+    seqenc_free(A->seqenc);
 }
 
 
@@ -94,12 +108,11 @@ void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
     /* does the read contain non-nucleotide characters ? */
     size_t i;
     for (i = 0; i < seqlen; ++i) {
-        /* XXX: for now, we just throw out any reads with non-nucleotide characters
-         * */
+        /* TODO: save reads with Ns */
         if (chartokmer(seq[i]) > 3) return;
     }
 
-    // TODO: handle the case in which seqlen < k
+    // TODO: save reads with seqlen < k
 
     twobit_copy_n(A->x, seq, seqlen);
     seqset_inc(A->S, A->x);
@@ -352,9 +365,7 @@ static void align_to_contigs(assembler_t* A,
 
 
 
-void assembler_assemble(assembler_t* A,
-                        quip_block_writer_t writer,
-                        void* writer_data)
+void assembler_assemble(assembler_t* A)
 {
     /* dump reads and sort by abundance */
     seqset_value_t* xs = seqset_dump(A->S);
@@ -403,11 +414,20 @@ void assembler_assemble(assembler_t* A,
 
     twobit_free(contig);
 
-    /* TODO: write compressed contigs */
+    /* TODO: output the number of contigs */
+    /*for (i = 0; i < contigs_len; ++i) {*/
+        /*seqenc_encode_twobit_seq(A->seqenc, contigs[i]);*/
+    /*}*/
 
+
+    // TODO
     /* align reads to contigs */
-    index_contigs(A, contigs, contigs_len);
-    align_to_contigs(A, contigs, contigs_len, xs, n);
+    /*index_contigs(A, contigs, contigs_len);*/
+    /*align_to_contigs(A, contigs, contigs_len, xs, n);*/
+
+    for (i = 0; i < n; ++i) {
+        seqenc_encode_twobit_seq(A->seqenc, xs[i].seq);
+    }
 
 
     for (i = 0; i < contigs_len; ++i) twobit_free(contigs[i]);

@@ -16,49 +16,26 @@ struct seqenc_t_
     size_t N;
 
     /* nucelotide probability given the last k nucleotides */
-    cumdist_t** C;
+    cumdist_t** cs;
+
+    /* binary distribution of unique / match */
+    cumdist_t* ms;
 
     /* distribution of edit operations */
-    cumdist_t* D;
+    cumdist_t* es;
 
     /* distribution over edit operation lengths */
-    cumdist_t* L;
+    cumdist_t* ls;
 
-
-
-    /* This follows lzma somewhat.
-     * The poosible operations are essetionally,
-     * LZ-style dictionary match, or encoded nucleotide.
+    /* 
+     * Match format:
+     * [contig_num] [offset] [strand] [op:len] ...
      *
+     * This is my issue: how do I compress contig_num and offset?
      *
-     * NOMATCH : 
-     * MATCH   : CONTIG_NUM : OFFSET : STRAND : LEN
+     * Possibility I don't. Just use LZMA style number encoding.
      *
-     * But this is not quite right. We only allow one alignment, so there is no
-     * point in repeatedly specifying the contig number offset and strand.
-     *
-     * We do not necessarily need to compress the
-     * contig_num : offset : strand
-     *
-     *
-     * So the whole format will look like this:
-     *
-     *  [contig count][contigs][reads]
-     *
-     *  Each sequence is encoded as follows:
-     *
-     *  Matches:
-     *    [match][contig_num][offset][strand]
-     *    followed by a sequence of edit operations (i.e. match, nonmatch)
-     *
-     *
-     * Maybe reads should be prefixed by their lengths. We have to include in
-     * the header the distribution of lengths, but this should be relatively
-     * tight.
-     *
-     *
-     * What about collapsing identical reads??
-     *
+     * Edit operations and and edit lengths are not so hard to compress.
      */
 };
 
@@ -76,12 +53,15 @@ seqenc_t* seqenc_alloc(size_t k, quip_block_writer_t writer, void* writer_data)
     size_t i;
     for (i = 0; i < k; ++i) E->N *= 5;
 
-    E->C = malloc_or_die(sizeof(cumdist_t*));
+    E->cs = malloc_or_die(E->N * sizeof(cumdist_t*));
 
     for (i = 0; i < E->N; ++i) {
         /* (6 = four nucleotides, plus N, plus sequence end) */
-        E->C[i] = cumdist_alloc(6);
+        E->cs[i] = cumdist_alloc(6);
     }
+
+    E->ms = cumdist_alloc(2);
+    /*E->es = cumdist_alloc();*/
 
     return E;
 }
@@ -92,9 +72,10 @@ void seqenc_free(seqenc_t* E)
     ac_free(E->ac);
     size_t i;
     for (i = 0; i < E->N; ++i) {
-        cumdist_free(E->C[i]);
+        cumdist_free(E->cs[i]);
     }
-    free(E->C);
+    free(E->cs);
+    cumdist_free(E->ms);
     free(E);
 }
 
@@ -103,27 +84,31 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 {
     kmer_t u;
     size_t n = twobit_len(x);
-    uint32_t p, P;
+    uint32_t p, P, Z;
     size_t i;
     size_t ctx = 0;
     for (i = 0; i < n; ++i) {
         /* We encode 'N' as 0, so 1 is added to every nucleotide. */
         u = twobit_get(x, i) + 1;
 
-        p = cumdist_p(E->C[ctx], u);
-        P = cumdist_P(E->C[ctx], u);
+        Z = cumdist_Z(E->cs[ctx]);
+        p = ((uint64_t) cumdist_p(E->cs[ctx], u) << 32) / Z;
+        P = ((uint64_t) cumdist_P(E->cs[ctx], u) << 32) / Z;
+        if (P == 0) P = 0xffffffff;
         ac_update(E->ac, p, P);
 
-        cumdist_add(E->C[ctx], u, 1);
+        cumdist_add(E->cs[ctx], u, 1);
         ctx = (5 * ctx + u) % E->N;
     }
 
     /* encode end-of-sequence sigil */
-    p = cumdist_p(E->C[ctx], 5);
-    P = cumdist_P(E->C[ctx], 5);
+    Z = cumdist_Z(E->cs[ctx]);
+    p = ((uint64_t) cumdist_p(E->cs[ctx], 5) << 32) / Z;
+    P = ((uint64_t) cumdist_P(E->cs[ctx], 5) << 32) / Z;
+    if (P == 0) P = 0xffffffff;
     ac_update(E->ac, p, P);
 
-    cumdist_add(E->C[ctx], 5, 1);
+    cumdist_add(E->cs[ctx], 5, 1);
 }
 
 
@@ -142,22 +127,22 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
             default: u = 0;
         }
 
-        p = cumdist_p(E->C[ctx], u);
-        P = cumdist_P(E->C[ctx], u);
+        p = cumdist_p(E->cs[ctx], u);
+        P = cumdist_P(E->cs[ctx], u);
         ac_update(E->ac, p, P);
 
-        cumdist_add(E->C[ctx], u, 1);
+        cumdist_add(E->cs[ctx], u, 1);
         ctx = (5 * ctx + u) % E->N;
 
         ++x;
     }
 
     /* encode end-of-sequence sigil */
-    p = cumdist_p(E->C[ctx], 5);
-    P = cumdist_P(E->C[ctx], 5);
+    p = cumdist_p(E->cs[ctx], 5);
+    P = cumdist_P(E->cs[ctx], 5);
     ac_update(E->ac, p, P);
 
-    cumdist_add(E->C[ctx], 5, 1);
+    cumdist_add(E->cs[ctx], 5, 1);
 }
 
 

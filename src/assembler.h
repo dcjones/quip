@@ -24,13 +24,13 @@
 
 typedef struct assembler_t_ assembler_t;
 
-assembler_t* assembler_alloc(size_t assemble_k, size_t align_k);
+assembler_t* assembler_alloc(
+        quip_block_writer_t writer, void* writer_data,
+        size_t assemble_k, size_t align_k);
 void         assembler_free(assembler_t*);
 
 void assembler_add_seq(assembler_t*, const char* seq, size_t seqlen);
-void assembler_assemble(assembler_t* A,
-                        quip_block_writer_t writer,
-                        void* writer_data);
+void assembler_assemble(assembler_t* A);
 void assembler_flush(assembler_t*);
 
 #endif

@@ -44,6 +44,7 @@ void print_help()
 "  -c, --stdout       write on standard output, keep original files unchanged\n"
 "  -d, --decompress   decompress\n"
 "  -k, --keep         do not delete the input file(s)\n"
+"  -v, --verbose      output lots of useless information\n"
 "  -h, --help         print this message\n"
 "  -V, --version      display program version\n\n"
 "Report bugs to <dcjones@cs.washington.edu>.\n");
@@ -126,7 +127,7 @@ static int quip_compress(char** fns, size_t fn_count)
 
             if (stdout_flag) fout = stdout;
             else {
-                out_fn = malloc_or_die((strlen(fn) + 3) * sizeof(char));
+                out_fn = malloc_or_die((strlen(fn) + 4) * sizeof(char));
                 sprintf(out_fn, "%s.qp", fn);
                 fout = fopen_attempt(out_fn, "wb");
                 free(out_fn);

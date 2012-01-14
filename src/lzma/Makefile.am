@@ -13,7 +13,7 @@ liblzma_la_SOURCES += \
 	lzma/lzma_encoder.h \
 	lzma/lzma_encoder.c \
 	lzma/lzma_encoder_presets.c \
-	lzma/lzma_private.h \
+	lzma/lzma_encoder_private.h \
 	lzma/lzma_encoder_optimum_fast.c \
 	lzma/lzma_encoder_optimum_normal.c \
 	lzma/lzma_decoder.h \

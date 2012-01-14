@@ -26,7 +26,7 @@ idenc_t* idenc_alloc(quip_block_writer_t writer, void* writer_data)
 
     memset(&E->strm, 0, sizeof(lzma_stream));
 
-    lzma_ret ret = lzma_easy_encoder(&E->strm, 6 /* compression level in [0, 9] */, LZMA_CHECK_CRC32);
+    lzma_ret ret = lzma_easy_encoder(&E->strm, 9 /* compression level in [0, 9] */, LZMA_CHECK_CRC32);
     if (ret != LZMA_OK) {
         fprintf(stderr, "lzma_easy_encoder error: %d\n", (int) ret);
         exit(EXIT_FAILURE);

@@ -92,7 +92,7 @@ quip_compressor_t* quip_comp_alloc(quip_block_writer_t writer, void* writer_data
 
     C->idenc     = idenc_alloc(id_buf_writer, (void*) C);
     C->qualenc   = qualenc_alloc(qual_buf_writer, (void*) C);
-    C->assembler = assembler_alloc(assembler_k, aligner_k);
+    C->assembler = assembler_alloc(writer, writer_data, assembler_k, aligner_k);
 
     C->qualbuf_size = 1024;
     C->qualbuf_len = 0;
@@ -132,7 +132,7 @@ void quip_comp_flush(quip_compressor_t* C)
     C->writer(C->writer_data, C->qualbuf, C->qualbuf_len);
     C->qualbuf_len = 0;
 
-    assembler_assemble(C->assembler, C->writer, C->writer_data);
+    assembler_assemble(C->assembler);
     assembler_flush(C->assembler);
 
     C->buffered_bases = 0;
