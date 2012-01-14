@@ -22,12 +22,13 @@ struct idenc_t_
     // NEW MODEL
     ac_t* ac;
 
-    /* distribution over edit operations */
-    cumdist_t* cs;
+    size_t max_id_len;
 
-    /* distribution over new characters */
-    cumdist_t* ds;
+    /* distribution over edit operations by position */
+    cumdist_t** cs;
 
+    /* distribution over new characters by position */
+    cumdist_t** ds;
 
     char* lastid;
     size_t lastid_len, lastid_size;
@@ -64,8 +65,14 @@ idenc_t* idenc_alloc(quip_block_writer_t writer, void* writer_data)
 
     E->ac = ac_alloc(writer, writer_data);
 
-    E->cs = cumdist_alloc(4);
-    E->ds = cumdist_alloc(256);
+    E->max_id_len = 0;
+
+    E->cs = NULL;
+    E->ds = malloc_or_die(256 * sizeof(cumdist_t*));
+    size_t i;
+    for (i = 0; i < 256; ++i) {
+        E->ds[i] = cumdist_alloc(256);
+    }
 
     E->lastid = NULL;
     E->lastid_len = 0;
@@ -81,68 +88,90 @@ void idenc_free(idenc_t* E)
     lzma_end(&E->strm);
     free(E->lastid);
     ac_free(E->ac);
-    cumdist_free(E->cs);
-    cumdist_free(E->ds);
+    size_t i;
+    for (i = 0; i < 4 * E->max_id_len; ++i) {
+        cumdist_free(E->cs[i]);
+    }
+    free(E->cs);
+    for (i = 0; i < 256; ++i) {
+        cumdist_free(E->ds[i]);
+    }
+    free(E->ds);
     free(E);
 }
 
 void idenc_encode(idenc_t* E, const seq_t* x)
 {
+    edit_t lastop = 0;
     const str_t* id = &x->id1;
-    size_t i, j;
+    size_t i, j, k;
     for (i = 0, j = 0; i < id->n + 1;) {
+        if (i + 1 > E->max_id_len) {
+            E->max_id_len += 1;
+            E->cs = realloc_or_die(E->cs, 4 * E->max_id_len * sizeof(cumdist_t*));
+            for (k = 0; k < 4; ++k) {
+                E->cs[4 * (E->max_id_len - 1) + k] = cumdist_alloc(4);
+            }
+        }
+
         if (j < E->lastid_len) {
             if (id->s[i] == E->lastid[j]) {
                 ac_update(
                     E->ac, 
-                    cumdist_p_norm(E->cs, EDIT_MAT),
-                    cumdist_P_norm(E->cs, EDIT_MAT));
+                    cumdist_p_norm(E->cs[i * 4 + lastop], EDIT_MAT),
+                    cumdist_P_norm(E->cs[i * 4 + lastop], EDIT_MAT));
 
-                cumdist_add(E->cs, EDIT_MAT, 1);
+                cumdist_add(E->cs[i * 4 + lastop], EDIT_MAT, 1);
 
+                lastop = EDIT_MAT;
                 ++i;
                 ++j;
             }
             else if (isspace(E->lastid[j])) {
                 ac_update(
                     E->ac,
-                    cumdist_p_norm(E->cs, EDIT_INS),
-                    cumdist_P_norm(E->cs, EDIT_INS));
+                    cumdist_p_norm(E->cs[i * 4 + lastop], EDIT_INS),
+                    cumdist_P_norm(E->cs[i * 4 + lastop], EDIT_INS));
 
-                cumdist_add(E->cs, EDIT_INS, 1);
+                cumdist_add(E->cs[i * 4 + lastop], EDIT_INS, 1);
 
                 ac_update(
                     E->ac,
-                    cumdist_p_norm(E->ds, id->s[i]),
-                    cumdist_P_norm(E->ds, id->s[i]));
+                    cumdist_p_norm(E->ds[(int) E->lastid[j]], id->s[i]),
+                    cumdist_P_norm(E->ds[(int) E->lastid[j]], id->s[i]));
 
-                cumdist_add(E->ds, id->s[i], 1);
+                cumdist_add(E->ds[(int) E->lastid[j]], id->s[i], 1);
+
+                lastop = EDIT_INS;
                 ++i;
             }
             else if(isspace(id->s[i])) {
                 ac_update(
                     E->ac,
-                    cumdist_p_norm(E->cs, EDIT_DEL),
-                    cumdist_P_norm(E->cs, EDIT_DEL));
+                    cumdist_p_norm(E->cs[i * 4 + lastop], EDIT_DEL),
+                    cumdist_P_norm(E->cs[i * 4 + lastop], EDIT_DEL));
 
-                cumdist_add(E->cs, EDIT_DEL, 1);
+                cumdist_add(E->cs[i * 4 + lastop], EDIT_DEL, 1);
+
+                lastop = EDIT_DEL;
                 ++j;
             }
             else {
                 ac_update(
                     E->ac,
-                    cumdist_p_norm(E->cs, EDIT_REP),
-                    cumdist_P_norm(E->cs, EDIT_REP));
+                    cumdist_p_norm(E->cs[i * 4 + lastop], EDIT_REP),
+                    cumdist_P_norm(E->cs[i * 4 + lastop], EDIT_REP));
 
-                cumdist_add(E->cs, EDIT_REP, 1);
+                cumdist_add(E->cs[i * 4 + lastop], EDIT_REP, 1);
 
                 ac_update(
                     E->ac,
-                    cumdist_p_norm(E->ds, id->s[i]),
-                    cumdist_P_norm(E->ds, id->s[i]));
+                    cumdist_p_norm(E->ds[(int) E->lastid[j]], id->s[i]),
+                    cumdist_P_norm(E->ds[(int) E->lastid[j]], id->s[i]));
 
-                cumdist_add(E->ds, id->s[i], 1);
+                cumdist_add(E->ds[(int) E->lastid[j]], id->s[i], 1);
 
+                lastop = EDIT_REP;
                 ++i;
                 ++j;
             }
@@ -150,18 +179,19 @@ void idenc_encode(idenc_t* E, const seq_t* x)
         else {
             ac_update(
                 E->ac,
-                cumdist_p_norm(E->cs, EDIT_INS),
-                cumdist_P_norm(E->cs, EDIT_INS));
+                cumdist_p_norm(E->cs[i * 4 + lastop], EDIT_INS),
+                cumdist_P_norm(E->cs[i * 4 + lastop], EDIT_INS));
 
-            cumdist_add(E->cs, EDIT_INS, 1);
+            cumdist_add(E->cs[i * 4 + lastop], EDIT_INS, 1);
 
             ac_update(
                 E->ac,
-                cumdist_p_norm(E->ds, id->s[i]),
-                cumdist_P_norm(E->ds, id->s[i]));
+                cumdist_p_norm(E->ds[0], id->s[i]),
+                cumdist_P_norm(E->ds[0], id->s[i]));
 
-            cumdist_add(E->ds, id->s[i], 1);
+            cumdist_add(E->ds[0], id->s[i], 1);
 
+            lastop = EDIT_INS;
             ++i;
         }
     }
