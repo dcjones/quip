@@ -36,11 +36,11 @@ typedef struct qualmodel_t_
 qualmodel_t* qualmodel_alloc()
 {
     qualmodel_t* M = malloc_or_die(sizeof(qualmodel_t));
-    M->m = ms[0];
+    M->m = ms[0] / 10;
     size_t i;
 
-    M->cs = malloc_or_die(M->m * qual_size * sizeof(cumdist_t*));
-    for (i = 0; i < M->m * qual_size; ++i) {
+    M->cs = malloc_or_die(M->m * qual_size * qual_size * sizeof(cumdist_t*));
+    for (i = 0; i < M->m * qual_size * qual_size; ++i) {
         M->cs[i] = cumdist_alloc(qual_size);
     }
 
@@ -52,7 +52,7 @@ qualmodel_t* qualmodel_alloc()
 void qualmodel_free(qualmodel_t* M)
 {
     size_t i;
-    for (i = 0; i < M->m * qual_size; ++i) {
+    for (i = 0; i < M->m * qual_size * qual_size; ++i) {
         cumdist_free(M->cs[i]);
     }
     free(M->cs);
@@ -102,14 +102,17 @@ void qualenc_free(qualenc_t* E)
 /* encode a single quality/run-length pair */
 static void qualenc_encode_qk(qualenc_t* E,
                               size_t        i,
-                              unsigned char q0,
+                              unsigned char q2,
+                              unsigned char q1,
                               unsigned char q)
 {
     uint64_t Z;
     uint32_t p, P;
 
     /* encode quality score */
-    cumdist_t* cs = E->M->cs[i * (qual_size) + q0];
+    cumdist_t* cs = E->M->cs[(i / 10) * qual_size * qual_size +
+                             q1 * qual_size +
+                             q2];
     Z = cumdist_Z(cs);
     p = ((uint64_t) cumdist_p(cs, q) << 32) / Z;
     P = ((uint64_t) cumdist_P(cs, q) << 32) / Z;
@@ -130,25 +133,35 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     /* the number of preceeding quality scores to use to predict the next */
     static const size_t k = 3;
 
-    unsigned char q0; /* preceeding quality score */
+    unsigned char q1, q2; /* preceeding quality score */
     unsigned char q;  /* quality score */
 
     size_t i, j;
-    q0 = 0;
     for (i = 0; i < x->qual.n; ++i) {
-        /*u = ascii_to_nucnum(x->seq.s[i]);*/
         q = x->qual.s[i] - qual_first;
 
-        /* use the maximum of the last k quality scores to predict the next */
-        q0 = qual_first;
-        j = i < k ?  0 : i - k;
-        for (; j < i; ++j) if (x->qual.s[j] > q0) q0 = x->qual.s[j];
-        q0 -= qual_first;
+        /* previous quality score */
+        q1 = i >= 1 ? x->qual.s[i - 1] - qual_first : 0;
 
-        qualenc_encode_qk(E, i, q0, q);
+        /* q2 is set to the maximum of the quality scores 
+         * at positions {i - 1 - k, ...,  i - 2} */
+        if (i >= 2) {
+            q2 = qual_first;
+            j = i >= k + 1 ? i - 1 - k : 0;
+            for( ; j <= i - 2; ++j) {
+                if (x->qual.s[j] > q2) q2 = x->qual.s[j];
+            }
+            q2 -= qual_first;
+        }
+        else q2 = 0;
+
+
+        qualenc_encode_qk(E, i, q2, q1, q);
 
         /* update model */
-        cumdist_add(E->M->cs[i * (qual_size) + q0], q, 1);
+        cumdist_add(E->M->cs[(i / 10) * qual_size * qual_size +
+                             q1 * qual_size +
+                             q2], q, 1);
     }
 }
 
