@@ -47,6 +47,11 @@ struct quip_compressor_t_
 
     /* number of bases encoded in the current block */
     size_t buffered_bases;
+
+    /* for compression statistics */
+    size_t id_bytes;
+    size_t qual_bytes;
+    size_t seq_bytes, seq_comp_bytes;
 };
 
 
@@ -84,6 +89,15 @@ static void id_buf_writer(void* param, const uint8_t* data, size_t size)
 }
 
 
+static void seq_writer(void* param, const uint8_t* data, size_t size)
+{
+    quip_compressor_t* C = (quip_compressor_t*) param;
+    C->seq_comp_bytes += size;
+    C->writer(C->writer_data, data, size);
+}
+
+
+
 quip_compressor_t* quip_comp_alloc(quip_block_writer_t writer, void* writer_data)
 {
     quip_compressor_t* C = malloc_or_die(sizeof(quip_compressor_t));
@@ -92,7 +106,7 @@ quip_compressor_t* quip_comp_alloc(quip_block_writer_t writer, void* writer_data
 
     C->idenc     = idenc_alloc(id_buf_writer, (void*) C);
     C->qualenc   = qualenc_alloc(qual_buf_writer, (void*) C);
-    C->assembler = assembler_alloc(writer, writer_data, assembler_k, aligner_k);
+    C->assembler = assembler_alloc(seq_writer, (void*) C, assembler_k, aligner_k);
 
     C->qualbuf_size = 1024;
     C->qualbuf_len = 0;
@@ -103,6 +117,10 @@ quip_compressor_t* quip_comp_alloc(quip_block_writer_t writer, void* writer_data
     C->idbuf = malloc_or_die(C->idbuf_size * sizeof(uint8_t));
 
     C->buffered_bases = 0;
+
+    C->id_bytes   = 0;
+    C->qual_bytes = 0;
+    C->seq_bytes  = 0;
 
     return C;
 }
@@ -119,6 +137,10 @@ void quip_comp_addseq(quip_compressor_t* C, seq_t* seq)
     assembler_add_seq(C->assembler, seq->seq.s, seq->seq.n);
 
     C->buffered_bases += seq->seq.n;
+
+    C->id_bytes   += seq->id1.n;
+    C->qual_bytes += seq->qual.n;
+    C->seq_bytes  += seq->seq.n;
 }
 
 
@@ -126,16 +148,31 @@ void quip_comp_flush(quip_compressor_t* C)
 {
     idenc_flush(C->idenc);
     C->writer(C->writer_data, C->idbuf, C->idbuf_len);
+    fprintf(stderr, "id: %zu / %zu (%0.2f%%)\n",
+            C->idbuf_len, C->id_bytes,
+            100.0 * (double) C->idbuf_len / (double) C->id_bytes);
     C->idbuf_len = 0;
 
     qualenc_flush(C->qualenc);
     C->writer(C->writer_data, C->qualbuf, C->qualbuf_len);
+    fprintf(stderr, "qual: %zu / %zu (%0.2f%%)\n",
+            C->qualbuf_len, C->qual_bytes,
+            100.0 * (double) C->qualbuf_len / (double) C->qual_bytes);
     C->qualbuf_len = 0;
 
+    C->seq_comp_bytes = 0;
     assembler_assemble(C->assembler);
     assembler_flush(C->assembler);
+    fprintf(stderr, "seq: %zu / %zu (%0.2f%%)\n",
+            C->seq_comp_bytes, C->seq_bytes,
+            100.0 * (double) C->seq_comp_bytes / (double) C->seq_bytes);
+
+    /* print statistics */
 
     C->buffered_bases = 0;
+    C->id_bytes   = 0;
+    C->qual_bytes = 0;
+    C->seq_bytes  = 0;
 }
 
 

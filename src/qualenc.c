@@ -39,8 +39,8 @@ qualmodel_t* qualmodel_alloc()
     M->m = ms[0];
     size_t i;
 
-    M->cs = malloc_or_die(M->m * 25 * qual_size * sizeof(cumdist_t*));
-    for (i = 0; i < M->m * 25 * qual_size; ++i) {
+    M->cs = malloc_or_die(M->m * qual_size * sizeof(cumdist_t*));
+    for (i = 0; i < M->m * qual_size; ++i) {
         M->cs[i] = cumdist_alloc(qual_size);
     }
 
@@ -52,7 +52,7 @@ qualmodel_t* qualmodel_alloc()
 void qualmodel_free(qualmodel_t* M)
 {
     size_t i;
-    for (i = 0; i < M->m * 25 * qual_size; ++i) {
+    for (i = 0; i < M->m * qual_size; ++i) {
         cumdist_free(M->cs[i]);
     }
     free(M->cs);
@@ -102,7 +102,6 @@ void qualenc_free(qualenc_t* E)
 /* encode a single quality/run-length pair */
 static void qualenc_encode_qk(qualenc_t* E,
                               size_t        i,
-                              unsigned char u,
                               unsigned char q0,
                               unsigned char q)
 {
@@ -110,7 +109,7 @@ static void qualenc_encode_qk(qualenc_t* E,
     uint32_t p, P;
 
     /* encode quality score */
-    cumdist_t* cs = E->M->cs[i * (25 * qual_size) + u * qual_size + q0];
+    cumdist_t* cs = E->M->cs[i * (qual_size) + q0];
     Z = cumdist_Z(cs);
     p = ((uint64_t) cumdist_p(cs, q) << 32) / Z;
     P = ((uint64_t) cumdist_P(cs, q) << 32) / Z;
@@ -133,15 +132,11 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
     unsigned char q0; /* preceeding quality score */
     unsigned char q;  /* quality score */
-    unsigned char u;  /* nucleotide */
 
     size_t i, j;
     q0 = 0;
     for (i = 0; i < x->qual.n; ++i) {
-
-        u = i < x->qual.n - 1 ? 5 * ascii_to_nucnum(x->seq.s[i + 1]) : 0;
-        u += ascii_to_nucnum(x->seq.s[i]);
-
+        /*u = ascii_to_nucnum(x->seq.s[i]);*/
         q = x->qual.s[i] - qual_first;
 
         /* use the maximum of the last k quality scores to predict the next */
@@ -150,10 +145,10 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
         for (; j < i; ++j) if (x->qual.s[j] > q0) q0 = x->qual.s[j];
         q0 -= qual_first;
 
-        qualenc_encode_qk(E, i, u, q0, q);
+        qualenc_encode_qk(E, i, q0, q);
 
         /* update model */
-        cumdist_add(E->M->cs[i * (25 * qual_size) + u * qual_size + q0], q, 1);
+        cumdist_add(E->M->cs[i * (qual_size) + q0], q, 1);
     }
 }
 

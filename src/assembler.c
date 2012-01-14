@@ -86,7 +86,7 @@ assembler_t* assembler_alloc(
 
     A->count_cutoff = 2;
 
-    A->seqenc = seqenc_alloc(2, writer, writer_data);
+    A->seqenc = seqenc_alloc(5, writer, writer_data);
 
     return A;
 }

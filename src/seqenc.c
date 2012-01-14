@@ -102,13 +102,13 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
     }
 
     /* encode end-of-sequence sigil */
-    Z = cumdist_Z(E->cs[ctx]);
-    p = ((uint64_t) cumdist_p(E->cs[ctx], 5) << 32) / Z;
-    P = ((uint64_t) cumdist_P(E->cs[ctx], 5) << 32) / Z;
-    if (P == 0) P = 0xffffffff;
-    ac_update(E->ac, p, P);
+    /*Z = cumdist_Z(E->cs[ctx]);*/
+    /*p = ((uint64_t) cumdist_p(E->cs[ctx], 5) << 32) / Z;*/
+    /*P = ((uint64_t) cumdist_P(E->cs[ctx], 5) << 32) / Z;*/
+    /*if (P == 0) P = 0xffffffff;*/
+    /*ac_update(E->ac, p, P);*/
 
-    cumdist_add(E->cs[ctx], 5, 1);
+    /*cumdist_add(E->cs[ctx], 5, 1);*/
 }
 
 
