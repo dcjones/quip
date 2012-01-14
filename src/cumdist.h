@@ -28,6 +28,8 @@ typedef struct cumdist_t_ cumdist_t;
 cumdist_t* cumdist_alloc(size_t n);
 void       cumdist_free(cumdist_t*);
 
+size_t cumdist_n(const cumdist_t*);
+
 /* frequency */
 uint32_t cumdist_p(const cumdist_t*, size_t i);
 uint32_t cumdist_p_norm(const cumdist_t*, size_t i);
@@ -44,6 +46,8 @@ uint32_t cumdist_Z(const cumdist_t*);
 /* add x to thefrequency of element i */
 void cumdist_add(cumdist_t*, size_t i, uint32_t x);
 
+/* expand the number of elements the distribution is defined over */
+void cumdist_expand(cumdist_t*, size_t new_n);
 
 #endif
 

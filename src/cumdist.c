@@ -46,6 +46,9 @@ void cumdist_free(cumdist_t* C)
 }
 
 
+size_t cumdist_n(const cumdist_t* C) { return C->n; }
+
+
 static inline size_t parent_idx (size_t i) { return (i - 1) / 2; }
 static inline size_t left_idx   (size_t i) { return 2 * i + 1; }
 static inline size_t right_idx  (size_t i) { return 2 * i + 2; }
@@ -138,9 +141,33 @@ void cumdist_add(cumdist_t* C, size_t i, uint32_t x)
         i = parent_idx(i);
         C->fs[i] += x;
     }
-
-    /*cumdist_check(C);*/
 }
 
+
+void cumdist_expand(cumdist_t* C, size_t new_n)
+{
+    assert(new_n >= C->n);
+
+    cumdist_t* D = cumdist_alloc(new_n);
+    size_t i;
+    for (i = 0; i < C->n; ++i) {
+        cumdist_add(D, i, cumdist_p(C, i) - 1);
+    }
+
+    uint32_t* tmp;
+
+    tmp = C->fs;
+    C->fs = D->fs;
+    D->fs = tmp;
+
+    tmp = C->ls;
+    C->ls = D->ls;
+    D->ls = tmp;
+
+    D->n = C->n;
+    C->n = new_n;
+
+    cumdist_free(D);
+}
 
 
