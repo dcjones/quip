@@ -30,11 +30,13 @@ void       cumdist_free(cumdist_t*);
 
 /* frequency */
 uint32_t cumdist_p(const cumdist_t*, size_t i);
+uint32_t cumdist_p_norm(const cumdist_t*, size_t i);
 
 /* the frequency of elements <= i, where the ordering is fixed but arbitrary
  * (i.e., DO NOT depend on i < j implying P(i) <= P(j))
  */
 uint32_t cumdist_P(const cumdist_t*, size_t i);
+uint32_t cumdist_P_norm(const cumdist_t*, size_t i);
 
 /* total frequency */
 uint32_t cumdist_Z(const cumdist_t*);

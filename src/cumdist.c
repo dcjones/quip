@@ -59,6 +59,14 @@ uint32_t cumdist_p(const cumdist_t* C, size_t i)
 }
 
 
+uint32_t cumdist_p_norm(const cumdist_t* C, size_t i)
+{
+    /* ith leaf index */
+    i = 2 * C->n - 2 - i;
+    return ((uint64_t) C->fs[i] << 32) / C->fs[0];
+}
+
+
 uint32_t cumdist_P(const cumdist_t* C, size_t i)
 {
     /* ith leaf index */
@@ -69,6 +77,24 @@ uint32_t cumdist_P(const cumdist_t* C, size_t i)
         if (i % 2 == 0) c += C->ls[parent_idx(i)];
         i = parent_idx(i);
     }
+
+    return c;
+}
+
+
+uint32_t cumdist_P_norm(const cumdist_t* C, size_t i)
+{
+    /* ith leaf index */
+    i = 2 * C->n - 2 - i;
+
+    uint32_t c = C->fs[i];
+    while (i > 0) {
+        if (i % 2 == 0) c += C->ls[parent_idx(i)];
+        i = parent_idx(i);
+    }
+
+    c = ((uint64_t) c << 32) / C->fs[0];
+    if (c == 0) c = 0xffffffff;
 
     return c;
 }
