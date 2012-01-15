@@ -33,20 +33,6 @@ AS_IF([test "x$enable_debug" = xyes],
 AC_DEFINE([_FILE_OFFSET_BITS], [64],
           [Do not crash on >4GB files on 32bit machines.])
 
-# LZMA configuration
-AC_DEFINE([HAVE_ENCODER_LZMA1], 1, [LIBLZMA: LZMA1 Encoder])
-AC_DEFINE([HAVE_ENCODER_LZMA2], 1, [LIBLZMA: LZMA2 Encoder])
-AC_DEFINE([HAVE_DECODER_LZMA1], 1, [LIBLZMA: LZMA1 Decoder])
-AC_DEFINE([HAVE_DECODER_LZMA2], 1, [LIBLZMA: LZMA2 Decoder])
-AC_DEFINE([HAVE_CHECK_CRC32],   1, [LIBLZMA: CRC32 Check])
-AC_DEFINE([HAVE_CHECK_CRC64],   1, [LIBLZMA: CRC64 Check])
-AC_DEFINE([HAVE_CHECK_SHA256],  1, [LIBLZMA: SHA256 CHeck])
-AC_DEFINE([HAVE_MF_BT2], 1, [LIBLZMA: BT2 Match Finder])
-AC_DEFINE([HAVE_MF_BT3], 1, [LIBLZMA: BT3 Match Finder])
-AC_DEFINE([HAVE_MF_BT4], 1, [LIBLZMA: BT4 Match Finder])
-AC_DEFINE([HAVE_MF_HC3], 1, [LIBLZMA: HC3 Match Finder])
-AC_DEFINE([HAVE_MF_HC4], 1, [LIBLZMA: HC4 Match Finder])
-
 AC_PROG_LIBTOOL
 
 AC_CHECK_FUNC(fileno, ,
@@ -59,7 +45,6 @@ AC_CHECK_HEADER(getopt.h, ,
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
-                 src/lzma/Makefile
                  src/version.h])
 
 AM_CONFIG_HEADER([src/config.h])

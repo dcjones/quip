@@ -1,6 +1,4 @@
 
-SUBDIRS = lzma
-
 bin_PROGRAMS=quip
 
 quip_SOURCES = quip.c version.h \
@@ -19,6 +17,4 @@ quip_SOURCES = quip.c version.h \
 			   parse.h       parse.c \
 			   qualenc.h     qualenc.c \
 			   quiplib.c     quip.h
-
-quip_LDADD = lzma/liblzma.la
 
