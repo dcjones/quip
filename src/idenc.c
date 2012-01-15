@@ -51,10 +51,10 @@ idenc_t* idenc_alloc(quip_block_writer_t writer, void* writer_data)
 
     E->cs = NULL;
     E->ls = NULL;
-    E->ds = malloc_or_die(256 * sizeof(cumdist_t*));
+    E->ds = malloc_or_die(128 * 128 * sizeof(cumdist_t*));
     size_t i;
-    for (i = 0; i < 256; ++i) {
-        E->ds[i] = cumdist_alloc(256);
+    for (i = 0; i < 128 * 128; ++i) {
+        E->ds[i] = cumdist_alloc(128);
     }
 
     E->lastid = NULL;
@@ -82,7 +82,7 @@ void idenc_free(idenc_t* E)
     }
     free(E->ls);
 
-    for (i = 0; i < 256; ++i) {
+    for (i = 0; i < 128 * 128; ++i) {
         cumdist_free(E->ds[i]);
     }
     free(E->ds);
@@ -110,13 +110,18 @@ void idenc_encode(idenc_t* E, const seq_t* x)
 {
     edit_t lastop = 0;
     const str_t* id = &x->id1;
+    size_t ds_ctx;
     size_t matlen;
     size_t i, j, k;
+    size_t i0;
     for (i = 0, j = 0; i < id->n + 1;) {
         if (i + 1 > E->max_id_len) idenc_expand_max_id_len(E);
 
         if (j < E->lastid_len) {
+
+            /* match */
             if (id->s[i] == E->lastid[j]) {
+                i0 = i;
 
                 matlen = 0;
                 while (j < E->lastid_len && id->s[i] == E->lastid[j]) {
@@ -129,33 +134,35 @@ void idenc_encode(idenc_t* E, const seq_t* x)
 
                 ac_update(
                     E->ac, 
-                    cumdist_p_norm(E->cs[i * 4 + lastop], EDIT_MAT),
-                    cumdist_P_norm(E->cs[i * 4 + lastop], EDIT_MAT));
+                    cumdist_p_norm(E->cs[i0 * 4 + lastop], EDIT_MAT),
+                    cumdist_P_norm(E->cs[i0 * 4 + lastop], EDIT_MAT));
 
-                if (matlen > cumdist_n(E->ls[i]) - 1) {
+                if (matlen > cumdist_n(E->ls[i0]) - 1) {
                     /* 0s are emitted to encode an expansion of the distribution
                      * */
-                    for (k = 0; k < (matlen + 1) - cumdist_n(E->ls[i]); ++k) {
+                    for (k = 0; k < (matlen + 1) - cumdist_n(E->ls[i0]); ++k) {
                         ac_update(
                             E->ac, 
-                            cumdist_p_norm(E->ls[i], 0),
-                            cumdist_P_norm(E->ls[i], 0));
+                            cumdist_p_norm(E->ls[i0], 0),
+                            cumdist_P_norm(E->ls[i0], 0));
                     }
 
-                    cumdist_expand(E->ls[i], matlen + 1);
+                    cumdist_expand(E->ls[i0], matlen + 1);
                 }
 
                 ac_update(
                     E->ac, 
-                    cumdist_p_norm(E->ls[i], matlen),
-                    cumdist_P_norm(E->ls[i], matlen));
+                    cumdist_p_norm(E->ls[i0], matlen),
+                    cumdist_P_norm(E->ls[i0], matlen));
 
-                cumdist_add(E->ls[i], matlen, 1);
-                cumdist_add(E->cs[i * 4 + lastop], EDIT_MAT, 1);
+                cumdist_add(E->ls[i0], matlen, 1);
+                cumdist_add(E->cs[i0 * 4 + lastop], EDIT_MAT, 1);
 
                 lastop = EDIT_MAT;
             }
-            else if (isspace(E->lastid[j])) {
+
+            /* insertion */
+            else if (!isalnum(E->lastid[j]) && isalnum(id->s[i])) {
                 ac_update(
                     E->ac,
                     cumdist_p_norm(E->cs[i * 4 + lastop], EDIT_INS),
@@ -163,17 +170,22 @@ void idenc_encode(idenc_t* E, const seq_t* x)
 
                 cumdist_add(E->cs[i * 4 + lastop], EDIT_INS, 1);
 
+                ds_ctx = (size_t) E->lastid[j] * 128 + E->lastid[j + 1];
+                if (j + 1 < E->lastid_len) ds_ctx += E->lastid[j + 1];
+
                 ac_update(
                     E->ac,
-                    cumdist_p_norm(E->ds[(int) E->lastid[j]], id->s[i]),
-                    cumdist_P_norm(E->ds[(int) E->lastid[j]], id->s[i]));
+                    cumdist_p_norm(E->ds[ds_ctx], id->s[i]),
+                    cumdist_P_norm(E->ds[ds_ctx], id->s[i]));
 
-                cumdist_add(E->ds[(int) E->lastid[j]], id->s[i], 1);
+                cumdist_add(E->ds[ds_ctx], id->s[i], 1);
 
                 lastop = EDIT_INS;
                 ++i;
             }
-            else if(isspace(id->s[i])) {
+
+            /* deletion */
+            else if(!isalnum(id->s[i]) && isalnum(E->lastid[j])) {
                 ac_update(
                     E->ac,
                     cumdist_p_norm(E->cs[i * 4 + lastop], EDIT_DEL),
@@ -184,6 +196,8 @@ void idenc_encode(idenc_t* E, const seq_t* x)
                 lastop = EDIT_DEL;
                 ++j;
             }
+
+            /* replacement */
             else {
                 ac_update(
                     E->ac,
@@ -192,12 +206,15 @@ void idenc_encode(idenc_t* E, const seq_t* x)
 
                 cumdist_add(E->cs[i * 4 + lastop], EDIT_REP, 1);
 
+                ds_ctx = (size_t) E->lastid[j] * 128;
+                if (j + 1 < E->lastid_len) ds_ctx += E->lastid[j + 1];
+
                 ac_update(
                     E->ac,
-                    cumdist_p_norm(E->ds[(int) E->lastid[j]], id->s[i]),
-                    cumdist_P_norm(E->ds[(int) E->lastid[j]], id->s[i]));
+                    cumdist_p_norm(E->ds[ds_ctx], id->s[i]),
+                    cumdist_P_norm(E->ds[ds_ctx], id->s[i]));
 
-                cumdist_add(E->ds[(int) E->lastid[j]], id->s[i], 1);
+                cumdist_add(E->ds[ds_ctx], id->s[i], 1);
 
                 lastop = EDIT_REP;
                 ++i;
@@ -205,6 +222,8 @@ void idenc_encode(idenc_t* E, const seq_t* x)
             }
         }
         else {
+
+            /* end insertion */
             ac_update(
                 E->ac,
                 cumdist_p_norm(E->cs[i * 4 + lastop], EDIT_INS),

@@ -8,7 +8,7 @@
 
 /*
  * idenc:
- * Compression and decompression of sequenc ids.
+ * Compression and decompression of sequence ids.
  */
 
 #ifndef QUIP_IDENC
