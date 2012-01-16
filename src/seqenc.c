@@ -85,7 +85,7 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
     uint32_t p, P;
 
     p = cumdist_p_norm(E->ms, 0);
-    P = cumdist_p_norm(E->ms, 0);
+    P = cumdist_P_norm(E->ms, 0);
     ac_update(E->ac, p, P);
     cumdist_add(E->ms, 0, 1);
 
@@ -113,7 +113,7 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
     uint32_t p, P;
 
     p = cumdist_p_norm(E->ms, 0);
-    P = cumdist_p_norm(E->ms, 0);
+    P = cumdist_P_norm(E->ms, 0);
     ac_update(E->ac, p, P);
     cumdist_add(E->ms, 0, 1);
 
@@ -148,14 +148,14 @@ void seqenc_encode_alignment(seqenc_t* E,
     uint32_t p, P;
 
     p = cumdist_p_norm(E->ms, 1);
-    P = cumdist_p_norm(E->ms, 1);
+    P = cumdist_P_norm(E->ms, 1);
     ac_update(E->ac, p, P);
     cumdist_add(E->ms, 1, 1);
 
     p = cumdist_p_norm(E->ss, strand);
-    p = cumdist_p_norm(E->ss, strand);
+    P = cumdist_P_norm(E->ss, strand);
     ac_update(E->ac, p, P);
-    cumdist_add(E->ss, 1, 1);
+    cumdist_add(E->ss, strand, 1);
 
     // TODO: output contig number
     // TODO: output contig offset
