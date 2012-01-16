@@ -427,7 +427,7 @@ static void align_to_contigs(assembler_t* A,
              * than outputing the sequence.
              */
             if (aln_score >= 0 &&
-                aln_score < (int) seqlen + (int) seqlen / 2 &&
+                aln_score < (int) seqlen + (int) seqlen &&
                 aln_score < alns[cand->seq_idx].aln_score)
             {
                 alns[cand->seq_idx].contig_idx = i;

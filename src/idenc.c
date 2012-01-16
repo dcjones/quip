@@ -48,8 +48,8 @@ idenc_t* idenc_alloc(quip_block_writer_t writer, void* writer_data)
         E->ms[i] = cumdist_alloc(max_group_len);
     }
 
-    E->ds = malloc_or_die(max_groups * 128 * sizeof(cumdist_t*));
-    for (i = 0; i < max_groups * 128; ++i) {
+    E->ds = malloc_or_die(max_groups * 128 * 128 * sizeof(cumdist_t*));
+    for (i = 0; i < max_groups * 128 * 128; ++i) {
         E->ds[i] = cumdist_alloc(128);
     }
 
@@ -72,7 +72,7 @@ void idenc_free(idenc_t* E)
     }
     free(E->ms);
 
-    for (i = 0; i < max_groups * 128; ++i) {
+    for (i = 0; i < max_groups * 128 * 128; ++i) {
         cumdist_free(E->ds[i]);
     }
 
@@ -135,9 +135,11 @@ void idenc_encode(idenc_t* E, const seq_t* x)
 
         /* write trailing whitespace */
         while (i < id->n + 1 && issep(id->s[i])) {
-            c = 128 * (group >= max_groups ? max_groups - 1 : group);
+            c = 128 * 128 * (group >= max_groups ? max_groups - 1 : group);
+            c += 128 * (i - 1 < id->n ? id->s[i - 1] : 0);
+            /*c += 128 * (j - 1 < E->lastid_len ? E->lastid[j - 1] : 0);*/
             c += j < E->lastid_len ? E->lastid[j] : 0;
-            c %= max_groups * 128;
+            c %= max_groups * 128 * 128;
 
             p = cumdist_p_norm(E->ds[c], id->s[i]);
             P = cumdist_p_norm(E->ds[c], id->s[i]);
@@ -150,9 +152,11 @@ void idenc_encode(idenc_t* E, const seq_t* x)
 
         /* write non-matches */
         while (i < id->n + 1 && !issep(id->s[i])) {
-            c = 128 * (group >= max_groups ? max_groups - 1 : group);
+            c = 128 * 128 * (group >= max_groups ? max_groups - 1 : group);
+            c += 128 * (i - 1 < id->n ? id->s[i - 1] : 0);
+            /*c += 128 * (j - 1 < E->lastid_len ? E->lastid[j - 1] : 0);*/
             c += j < E->lastid_len ? E->lastid[j] : 0;
-            c %= max_groups * 128;
+            c %= max_groups * 128 * 128;
 
             p = cumdist_p_norm(E->ds[c], id->s[i]);
             P = cumdist_p_norm(E->ds[c], id->s[i]);
