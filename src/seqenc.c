@@ -21,19 +21,14 @@ struct seqenc_t_
     /* binary distribution of unique (0) / match (1) */
     cumdist_t* ms;
 
-    /* distribution of edit operations */
-    cumdist_t* es;
+    /* distribution over match strand */
+    cumdist_t* ss;
 
-    /* 
-     * Match format:
-     * [contig_num] [offset] [strand] [op:len] ...
-     *
-     * This is my issue: how do I compress contig_num and offset?
-     *
-     * Possibility I don't. Just use LZMA style number encoding.
-     *
-     * Edit operations and and edit lengths are not so hard to compress.
-     */
+    /* distribution over contig number */
+    // XXX: fuck!!!! How do I do this? 
+
+    /* distribution of edit operations, given the previous operation */
+    cumdist_t** es;
 };
 
 
@@ -58,7 +53,10 @@ seqenc_t* seqenc_alloc(size_t k, quip_block_writer_t writer, void* writer_data)
     }
 
     E->ms = cumdist_alloc(2);
-    E->es = cumdist_alloc(4);
+    E->ss = cumdist_alloc(2);
+
+    E->es = malloc_or_die(16 * sizeof(cumdist_t*));
+    for (i = 0; i < 16; ++i) E->es[i] = cumdist_alloc(4);
 
     return E;
 }
@@ -73,7 +71,11 @@ void seqenc_free(seqenc_t* E)
     }
     free(E->cs);
     cumdist_free(E->ms);
-    cumdist_free(E->es);
+    cumdist_free(E->ss);
+    for (i = 0; i < 16; ++i) {
+        cumdist_free(E->es[i]);
+    }
+    free(E->es);
     free(E);
 }
 
@@ -139,7 +141,9 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
 
 
 
-void seqenc_encode_alignment(seqenc_t* E, const sw_alignment_t* aln, const twobit_t* query)
+void seqenc_encode_alignment(seqenc_t* E,
+        size_t contig_idx, uint8_t strand,
+        const sw_alignment_t* aln, const twobit_t* query)
 {
     uint32_t p, P;
 
@@ -148,16 +152,25 @@ void seqenc_encode_alignment(seqenc_t* E, const sw_alignment_t* aln, const twobi
     ac_update(E->ac, p, P);
     cumdist_add(E->ms, 1, 1);
 
+    p = cumdist_p_norm(E->ss, strand);
+    p = cumdist_p_norm(E->ss, strand);
+    ac_update(E->ac, p, P);
+    cumdist_add(E->ss, 1, 1);
+
+    // TODO: output contig number
+    // TODO: output contig offset
+
     kmer_t u = twobit_get(query, 0);
+    size_t last_op = EDIT_MATCH;
     size_t ctx = 0;
     size_t i, j;
     for (i = 0, j = 0; i < aln->len; ++i) {
         switch (aln->ops[i]) {
             case EDIT_MATCH:
-                p = cumdist_p_norm(E->es, EDIT_MATCH);
-                P = cumdist_P_norm(E->es, EDIT_MATCH);
+                p = cumdist_p_norm(E->es[last_op], EDIT_MATCH);
+                P = cumdist_P_norm(E->es[last_op], EDIT_MATCH);
                 ac_update(E->ac, p, P);
-                cumdist_add(E->es, EDIT_MATCH, 1);
+                cumdist_add(E->es[last_op], EDIT_MATCH, 1);
 
                 ++j;
                 ctx = (5 * ctx + u) % E->N;
@@ -165,10 +178,10 @@ void seqenc_encode_alignment(seqenc_t* E, const sw_alignment_t* aln, const twobi
                 break;
 
             case EDIT_MISMATCH:
-                p = cumdist_p_norm(E->es, EDIT_MISMATCH);
-                P = cumdist_P_norm(E->es, EDIT_MISMATCH);
+                p = cumdist_p_norm(E->es[last_op], EDIT_MISMATCH);
+                P = cumdist_P_norm(E->es[last_op], EDIT_MISMATCH);
                 ac_update(E->ac, p, P);
-                cumdist_add(E->es, EDIT_MISMATCH, 1);
+                cumdist_add(E->es[last_op], EDIT_MISMATCH, 1);
 
                 p = cumdist_p_norm(E->cs[ctx], u);
                 P = cumdist_P_norm(E->cs[ctx], u);
@@ -181,17 +194,17 @@ void seqenc_encode_alignment(seqenc_t* E, const sw_alignment_t* aln, const twobi
                 break;
 
             case EDIT_Q_GAP:
-                p = cumdist_p_norm(E->es, EDIT_Q_GAP);
-                P = cumdist_P_norm(E->es, EDIT_Q_GAP);
+                p = cumdist_p_norm(E->es[last_op], EDIT_Q_GAP);
+                P = cumdist_P_norm(E->es[last_op], EDIT_Q_GAP);
                 ac_update(E->ac, p, P);
-                cumdist_add(E->es, EDIT_Q_GAP, 1);
+                cumdist_add(E->es[last_op], EDIT_Q_GAP, 1);
                 break;
 
             case EDIT_S_GAP:
-                p = cumdist_p_norm(E->es, EDIT_S_GAP);
-                P = cumdist_P_norm(E->es, EDIT_S_GAP);
+                p = cumdist_p_norm(E->es[last_op], EDIT_S_GAP);
+                P = cumdist_P_norm(E->es[last_op], EDIT_S_GAP);
                 ac_update(E->ac, p, P);
-                cumdist_add(E->es, EDIT_S_GAP, 1);
+                cumdist_add(E->es[last_op], EDIT_S_GAP, 1);
 
                 p = cumdist_p_norm(E->cs[ctx], u);
                 P = cumdist_P_norm(E->cs[ctx], u);
@@ -203,6 +216,8 @@ void seqenc_encode_alignment(seqenc_t* E, const sw_alignment_t* aln, const twobi
                 u = twobit_get(query, j) + 1;
                 break;
         }
+
+        last_op = ((last_op * 4) + aln->ops[i]) % 16;
     }
 }
 

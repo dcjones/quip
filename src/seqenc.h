@@ -26,7 +26,9 @@ void      seqenc_free(seqenc_t*);
 
 void seqenc_encode_char_seq(seqenc_t*, const char*);
 void seqenc_encode_twobit_seq(seqenc_t*, const twobit_t*);
-void seqenc_encode_alignment(seqenc_t* E, const sw_alignment_t* aln, const twobit_t* query);
+void seqenc_encode_alignment(seqenc_t* E,
+        size_t contig_idx, uint8_t strand,
+        const sw_alignment_t* aln, const twobit_t* query);
 
 void seqenc_flush(seqenc_t* E);
 

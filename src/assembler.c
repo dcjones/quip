@@ -371,7 +371,7 @@ static void align_to_contigs(assembler_t* A,
     /* TODO: prune contigs to which no reads possibly align */
 
 
-    if (verbose) fprintf(stderr, "local alignment ... ");
+    if (verbose) fprintf(stderr, "\tlocal alignment ... ");
 
     typedef struct align_t_
     {
@@ -387,6 +387,9 @@ static void align_to_contigs(assembler_t* A,
         memset(&alns[i].a, 0, sizeof(sw_alignment_t));
     }
 
+    uint32_t* contig_reindex = malloc_or_die(contigs_len * sizeof(uint32_t));
+    size_t j;
+
     sw_t* sw;
     sw_t* sw_rc;
     twobit_t* contig_rc = twobit_alloc();
@@ -395,9 +398,10 @@ static void align_to_contigs(assembler_t* A,
 
     for (i = 0; i < contigs_len; ++i) {
 
-        seqenc_encode_twobit_seq(A->seqenc, contigs[i]);
-
         if (!cands[i]) continue;
+
+        seqenc_encode_twobit_seq(A->seqenc, contigs[i]);
+        contig_reindex[i] = j++;
         
         sw = sw_alloc(contigs[i]);
 
@@ -423,7 +427,7 @@ static void align_to_contigs(assembler_t* A,
              * than outputing the sequence.
              */
             if (aln_score >= 0 &&
-                aln_score < (int) seqlen + seqlen / 2 &&
+                aln_score < (int) seqlen + (int) seqlen / 2 &&
                 aln_score < alns[cand->seq_idx].aln_score)
             {
                 alns[cand->seq_idx].contig_idx = i;
@@ -448,7 +452,10 @@ static void align_to_contigs(assembler_t* A,
     size_t aln_count = 0;
     for (i = 0; i < A->N; ++i) {
         if (alns[A->ord[i]].aln_score < INT_MAX) {
-            seqenc_encode_alignment(A->seqenc, &alns[A->ord[i]].a, xs[A->ord[i]].seq.tb);
+            seqenc_encode_alignment(A->seqenc,
+                    alns[A->ord[i]].contig_idx, alns[A->ord[i]].strand,
+                    &alns[A->ord[i]].a, xs[A->ord[i]].seq.tb);
+            /*seqenc_encode_twobit_seq(A->seqenc, xs[A->ord[i]].seq.tb);*/
             ++aln_count;
         }
         else {
@@ -463,7 +470,7 @@ static void align_to_contigs(assembler_t* A,
 
     if (verbose) {
         fprintf(stderr,
-                "%zu / %zu [%0.2f] reads aligned to contigs\n",
+                "\t%zu / %zu [%0.2f%%] reads aligned to contigs\n",
                 aln_count, (size_t) A->N, 100.0 * (double) aln_count / (double) A->N);
     }
 
@@ -472,6 +479,7 @@ static void align_to_contigs(assembler_t* A,
         free(alns[i].a.ops);
     }
     free(alns);
+    free(contig_reindex);
 
     twobit_free(contig_rc);
     if (verbose) fprintf(stderr, "done.\n");
