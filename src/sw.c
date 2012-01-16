@@ -57,13 +57,13 @@ struct sw_t_
  */
 
 static const score_t score_inf        = UINT16_MAX / 2;
-static const score_t score_q_gap_open = 2;
-static const score_t score_q_gap_ext  = 0;
-static const score_t score_s_gap_open = 1;
-static const score_t score_s_gap_ext  = 1;
-static const score_t score_match_open = 2;
-static const score_t score_match_ext  = 0;
-static const score_t score_mismatch   = 1;
+static const score_t score_q_gap_open = 1;
+static const score_t score_q_gap_ext  = 1;
+static const score_t score_s_gap_open = 2;
+static const score_t score_s_gap_ext  = 2;
+static const score_t score_match_open = 1;
+static const score_t score_match_ext  = 1;
+static const score_t score_mismatch   = 2;
 
 
 
@@ -173,15 +173,9 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
 
     sw_ensure_query_len(sw, qlen);
 
-    for (i = 0; i <= qpos; ++i) {
+    for (i = 0; i <= qlen; ++i) {
         sw->query[i] = twobit_get(query, i);
     }
-
-    for (i = qpos + seedlen; i < qlen; ++i) {
-        sw->query[i] = twobit_get(query, i);
-    }
-
-    assert(sw->query[qpos] == sw->subject[spos]);
 
 
     /* Align up to the seed.
@@ -219,16 +213,30 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
     sw_align_sub(sw, s0, spos, 0, qpos);
 
 
+    /* Set the score matrix around the seed */
+    int idx2;
+    for (i = 0; i < seedlen; ++i) {
+        assert(sw->query[qpos + i] == sw->subject[spos + i]);
+
+        idx = (spos + i) * (sw->m + 1) + (qpos + i);
+        idx2 = (spos + 1 + i) * (sw->m + 1) + (qpos + 1 + i);
+        sw->M[idx2] = sw->F[idx2] = sw->F[idx] + score_match_ext;
+
+        idx2 = (spos + 1 + i + 1) * (sw->m + 1) + (qpos + 1 + i);
+        sw->F[idx2] = score_inf;
+
+        idx2 = (spos + 1 + i) * (sw->m + 1) + (qpos + 1 + i + 1);
+        sw->F[idx2] = score_inf;
+    }
+
+    idx2 = (spos + 1 + i) * (sw->m + 1) + (qpos + 1 + i);
+    sw->M[idx2] = sw->F[idx2] = sw->F[idx] + score_match_ext;
+    assert(sw->F[idx2] < score_inf);
+
 
     /* Align from the seed.
      * ====================
      */
-
-    int idx2;
-    idx  = (spos + 1) * (sw->m + 1) + (qpos + 1);
-    idx2 = (spos + seedlen) * (sw->m + 1) + (qpos + seedlen);
-    sw->F[idx2] = sw->M[idx2] = sw->M[idx] + (seedlen - 1) * score_match_ext;
-    assert(sw->F[idx2] < score_inf);
 
     /* initialize column 0 */
     for (i = spos + seedlen + 1; i <= s1 + 1; ++i) {
@@ -288,14 +296,14 @@ void sw_trace(sw_t* sw, sw_alignment_t* aln)
         op = EDIT_S_GAP;
 
         if (i > 0) {
-            if (sw->F[(i - 1) * (sw->m + 1) + j] < s) {
+            if (sw->F[(i - 1) * (sw->m + 1) + j] <= s) {
                 s = sw->F[(i - 1) * (sw->m + 1) + j];
                 i_next = i - 1;
                 j_next = j;
                 op = EDIT_Q_GAP;
             }
 
-            if (sw->F[(i - 1) * (sw->m + 1) + (j - 1)] < s) {
+            if (sw->F[(i - 1) * (sw->m + 1) + (j - 1)] <= s) {
                 s = sw->F[(i - 1) * (sw->m + 1) + (j - 1)];
                 i_next = i - 1;
                 j_next = j - 1;

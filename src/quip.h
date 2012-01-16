@@ -11,6 +11,7 @@
 #include "parse.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef void (*quip_block_writer_t) (void*, const uint8_t*, size_t);
 
@@ -22,10 +23,7 @@ void               quip_comp_free(quip_compressor_t*);
 
 void quip_write_header(FILE*);
 
-
-
-
-
+extern bool verbose;
 
 #endif
 

@@ -65,44 +65,36 @@ void seqset_free(seqset_t* S)
 {
     size_t i;
     for (i = 0; i < S->n; ++i) {
-        twobit_free(S->xs[i].seq);
+        if (S->xs[i].is_twobit) {
+            twobit_free(S->xs[i].seq.tb);
+        }
+        else {
+            free(S->xs[i].seq.eb);
+        }
     }
     free(S->xs);
     free(S);
 }
 
 
-#if 0
-static void set_nil_key(seqset_value_t* x)
-{
-    x->seq = NULL; x->cnt = 0;
-}
-
-
-static void set_del_key(seqset_value_t* x)
-{
-    x->seq = NULL; x->cnt = ~0U;
-}
-#endif
-
 
 static bool is_nil_key(const seqset_value_t* x)
 {
-    return x->seq == NULL && x->cnt == 0;
+    return x->seq.tb == NULL && x->cnt == 0;
 }
 
 
 
 static bool is_del_key(const seqset_value_t* x)
 {
-    return x->seq == NULL && x->cnt == ~0U;
+    return x->seq.tb == NULL && x->cnt == ~0U;
 }
 
 
 
 static bool is_nil_or_del_key(const seqset_value_t* x)
 {
-    return x->seq == NULL;
+    return x->seq.tb == NULL;
 }
 
 
@@ -116,7 +108,13 @@ static void seqset_rehash(seqset_t* dest, seqset_t* src)
     for (i = 0; i < src->n; ++i) {
         if (is_nil_or_del_key(src->xs + i)) continue;
 
-        h = twobit_hash(src->xs[i].seq);
+        if (src->xs[i].is_twobit) {
+            h = twobit_hash(src->xs[i].seq.tb);
+        }
+        else {
+            h = strhash(src->xs[i].seq.eb, strlen(src->xs[i].seq.eb));
+        }
+
         k = h % dest->n;
         probe_num = 1;
 
@@ -124,6 +122,8 @@ static void seqset_rehash(seqset_t* dest, seqset_t* src)
             if (is_nil_key(dest->xs + k)) {
                 dest->xs[k].seq = src->xs[i].seq;
                 dest->xs[k].cnt = src->xs[i].cnt;
+                dest->xs[k].idx = src->xs[i].idx;
+                dest->xs[k].is_twobit = src->xs[i].is_twobit;
                 break;
             }
 
@@ -183,7 +183,7 @@ static void seqset_resize_delta(seqset_t* T, size_t delta)
 
 
 
-uint32_t seqset_inc(seqset_t* S, const twobit_t* seq)
+uint32_t seqset_inc_tb(seqset_t* S, const twobit_t* seq)
 {
     seqset_resize_delta(S, 1);
 
@@ -201,9 +201,9 @@ uint32_t seqset_inc(seqset_t* S, const twobit_t* seq)
             if (ins_pos == -1) ins_pos = k;
             break;
         }
-        else if (twobit_cmp(S->xs[k].seq, seq) == 0) {
+        else if (S->xs[k].is_twobit && twobit_cmp(S->xs[k].seq.tb, seq) == 0) {
             if (S->xs[k].cnt < ~0U) ++S->xs[k].cnt;
-            return S->xs[k].cnt;
+            return S->xs[k].idx;
         }
 
         k = probe(h, ++probe_num) % S->n;
@@ -213,11 +213,55 @@ uint32_t seqset_inc(seqset_t* S, const twobit_t* seq)
     if (is_del_key(S->xs + ins_pos)) --S->d;
     else                             ++S->m;
 
+    S->xs[ins_pos].idx = S->m - 1;
     S->xs[ins_pos].cnt = 1;
-    S->xs[ins_pos].seq = twobit_dup(seq);
+    S->xs[ins_pos].seq.tb = twobit_dup(seq);
+    S->xs[ins_pos].is_twobit = true;
 
-    return 1;
+    return S->xs[ins_pos].idx;
 }
+
+
+uint32_t seqset_inc_eb(seqset_t* S, const char* seq)
+{
+    seqset_resize_delta(S, 1);
+
+    size_t len = strlen(seq);
+    uint32_t h = strhash(seq, len);
+    uint32_t probe_num = 1;
+    uint32_t k = h % S->n;
+
+    int ins_pos = -1;
+
+    while (true) {
+        if (is_del_key(S->xs + k)) {
+            if (ins_pos == -1) ins_pos = k;
+        }
+        else if (is_nil_key(S->xs + k)) {
+            if (ins_pos == -1) ins_pos = k;
+            break;
+        }
+        else if (!S->xs[k].is_twobit && strcmp(S->xs[k].seq.eb, seq) == 0) {
+            if (S->xs[k].cnt < ~0U) ++S->xs[k].cnt;
+            return S->xs[k].idx;
+        }
+
+        k = probe(h, ++probe_num) % S->n;
+        assert(probe_num < S->n);
+    }
+
+    if (is_del_key(S->xs + ins_pos)) --S->d;
+    else                             ++S->m;
+
+    S->xs[ins_pos].idx = S->m - 1;
+    S->xs[ins_pos].cnt = 1;
+    S->xs[ins_pos].seq.eb = malloc_or_die((len + 1) * sizeof(char));
+    memcpy(S->xs[ins_pos].seq.eb, seq, (len + 1) * sizeof(char));
+    S->xs[ins_pos].is_twobit = false;
+
+    return S->xs[ins_pos].idx;
+}
+
 
 size_t seqset_size(const seqset_t* S)
 {
@@ -278,6 +322,8 @@ seqset_value_t* seqset_dump(const seqset_t* S)
         if (!is_nil_or_del_key(S->xs + i)) {
             xs[j].seq = S->xs[i].seq;
             xs[j].cnt = S->xs[i].cnt;
+            xs[j].idx = S->xs[i].idx;
+            xs[j].is_twobit = S->xs[i].is_twobit;
             ++j;
         }
     }

@@ -174,8 +174,10 @@ int main(int argc, char* argv[])
         {"stdout",     no_argument, NULL, 'c'},
         {"decompress", no_argument, NULL, 'd'},
         {"keep",       no_argument, NULL, 'k'},
+        {"verbose",    no_argument, NULL, 'v'},
         {"help",       no_argument, NULL, 'h'},
-        {"version",    no_argument, NULL, 'V'}
+        {"version",    no_argument, NULL, 'V'},
+        {NULL, 0, NULL, 0}
     };
 
     int opt, opt_idx;
@@ -185,7 +187,7 @@ int main(int argc, char* argv[])
     if (strcmp(argv[0], "unquip") == 0) decompress_flag = true;
 
     while (1) {
-        opt = getopt_long(argc, argv, "cdkhV", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "cdkvhV", long_options, &opt_idx);
 
         if (opt == -1) break;
 
@@ -200,6 +202,10 @@ int main(int argc, char* argv[])
 
             case 'k':
                 keep_flag = true;
+                break;
+
+            case 'v':
+                verbose = true;
                 break;
 
             case 'h':

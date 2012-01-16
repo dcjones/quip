@@ -18,6 +18,7 @@ const size_t aligner_k = 15;
 /* approximate number of bases per block */
 const size_t block_size = 100000000;
 
+bool verbose = true;
 
 void quip_write_header(FILE* f)
 {
@@ -146,28 +147,36 @@ void quip_comp_addseq(quip_compressor_t* C, seq_t* seq)
 
 void quip_comp_flush(quip_compressor_t* C)
 {
+    if (verbose) {
+        fprintf(stderr, "writing a block of %zu compressed bases...\n", C->buffered_bases);
+    }
+
     idenc_flush(C->idenc);
     C->writer(C->writer_data, C->idbuf, C->idbuf_len);
-    fprintf(stderr, "id: %zu / %zu (%0.2f%%)\n",
-            C->idbuf_len, C->id_bytes,
-            100.0 * (double) C->idbuf_len / (double) C->id_bytes);
+    if (verbose) {
+        fprintf(stderr, "\tid: %zu / %zu (%0.2f%%)\n",
+                C->idbuf_len, C->id_bytes,
+                100.0 * (double) C->idbuf_len / (double) C->id_bytes);
+    }
     C->idbuf_len = 0;
 
     qualenc_flush(C->qualenc);
     C->writer(C->writer_data, C->qualbuf, C->qualbuf_len);
-    fprintf(stderr, "qual: %zu / %zu (%0.2f%%)\n",
-            C->qualbuf_len, C->qual_bytes,
-            100.0 * (double) C->qualbuf_len / (double) C->qual_bytes);
+    if (verbose) {
+        fprintf(stderr, "\tqual: %zu / %zu (%0.2f%%)\n",
+                C->qualbuf_len, C->qual_bytes,
+                100.0 * (double) C->qualbuf_len / (double) C->qual_bytes);
+    }
     C->qualbuf_len = 0;
 
     C->seq_comp_bytes = 0;
     assembler_assemble(C->assembler);
-    assembler_flush(C->assembler);
-    fprintf(stderr, "seq: %zu / %zu (%0.2f%%)\n",
-            C->seq_comp_bytes, C->seq_bytes,
-            100.0 * (double) C->seq_comp_bytes / (double) C->seq_bytes);
+    if (verbose) {
+        fprintf(stderr, "\tseq: %zu / %zu (%0.2f%%)\n",
+                C->seq_comp_bytes, C->seq_bytes,
+                100.0 * (double) C->seq_comp_bytes / (double) C->seq_bytes);
+    }
 
-    /* print statistics */
 
     C->buffered_bases = 0;
     C->id_bytes   = 0;

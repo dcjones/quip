@@ -21,14 +21,28 @@ typedef struct seqset_t_ seqset_t;
 
 typedef struct
 {
-    twobit_t* seq;
+    /* We store every sequence we can in two bit per nucelotide, but those with
+     * N's are kept as eight bits per nucleotide. */
+    union {
+        twobit_t* tb;
+        char*     eb;
+    } seq;
+
+    bool is_twobit;
+
+    /* Number of accurances of the given sequence. */
     uint32_t  cnt;
+
+    /* We assign indexes sequentially as new sequences are inserted, but they
+     * are not robust to deletion. */
+    uint32_t  idx;
 } seqset_value_t;
 
 
 seqset_t* seqset_alloc();
 void      seqset_free(seqset_t*);
-uint32_t  seqset_inc(seqset_t*, const twobit_t*);
+uint32_t  seqset_inc_tb(seqset_t*, const twobit_t*);
+uint32_t  seqset_inc_eb(seqset_t*, const char*);
 size_t    seqset_size(const seqset_t*);
 
 seqset_value_t* seqset_dump(const seqset_t*);

@@ -12,12 +12,15 @@
 #define QUIP_MISC
 
 #include <stdio.h>
+#include <stdint.h>
 
 void or_die(int b, const char* msg);
 
 void* malloc_or_die(size_t);
 void* realloc_or_die(void*, size_t);
 FILE* fopen_or_die(const char*, const char*);
+
+uint32_t strhash(const char*, size_t len);
 
 #endif
 

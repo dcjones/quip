@@ -18,14 +18,11 @@ struct seqenc_t_
     /* nucelotide probability given the last k nucleotides */
     cumdist_t** cs;
 
-    /* binary distribution of unique / match */
+    /* binary distribution of unique (0) / match (1) */
     cumdist_t* ms;
 
     /* distribution of edit operations */
     cumdist_t* es;
-
-    /* distribution over edit operation lengths */
-    cumdist_t* ls;
 
     /* 
      * Match format:
@@ -61,7 +58,7 @@ seqenc_t* seqenc_alloc(size_t k, quip_block_writer_t writer, void* writer_data)
     }
 
     E->ms = cumdist_alloc(2);
-    /*E->es = cumdist_alloc();*/
+    E->es = cumdist_alloc(4);
 
     return E;
 }
@@ -76,47 +73,49 @@ void seqenc_free(seqenc_t* E)
     }
     free(E->cs);
     cumdist_free(E->ms);
+    cumdist_free(E->es);
     free(E);
 }
 
 
 void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 {
+    uint32_t p, P;
+
+    p = cumdist_p_norm(E->ms, 0);
+    P = cumdist_p_norm(E->ms, 0);
+    ac_update(E->ac, p, P);
+    cumdist_add(E->ms, 0, 1);
+
     kmer_t u;
     size_t n = twobit_len(x);
-    uint32_t p, P, Z;
     size_t i;
     size_t ctx = 0;
     for (i = 0; i < n; ++i) {
         /* We encode 'N' as 0, so 1 is added to every nucleotide. */
         u = twobit_get(x, i) + 1;
 
-        Z = cumdist_Z(E->cs[ctx]);
-        p = ((uint64_t) cumdist_p(E->cs[ctx], u) << 32) / Z;
-        P = ((uint64_t) cumdist_P(E->cs[ctx], u) << 32) / Z;
-        if (P == 0) P = 0xffffffff;
+        p = cumdist_p_norm(E->cs[ctx], u);
+        P = cumdist_P_norm(E->cs[ctx], u);
         ac_update(E->ac, p, P);
 
         cumdist_add(E->cs[ctx], u, 1);
         ctx = (5 * ctx + u) % E->N;
     }
-
-    /* encode end-of-sequence sigil */
-    /*Z = cumdist_Z(E->cs[ctx]);*/
-    /*p = ((uint64_t) cumdist_p(E->cs[ctx], 5) << 32) / Z;*/
-    /*P = ((uint64_t) cumdist_P(E->cs[ctx], 5) << 32) / Z;*/
-    /*if (P == 0) P = 0xffffffff;*/
-    /*ac_update(E->ac, p, P);*/
-
-    /*cumdist_add(E->cs[ctx], 5, 1);*/
 }
 
 
 
 void seqenc_encode_char_seq(seqenc_t* E, const char* x)
 {
-    kmer_t u;
     uint32_t p, P;
+
+    p = cumdist_p_norm(E->ms, 0);
+    P = cumdist_p_norm(E->ms, 0);
+    ac_update(E->ac, p, P);
+    cumdist_add(E->ms, 0, 1);
+
+    kmer_t u;
     size_t ctx = 0;
     while (*x) {
         switch (*x) {
@@ -127,8 +126,8 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
             default: u = 0;
         }
 
-        p = cumdist_p(E->cs[ctx], u);
-        P = cumdist_P(E->cs[ctx], u);
+        p = cumdist_p_norm(E->cs[ctx], u);
+        P = cumdist_P_norm(E->cs[ctx], u);
         ac_update(E->ac, p, P);
 
         cumdist_add(E->cs[ctx], u, 1);
@@ -136,14 +135,81 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
 
         ++x;
     }
-
-    /* encode end-of-sequence sigil */
-    p = cumdist_p(E->cs[ctx], 5);
-    P = cumdist_P(E->cs[ctx], 5);
-    ac_update(E->ac, p, P);
-
-    cumdist_add(E->cs[ctx], 5, 1);
 }
 
+
+
+void seqenc_encode_alignment(seqenc_t* E, const sw_alignment_t* aln, const twobit_t* query)
+{
+    uint32_t p, P;
+
+    p = cumdist_p_norm(E->ms, 1);
+    P = cumdist_p_norm(E->ms, 1);
+    ac_update(E->ac, p, P);
+    cumdist_add(E->ms, 1, 1);
+
+    kmer_t u = twobit_get(query, 0);
+    size_t ctx = 0;
+    size_t i, j;
+    for (i = 0, j = 0; i < aln->len; ++i) {
+        switch (aln->ops[i]) {
+            case EDIT_MATCH:
+                p = cumdist_p_norm(E->es, EDIT_MATCH);
+                P = cumdist_P_norm(E->es, EDIT_MATCH);
+                ac_update(E->ac, p, P);
+                cumdist_add(E->es, EDIT_MATCH, 1);
+
+                ++j;
+                ctx = (5 * ctx + u) % E->N;
+                u = twobit_get(query, j) + 1;
+                break;
+
+            case EDIT_MISMATCH:
+                p = cumdist_p_norm(E->es, EDIT_MISMATCH);
+                P = cumdist_P_norm(E->es, EDIT_MISMATCH);
+                ac_update(E->ac, p, P);
+                cumdist_add(E->es, EDIT_MISMATCH, 1);
+
+                p = cumdist_p_norm(E->cs[ctx], u);
+                P = cumdist_P_norm(E->cs[ctx], u);
+                ac_update(E->ac, p, P);
+                cumdist_add(E->cs[ctx], u, 1);
+
+                ++j;
+                ctx = (5 * ctx + u) % E->N;
+                u = twobit_get(query, j) + 1;
+                break;
+
+            case EDIT_Q_GAP:
+                p = cumdist_p_norm(E->es, EDIT_Q_GAP);
+                P = cumdist_P_norm(E->es, EDIT_Q_GAP);
+                ac_update(E->ac, p, P);
+                cumdist_add(E->es, EDIT_Q_GAP, 1);
+                break;
+
+            case EDIT_S_GAP:
+                p = cumdist_p_norm(E->es, EDIT_S_GAP);
+                P = cumdist_P_norm(E->es, EDIT_S_GAP);
+                ac_update(E->ac, p, P);
+                cumdist_add(E->es, EDIT_S_GAP, 1);
+
+                p = cumdist_p_norm(E->cs[ctx], u);
+                P = cumdist_P_norm(E->cs[ctx], u);
+                ac_update(E->ac, p, P);
+                cumdist_add(E->cs[ctx], u, 1);
+
+                ++j;
+                ctx = (5 * ctx + u) % E->N;
+                u = twobit_get(query, j) + 1;
+                break;
+        }
+    }
+}
+
+
+void seqenc_flush(seqenc_t* E)
+{
+    // TODO
+}
 
 

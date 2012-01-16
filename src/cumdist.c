@@ -29,6 +29,7 @@ cumdist_t* cumdist_alloc(size_t n)
     memset(C->ls, 0, (n - 1) * sizeof(uint32_t));
 
     /* initialize every element to a pseudocount of one */
+    /* TODO: this is terribly slow */
     size_t i;
     for (i = 0; i < n; ++i) {
         cumdist_add(C, i, 1);
