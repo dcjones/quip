@@ -129,3 +129,24 @@ void ac_update(ac_t* E, uint32_t p, uint32_t P)
 }
 
 
+void ac_flush(ac_t* E)
+{
+    uint32_t b0 = E->b;
+
+    E->b = E->b + 0x40000000; /* b = b + D^(P-1) / 2 */
+    E->l = 0x3fffffff;        /* l = D^(P - 2) - 1 */
+
+    if (b0 > E->b) ac_propogate_carry(E);
+
+    ac_renormalize(E);
+
+
+    /* now, reset for continued use */
+
+    E->b = 0x00000000;
+    E->l = 0xffffffff;
+    E->bufpos = 0;
+
+}
+
+

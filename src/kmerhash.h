@@ -32,6 +32,7 @@ typedef struct kmer_pos_t_
 } kmer_pos_t;
 
 kmerhash_t* kmerhash_alloc();
+void        kmerhash_clear(kmerhash_t*);
 void        kmerhash_free(kmerhash_t*);
 
 size_t kmerhash_size(kmerhash_t*);

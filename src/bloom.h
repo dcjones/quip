@@ -30,6 +30,7 @@ typedef struct bloom_t_ bloom_t;
  * table, and m is the number of cells per bucket.
  */
 bloom_t* bloom_alloc(size_t n, size_t m);
+void     bloom_clear(bloom_t*);
 void     bloom_free(bloom_t*);
 
 unsigned int bloom_inc(bloom_t*, kmer_t);

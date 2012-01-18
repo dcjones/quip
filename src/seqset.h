@@ -40,6 +40,7 @@ typedef struct
 
 
 seqset_t* seqset_alloc();
+void      seqset_clear(seqset_t*);
 void      seqset_free(seqset_t*);
 uint32_t  seqset_inc_tb(seqset_t*, const twobit_t*);
 uint32_t  seqset_inc_eb(seqset_t*, const char*);

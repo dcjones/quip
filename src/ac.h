@@ -8,7 +8,9 @@
 
 /*
  * ac:
- * A general purpose arithmetic encoder.
+ * A general purpose arithmetic encoder, following mostly from the
+ * implementation described in "Introduction to Arithmetic Coding -- Theory and
+ * Practice" by Amir Said.
  */
 
 
@@ -19,6 +21,8 @@
 #include <stdint.h>
 
 
+/* Encoder */
+
 typedef struct ac_t_ ac_t;
 
 ac_t* ac_alloc(quip_block_writer_t writer, void* writer_data);
@@ -27,6 +31,16 @@ void  ac_free(ac_t*);
 /* Update the arithmetic coder with the symbol having probability p and
  * cumulative probability P. */
 void ac_update(ac_t*, uint32_t p, uint32_t P);
+
+/* Choose the final code value. */
+void ac_flush(ac_t*);
+
+
+
+/* Decoder */
+
+typedef struct ad_t_ ad_t;
+
 
 #endif
 

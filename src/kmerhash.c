@@ -37,6 +37,16 @@ kmerhash_t* kmerhash_alloc()
 }
 
 
+void kmerhash_clear(kmerhash_t* H)
+{
+    size_t i;
+    for (i = 0; i < H->n; ++i) free(H->slots[i]);
+    memset(H->slots, 0, H->n * sizeof(slot_t*));
+    memset(H->slot_sizes, 0, H->n * sizeof(size_t));
+    H->m = 0;
+}
+
+
 void kmerhash_free(kmerhash_t* H)
 {
     size_t i;

@@ -107,6 +107,17 @@ assembler_t* assembler_alloc(
 }
 
 
+static void assembler_reset(assembler_t* A)
+{
+    seqset_clear(A->S);
+    memset(A->ord, 0, A->ord_size * sizeof(uint32_t));
+    A->N = 0;
+
+    bloom_clear(A->B);
+    kmerhash_clear(A->H);
+}
+
+
 void assembler_free(assembler_t* A)
 {
     seqset_free(A->S);
@@ -557,6 +568,8 @@ void assembler_assemble(assembler_t* A)
     free(contigs);
 
     seqenc_flush(A->seqenc);
+
+    assembler_reset(A);
 }
 
 

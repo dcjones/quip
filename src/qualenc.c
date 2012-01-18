@@ -168,7 +168,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
 void qualenc_flush(qualenc_t* E)
 {
-    // TODO
+    ac_flush(E->ac);
 }
 
 

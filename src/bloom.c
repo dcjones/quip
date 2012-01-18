@@ -57,8 +57,7 @@ bloom_t* bloom_alloc(size_t n, size_t m)
 
     /* the '(. / 4 + 1) * 4' is to make sure things are aligned up to 32-bit
      * integers, mainly so valgrind doesn't whine. */
-    B->T = malloc(((NUM_SUBTABLES * n * m * cell_bytes) / 4 + 1) * 4);
-    assert(B->T != NULL);
+    B->T = malloc_or_die(((NUM_SUBTABLES * n * m * cell_bytes) / 4 + 1) * 4);
     memset(B->T, 0, ((NUM_SUBTABLES * n * m * cell_bytes) / 4 + 1) * 4);
 
     size_t i;
@@ -67,6 +66,12 @@ bloom_t* bloom_alloc(size_t n, size_t m)
     }
 
     return B;
+}
+
+
+void bloom_clear(bloom_t* B)
+{
+    memset(B->T, 0, ((NUM_SUBTABLES * B->n * B->m * cell_bytes) / 4 + 1) * 4);
 }
 
 

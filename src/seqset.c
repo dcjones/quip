@@ -43,6 +43,23 @@ static uint32_t probe(uint32_t h, uint32_t i)
     return h + i/c1 + (i*i)/c2;
 }
 
+static bool is_nil_key(const seqset_value_t* x)
+{
+    return x->seq.tb == NULL && x->cnt == 0;
+}
+
+
+static bool is_del_key(const seqset_value_t* x)
+{
+    return x->seq.tb == NULL && x->cnt == ~0U;
+}
+
+
+static bool is_nil_or_del_key(const seqset_value_t* x)
+{
+    return x->seq.tb == NULL;
+}
+
 
 
 seqset_t* seqset_alloc()
@@ -61,6 +78,22 @@ seqset_t* seqset_alloc()
 }
 
 
+void seqset_clear(seqset_t* S)
+{
+    size_t i;
+    for (i = 0; i < S->n; ++i) {
+        if (is_nil_or_del_key(S->xs + i)) continue;
+
+        if (S->xs[i].is_twobit) twobit_free(S->xs[i].seq.tb);
+        else free(S->xs[i].seq.eb);
+    }
+    memset(S->xs, 0, S->n * sizeof(seqset_value_t));
+
+    S->m = 0;
+    S->d = 0;
+}
+
+
 void seqset_free(seqset_t* S)
 {
     size_t i;
@@ -74,27 +107,6 @@ void seqset_free(seqset_t* S)
     }
     free(S->xs);
     free(S);
-}
-
-
-
-static bool is_nil_key(const seqset_value_t* x)
-{
-    return x->seq.tb == NULL && x->cnt == 0;
-}
-
-
-
-static bool is_del_key(const seqset_value_t* x)
-{
-    return x->seq.tb == NULL && x->cnt == ~0U;
-}
-
-
-
-static bool is_nil_or_del_key(const seqset_value_t* x)
-{
-    return x->seq.tb == NULL;
 }
 
 

@@ -184,7 +184,7 @@ void idenc_encode(idenc_t* E, const seq_t* x)
 
 void idenc_flush(idenc_t* E)
 {
-    // TODO
+    ac_flush(E->ac);
 }
 
 

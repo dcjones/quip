@@ -224,7 +224,7 @@ void seqenc_encode_alignment(seqenc_t* E,
 
 void seqenc_flush(seqenc_t* E)
 {
-    // TODO
+    ac_flush(E->ac);
 }
 
 
