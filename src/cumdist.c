@@ -132,6 +132,9 @@ void cumdist_check(cumdist_t* C)
 
 void cumdist_add(cumdist_t* C, size_t i, uint32_t x)
 {
+    /* prevent precision loss in the arithmetic coder */
+    if (C->fs[0] >= 0xffffff) return;
+
     /* ith leaf index */
     i = 2 * C->n - 2 - i;
 

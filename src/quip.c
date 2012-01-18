@@ -30,6 +30,7 @@
 
 const char* prog_name;
 
+bool quick_flag      = false;
 bool stdout_flag     = false;
 bool decompress_flag = false;
 bool keep_flag       = true;
@@ -41,6 +42,7 @@ void print_help()
     printf(
 "Usage: quip [OPTION]... [FILE]...\n"
 "Compress or decompress FASTQ sequence files with extreme prejudice.\n\n"
+"  -q, --quick        compress much quicker, at a slightly lower compression ratio\n"
 "  -c, --stdout       write on standard output, keep original files unchanged\n"
 "  -d, --decompress   decompress\n"
 "  -k, --keep         do not delete the input file(s)\n"
@@ -106,7 +108,7 @@ static int quip_compress(char** fns, size_t fn_count)
 
     if (fn_count == 0) {
         quip_write_header(stdout);
-        C = quip_comp_alloc(block_writer, stdout);
+        C = quip_comp_alloc(block_writer, stdout, quick_flag);
 
         fq = fastq_open(stdin);
 
@@ -135,7 +137,7 @@ static int quip_compress(char** fns, size_t fn_count)
                 quip_write_header(fout);
             }
 
-            C = quip_comp_alloc(block_writer, fout);
+            C = quip_comp_alloc(block_writer, fout, quick_flag);
 
             fq = fastq_open(fin);
 
@@ -171,6 +173,7 @@ int main(int argc, char* argv[])
 {
     static struct option long_options[] = 
     {
+        {"quick",      no_argument, NULL, 'q'},
         {"stdout",     no_argument, NULL, 'c'},
         {"decompress", no_argument, NULL, 'd'},
         {"keep",       no_argument, NULL, 'k'},
@@ -187,11 +190,15 @@ int main(int argc, char* argv[])
     if (strcmp(argv[0], "unquip") == 0) decompress_flag = true;
 
     while (1) {
-        opt = getopt_long(argc, argv, "cdkvhV", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "qcdkvhV", long_options, &opt_idx);
 
         if (opt == -1) break;
 
         switch (opt) {
+            case 'q':
+                quick_flag = true;
+                break;
+
             case 'c':
                 stdout_flag = true;
                 break;

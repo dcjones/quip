@@ -99,7 +99,7 @@ static void seq_writer(void* param, const uint8_t* data, size_t size)
 
 
 
-quip_compressor_t* quip_comp_alloc(quip_block_writer_t writer, void* writer_data)
+quip_compressor_t* quip_comp_alloc(quip_block_writer_t writer, void* writer_data, bool quick)
 {
     quip_compressor_t* C = malloc_or_die(sizeof(quip_compressor_t));
     C->writer = writer;
@@ -107,7 +107,7 @@ quip_compressor_t* quip_comp_alloc(quip_block_writer_t writer, void* writer_data
 
     C->idenc     = idenc_alloc(id_buf_writer, (void*) C);
     C->qualenc   = qualenc_alloc(qual_buf_writer, (void*) C);
-    C->assembler = assembler_alloc(seq_writer, (void*) C, assembler_k, aligner_k);
+    C->assembler = assembler_alloc(seq_writer, (void*) C, assembler_k, aligner_k, quick);
 
     C->qualbuf_size = 1024;
     C->qualbuf_len = 0;
@@ -151,6 +151,15 @@ void quip_comp_flush(quip_compressor_t* C)
         fprintf(stderr, "writing a block of %zu compressed bases...\n", C->buffered_bases);
     }
 
+    assembler_assemble(C->assembler);
+    if (verbose) {
+        fprintf(stderr, "\tseq: %zu / %zu (%0.2f%%)\n",
+                C->seq_comp_bytes, C->seq_bytes,
+                100.0 * (double) C->seq_comp_bytes / (double) C->seq_bytes);
+    }
+    C->seq_comp_bytes = 0;
+
+
     idenc_flush(C->idenc);
     C->writer(C->writer_data, C->idbuf, C->idbuf_len);
     if (verbose) {
@@ -168,14 +177,6 @@ void quip_comp_flush(quip_compressor_t* C)
                 100.0 * (double) C->qualbuf_len / (double) C->qual_bytes);
     }
     C->qualbuf_len = 0;
-
-    C->seq_comp_bytes = 0;
-    assembler_assemble(C->assembler);
-    if (verbose) {
-        fprintf(stderr, "\tseq: %zu / %zu (%0.2f%%)\n",
-                C->seq_comp_bytes, C->seq_bytes,
-                100.0 * (double) C->seq_comp_bytes / (double) C->seq_bytes);
-    }
 
 
     C->buffered_bases = 0;

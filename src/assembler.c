@@ -14,6 +14,9 @@
 
 struct assembler_t_
 {
+    /* don't actually assemble anything */
+    bool quick;
+
     /* function to write compressed output */
     quip_block_writer_t writer;
     void* writer_data;
@@ -61,10 +64,12 @@ struct assembler_t_
 
 assembler_t* assembler_alloc(
         quip_block_writer_t writer, void* writer_data,
-        size_t assemble_k, size_t align_k)
+        size_t assemble_k, size_t align_k, bool quick)
 {
     assembler_t* A = malloc_or_die(sizeof(assembler_t));
     assert(A != NULL);
+
+    A->quick = quick;
 
     A->writer = writer;
     A->writer_data = writer_data;
@@ -132,6 +137,11 @@ void assembler_free(assembler_t* A)
 
 void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
 {
+    if (A->quick) {
+        seqenc_encode_char_seq(A->seqenc, seq);
+        return;
+    }
+
     if (A->N == A->ord_size) {
         A->ord_size *= 2;
         A->ord = realloc_or_die(A->ord, A->ord_size * sizeof(uint32_t));
@@ -501,6 +511,11 @@ static void align_to_contigs(assembler_t* A,
 
 void assembler_assemble(assembler_t* A)
 {
+    if (A->quick) {
+        seqenc_flush(A->seqenc);
+        return;
+    }
+
     /* dump reads and sort by abundance */
     seqset_value_t* xs = seqset_dump(A->S);
     qsort(xs, seqset_size(A->S), sizeof(seqset_value_t), seqset_value_cnt_cmp);

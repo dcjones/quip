@@ -123,8 +123,8 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
         switch (*x) {
             case 'A': case 'a': case 'U': case 'u': u = 1; break;
             case 'C': case 'c': u = 2; break;
-            case 'G': case 'g': u = 3;
-            case 'T': case 't': u = 4;
+            case 'G': case 'g': u = 3; break;
+            case 'T': case 't': u = 4; break;
             default: u = 0;
         }
 

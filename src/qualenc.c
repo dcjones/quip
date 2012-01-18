@@ -106,18 +106,16 @@ static void qualenc_encode_qk(qualenc_t* E,
                               unsigned char q1,
                               unsigned char q)
 {
-    uint64_t Z;
     uint32_t p, P;
 
     /* encode quality score */
     cumdist_t* cs = E->M->cs[(i / 10) * qual_size * qual_size +
                              q1 * qual_size +
                              q2];
-    Z = cumdist_Z(cs);
-    p = ((uint64_t) cumdist_p(cs, q) << 32) / Z;
-    P = ((uint64_t) cumdist_P(cs, q) << 32) / Z;
 
-    if (P == 0) P = 0xffffffff;
+    p = cumdist_p_norm(cs, q);
+    P = cumdist_P_norm(cs, q);
+
     ac_update(E->ac, p, P);
 }
 

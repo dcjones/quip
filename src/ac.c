@@ -133,8 +133,8 @@ void ac_flush(ac_t* E)
 {
     uint32_t b0 = E->b;
 
-    E->b = E->b + 0x40000000; /* b = b + D^(P-1) / 2 */
-    E->l = 0x3fffffff;        /* l = D^(P - 2) - 1 */
+    E->b = E->b + 0x800000; /* b = b + D^(P-1) / 2 */
+    E->l = 0xffff;          /* l = D^(P - 2) - 1 */
 
     if (b0 > E->b) ac_propogate_carry(E);
 
