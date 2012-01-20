@@ -6,6 +6,7 @@ quip_SOURCES = quip.c version.h \
 			   assembler.h   assembler.c \
 			   bloom.h       bloom.c \
 			   cumdist.h     cumdist.c \
+			   dist.h        dist.c \
 			   idenc.h       idenc.c \
 			   kmer.h        kmer.c \
 			   kmerhash.h    kmerhash.c \

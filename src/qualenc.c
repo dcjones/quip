@@ -1,7 +1,7 @@
 
 #include "qualenc.h"
 #include "ac.h"
-#include "cumdist.h"
+#include "dist.h"
 #include "misc.h"
 #include <stdlib.h>
 #include <string.h>
@@ -19,13 +19,20 @@ const size_t qual_size  = 72;
 const size_t ms[] = {150};
 const size_t ms_size = sizeof(ms);
 
+/* Dependence on position within a read is modeled by using a fixed number of
+ * bins. */
+const size_t read_pos_bins = 10;
+
+/* How many dist_add calls are made before all the distributions are updated. */
+const size_t dist_update_delay = 100000;
+
 
 /*
  */
 typedef struct qualmodel_t_
 {
     /* Score given position, nucleotide, and previous score */
-    cumdist_t** cs;
+    dist_t** cs;
 
     /* Maximum read length. */
     size_t m;
@@ -36,12 +43,12 @@ typedef struct qualmodel_t_
 qualmodel_t* qualmodel_alloc()
 {
     qualmodel_t* M = malloc_or_die(sizeof(qualmodel_t));
-    M->m = ms[0] / 10;
+    M->m = ms[0] / read_pos_bins;
     size_t i;
 
-    M->cs = malloc_or_die(M->m * qual_size * qual_size * sizeof(cumdist_t*));
+    M->cs = malloc_or_die(M->m * qual_size * qual_size * sizeof(dist_t*));
     for (i = 0; i < M->m * qual_size * qual_size; ++i) {
-        M->cs[i] = cumdist_alloc(qual_size);
+        M->cs[i] = dist_alloc(qual_size);
     }
 
     return M;
@@ -53,7 +60,7 @@ void qualmodel_free(qualmodel_t* M)
 {
     size_t i;
     for (i = 0; i < M->m * qual_size * qual_size; ++i) {
-        cumdist_free(M->cs[i]);
+        dist_free(M->cs[i]);
     }
     free(M->cs);
 
@@ -77,6 +84,7 @@ unsigned char ascii_to_nucnum(char x)
 struct qualenc_t_
 {
     qualmodel_t* M;
+    size_t update_delay;
     ac_t* ac;
 };
 
@@ -86,6 +94,7 @@ qualenc_t* qualenc_alloc(quip_block_writer_t writer, void* writer_data)
     qualenc_t* E = malloc_or_die(sizeof(qualenc_t));
     E->M  = qualmodel_alloc();
     E->ac = ac_alloc(writer, writer_data);
+    E->update_delay = dist_update_delay;
 
     return E;
 }
@@ -109,24 +118,29 @@ static void qualenc_encode_qk(qualenc_t* E,
     uint32_t p, c;
 
     /* encode quality score */
-    cumdist_t* cs = E->M->cs[(i / 10) * qual_size * qual_size +
-                             q1 * qual_size +
-                             q2];
+    dist_t* cs = E->M->cs[(i / read_pos_bins) * qual_size * qual_size +
+                          q1 * qual_size +
+                          q2];
 
-    p = cumdist_p_norm(cs, q);
-    c = cumdist_c_norm(cs, q);
+    p = dist_P(cs, q);
+    c = dist_C(cs, q);
 
     ac_update(E->ac, p, c);
+}
+
+
+static void qualenc_update_dist(qualenc_t* E)
+{
+    size_t i;
+    for (i = 0; i < E->M->m * qual_size * qual_size; ++i) {
+        dist_update(E->M->cs[i]);
+    }
 }
 
 
 void qualenc_encode(qualenc_t* E, const seq_t* x)
 {
     if (x->qual.n == 0) return;
-
-    if (x->qual.n > E->M->m) {
-        // TODO: handle max read length increase
-    }
 
     /* the number of preceeding quality scores to use to predict the next */
     static const size_t k = 3;
@@ -157,9 +171,14 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
         qualenc_encode_qk(E, i, q2, q1, q);
 
         /* update model */
-        cumdist_add(E->M->cs[(i / 10) * qual_size * qual_size +
-                             q1 * qual_size +
-                             q2], q, 1);
+        dist_add(E->M->cs[(i / read_pos_bins) * qual_size * qual_size +
+                          q1 * qual_size +
+                          q2], q, 1);
+
+        if (--E->update_delay == 0) {
+            qualenc_update_dist(E);
+            E->update_delay = dist_update_delay;
+        }
     }
 }
 
