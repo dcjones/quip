@@ -96,6 +96,8 @@ void seqset_clear(seqset_t* S)
 
 void seqset_free(seqset_t* S)
 {
+    if (S == NULL) return;
+
     size_t i;
     for (i = 0; i < S->n; ++i) {
         if (S->xs[i].is_twobit) {

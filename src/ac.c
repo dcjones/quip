@@ -8,7 +8,7 @@
 
 struct ac_t_
 {
-    uint32_t b, l;
+    uint64_t b, l;
 
     uint8_t* buf;
     size_t buflen;
@@ -111,14 +111,14 @@ void ac_free(ac_t* E)
 
 
 
-void ac_update(ac_t* E, uint32_t p, uint32_t P)
+void ac_update(ac_t* E, uint64_t p, uint64_t P)
 {
-    uint32_t y = ((uint64_t) E->l * (uint64_t) P) >> 32;
-    uint32_t x = ((uint64_t) E->l * (uint64_t) (P - p)) >> 32;
+    uint64_t y = (E->l * P) >> 32;
+    uint64_t x = (E->l * (P - p)) >> 32;
 
     assert(y > x);
 
-    uint32_t b0 = E->b;
+    uint64_t b0 = E->b;
 
     E->b += x;
     E->l = y - x;
@@ -156,7 +156,7 @@ struct dec_t_
     void* reader_data;
 
     /* interval length */
-    uint32_t l;
+    uint64_t l;
 
     /* intput buffer */
     uint8_t* buf;

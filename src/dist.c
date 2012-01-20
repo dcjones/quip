@@ -86,13 +86,15 @@ void dist_add(dist_t* P, size_t i, uint32_t x)
     if (P->z + x >= 0xffffff) return;
 
     P->xs[i] += x;
-    P->z++;
+    P->z += x;
     P->update_pending = true;
 }
 
 
 static void sort_ord_insert(uint32_t* xs, size_t* ord, const size_t n)
 {
+    if (n < 2) return;
+
     uint32_t x;
     size_t o;
     int i, j;
@@ -109,12 +111,66 @@ static void sort_ord_insert(uint32_t* xs, size_t* ord, const size_t n)
     }
 }
 
+static void sort_ord_quick(uint32_t* xs, size_t* ord, const size_t n)
+{
+    if (n <= 10) {
+        sort_ord_insert(xs, ord, n);
+        return;
+    }
+
+    size_t pivot;
+    /* choose pivot as the median of the first last and middle */
+    if (xs[n/2] <= xs[n-1]) {
+        if (xs[0] <= xs[n/2])      pivot = n / 2;
+        else if (xs[0] <= xs[n-1]) pivot = 0;
+        else                       pivot = n - 1;
+    }
+    else {
+        if (xs[0] <= xs[n-1])      pivot = n - 1;
+        else if (xs[0] <= xs[n/2]) pivot = 0;
+        else                       pivot = n / 2;
+    }
+
+    uint32_t xs_tmp,  xs_piv  = xs[pivot];
+    size_t   ord_tmp, ord_piv = ord[pivot];
+
+    xs[pivot] = xs[n - 1];
+    xs[n - 1] = xs_piv;
+
+    ord[pivot] = ord[n - 1];
+    ord[n - 1] = ord_piv;
+
+    size_t i, j;
+    for (i = 0, j = 0; j < n - 1; ++j) {
+        if (xs[j] <= xs_piv) {
+            xs_tmp = xs[i];
+            xs[i]  = xs[j];
+            xs[j]  = xs_tmp;
+
+            ord_tmp = ord[i];
+            ord[i]  = ord[j];
+            ord[j]  = ord_tmp;
+
+            ++i;
+        }
+    }
+
+    xs[n - 1] = xs[i];
+    xs[i] = xs_piv;
+
+    ord[n - 1] = ord[i];
+    ord[i] = ord_piv;
+
+    sort_ord_quick(xs, ord, pivot);
+    sort_ord_quick(xs + pivot + 1, ord + pivot + 1, n - pivot - 1);
+}
+
 
 /* sort an array and keep track of the order */
 static void sort_ord_merge(uint32_t* xs, size_t* ord, const size_t n)
 {
     if (n < 2) return;
-    if (n < 10) {
+    if (n <= 7) {
         sort_ord_insert(xs, ord, n);
         return;
     }
@@ -163,12 +219,12 @@ void dist_update(dist_t* P)
 
     /* If we have accumulated many samples, the order is unlikely to change, so
      * we use insertion sort, otherwise merge sort. */
-    if (P->z < 10 * P->n) {
-        sort_ord_merge(P->ps, P->rev_ord, P->n);
-    }
-    else {
+    /*if (P->z < 10 * P->n && P->n > 7) {*/
+        /*sort_ord_quick(P->ps, P->rev_ord, P->n);*/
+    /*}*/
+    /*else {*/
         sort_ord_insert(P->ps, P->rev_ord, P->n);
-    }
+    /*}*/
 
 
     for (i = 0; i < P->n; ++i) {

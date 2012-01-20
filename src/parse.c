@@ -9,6 +9,7 @@
 #include "misc.h"
 #include <stdlib.h>
 #include <ctype.h>
+#include <string.h>
 
 
 static const char   qual_first = 33;
@@ -112,38 +113,46 @@ void fastq_refill(fastq_t* f)
 
 void fastq_get_line(fastq_t* f, str_t* s)
 {
+    s->n = 0;
+
     size_t i = 0;
-
-    if (f->state == STATE_EOF) goto fastq_get_line_done;
-
     while (1) {
-        switch (*f->c) {
-            case '\0':
-                fastq_refill(f);
-                if (f->state == STATE_EOF) goto fastq_get_line_done;
-                break;
+        while (f->c[i] != '\0' && f->c[i] != '\n') ++i;
 
-            case '\r':
-                f->c++;
-                break;
-
-            case '\n':
-                goto fastq_get_line_done;
-
-            default:
-                while (s->size < i + 2) {
+        if (f->c[i] == '\0') {
+            if (s)  {
+                while (s->size - s->n < i + 2) {
                     fastq_expand_str(s);
                 }
-                if (s) s->s[i++] = *f->c;
-                f->c++;
-        }
 
+                memcpy(s->s + s->n, f->c, i);
+                s->n += i;
+            }
+
+            fastq_refill(f);
+            i = 0;
+            if (f->state == STATE_EOF) break;
+        }
+        else {
+            if (s)  {
+                while (s->size - s->n < i + 2) {
+                    fastq_expand_str(s);
+                }
+
+                memcpy(s->s + s->n, f->c, i);
+                s->n += i;
+            }
+
+            f->c += i;
+
+            break;
+        }
     }
 
-fastq_get_line_done:
+
     if (s) {
-        s->s[i] = '\0';
-        s->n = i;
+        if (s->n > 0 && s->s[s->n - 1] == '\r') s->n--;
+        s->s[s->n] = '\0';
     }
 }
 
@@ -259,6 +268,11 @@ void fastq_rewind(fastq_t* fqf)
 
 void fastq_print(FILE* fout, seq_t* seq)
 {
+    size_t i;
+    for (i = 0; i < seq->qual.n; ++i) {
+        seq->qual.s[i] += qual_first;
+    }
+
     /* FASTQ */
     if (seq->qual.n > 0) {
         fprintf(fout, "@%s\n%s\n+%s\n%s\n",
@@ -273,6 +287,10 @@ void fastq_print(FILE* fout, seq_t* seq)
         fprintf(fout, ">%s\n%s\n",
                       seq->id1.s,
                       seq->seq.s );
+    }
+
+    for (i = 0; i < seq->qual.n; ++i) {
+        seq->qual.s[i] -= qual_first;
     }
 }
 

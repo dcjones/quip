@@ -31,7 +31,7 @@ void  ac_free(ac_t*);
 
 /* Update the arithmetic coder with the symbol having probability p and
  * cumulative probability P. */
-void ac_update(ac_t*, uint32_t p, uint32_t P);
+void ac_update(ac_t*, uint64_t p, uint64_t P);
 
 /* Choose the final code value. */
 void ac_flush(ac_t*);

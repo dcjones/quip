@@ -77,6 +77,8 @@ void bloom_clear(bloom_t* B)
 
 void bloom_free(bloom_t* B)
 {
+    if (B == NULL) return;
+
     free(B->T);
     free(B);
 }

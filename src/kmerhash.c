@@ -49,6 +49,8 @@ void kmerhash_clear(kmerhash_t* H)
 
 void kmerhash_free(kmerhash_t* H)
 {
+    if (H == NULL) return;
+
     size_t i;
     for (i = 0; i < H->n; ++i) {
         free(H->slots[i]);

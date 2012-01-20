@@ -67,7 +67,7 @@ assembler_t* assembler_alloc(
         size_t assemble_k, size_t align_k, bool quick)
 {
     assembler_t* A = malloc_or_die(sizeof(assembler_t));
-    assert(A != NULL);
+    memset(A, 0, sizeof(assembler_t));
 
     A->quick = quick;
 
@@ -88,25 +88,28 @@ assembler_t* assembler_alloc(
         A->align_kmer_mask = (A->align_kmer_mask << 2) | 0x3;
     }
 
-    A->S = seqset_alloc();
-
-    A->ord_size = 1024;
-    A->ord = malloc_or_die(A->ord_size * sizeof(const twobit_t*));
-
-    A->N = 0;
-
-
-    // TODO: set n and m in some principled way
-    A->B = bloom_alloc(8388608, 8);
-
-    A->x = twobit_alloc();
-
-
-    A->H = kmerhash_alloc();
-
-    A->count_cutoff = 2;
 
     A->seqenc = seqenc_alloc(5, writer, writer_data);
+
+    /* If we are not assembling, we do not need any of the data structure
+     * initialized below. */
+    if (!quick) {
+        A->S = seqset_alloc();
+
+        A->ord_size = 1024;
+        A->ord = malloc_or_die(A->ord_size * sizeof(const twobit_t*));
+
+        A->N = 0;
+
+        // TODO: set n and m in some principled way
+        A->B = bloom_alloc(8388608, 8);
+
+        A->x = twobit_alloc();
+
+        A->H = kmerhash_alloc();
+
+        A->count_cutoff = 2;
+    }
 
     return A;
 }
