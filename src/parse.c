@@ -11,6 +11,8 @@
 #include <ctype.h>
 
 
+static const char   qual_first = 33;
+
 static const size_t init_str_size  = 128;
 static const size_t fastq_buf_size = 4096;
 
@@ -149,6 +151,8 @@ fastq_get_line_done:
 
 int fastq_next(fastq_t* f, seq_t* seq)
 {
+    size_t i;
+
     if (f->state == STATE_EOF) return 0;
 
     while (1) {
@@ -220,6 +224,12 @@ int fastq_next(fastq_t* f, seq_t* seq)
         /* read quality string */
         else if (f->state == STATE_QUAL) {
             fastq_get_line(f, &seq->qual);
+
+            /* subtract the first printable ascii character to get quality
+             * scores starting at 0 */
+            for (i = 0; i < seq->qual.n; ++i) seq->qual.s[i] -= qual_first;
+
+
             if (f->state == STATE_EOF) return 1;
 
             f->state = STATE_ID1;

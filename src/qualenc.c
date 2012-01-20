@@ -9,22 +9,22 @@
 
 
 /* Every quality encoding scheme uses ASCII charocters in [33, 104] */
-const char   qual_first = 33;
-const char   qual_last  = 104;
-const size_t qual_size  = 72;
+static const char   qual_first = 33;
+static const char   qual_last  = 104;
+static const size_t qual_size  = 72;
 
 /* We expand arrays as we see longer reads. This is the expansion regime, which
  * is based on common read lengths*/
 /*const size_t ms[] = {36, 50, 55, 75, 100, 150};*/
-const size_t ms[] = {150};
-const size_t ms_size = sizeof(ms);
+static const size_t ms[] = {150};
+static const size_t ms_size = sizeof(ms);
 
 /* Dependence on position within a read is modeled by using a fixed number of
  * bins. */
-const size_t read_pos_bins = 10;
+static const size_t read_pos_bins = 10;
 
 /* How many dist_add calls are made before all the distributions are updated. */
-const size_t dist_update_delay = 100000;
+static const size_t dist_update_delay = 1000000;
 
 
 /*
@@ -108,6 +108,14 @@ void qualenc_free(qualenc_t* E)
 }
 
 
+static void qualenc_update_dist(qualenc_t* E)
+{
+    size_t i;
+    for (i = 0; i < E->M->m * qual_size * qual_size; ++i) {
+        dist_update(E->M->cs[i]);
+    }
+}
+
 /* encode a single quality/run-length pair */
 static void qualenc_encode_qk(qualenc_t* E,
                               size_t        i,
@@ -117,68 +125,86 @@ static void qualenc_encode_qk(qualenc_t* E,
 {
     uint32_t p, c;
 
+    size_t idx = (i / read_pos_bins) * qual_size * qual_size +
+                 q1 * qual_size +
+                 q2;
+
     /* encode quality score */
-    dist_t* cs = E->M->cs[(i / read_pos_bins) * qual_size * qual_size +
-                          q1 * qual_size +
-                          q2];
+    dist_t* cs = E->M->cs[idx];
 
     p = dist_P(cs, q);
     c = dist_C(cs, q);
 
     ac_update(E->ac, p, c);
+
+    dist_add(cs, q, 1);
+
+    if (--E->update_delay == 0) {
+        qualenc_update_dist(E);
+        E->update_delay = dist_update_delay;
+    }
 }
 
 
-static void qualenc_update_dist(qualenc_t* E)
+static inline char charmax2(char a, char b)
 {
-    size_t i;
-    for (i = 0; i < E->M->m * qual_size * qual_size; ++i) {
-        dist_update(E->M->cs[i]);
-    }
+    return a > b ? a : b;
+}
+
+static inline char charmax3(char a, char b, char c)
+{
+    char d = a > b ? a : b;
+    return c > d ? c : d;
 }
 
 
 void qualenc_encode(qualenc_t* E, const seq_t* x)
 {
-    if (x->qual.n == 0) return;
+    unsigned char q;   /* quality score */
+    unsigned char q1;  /* preceding quality score */
+    unsigned char q2;  /* maximum of three quality scores preceding q1 */
 
-    /* the number of preceeding quality scores to use to predict the next */
-    static const size_t k = 3;
+    size_t i;
 
-    unsigned char q1, q2; /* preceeding quality score */
-    unsigned char q;  /* quality score */
+    /* I am using the previous 4 positions to predict the next quality score.
+     * These special cases here for positions 0 <= i <= 3 are a bit ugly but
+     * speed the loop up considerably.
+     */
 
-    size_t i, j;
-    for (i = 0; i < x->qual.n; ++i) {
-        q = x->qual.s[i] - qual_first;
+    /* case: i = 0 */
+    if (x->qual.n >= 1) {
+        qualenc_encode_qk(E, 0, 0, 0, x->qual.s[0]);
+    }
 
-        /* previous quality score */
-        q1 = i >= 1 ? x->qual.s[i - 1] - qual_first : 0;
+    /* case: i = 1 */
+    if (x->qual.n >= 2) {
+        qualenc_encode_qk(E, 1, 0, x->qual.s[0], x->qual.s[1]);
+    }
 
-        /* q2 is set to the maximum of the quality scores 
-         * at positions {i - 1 - k, ...,  i - 2} */
-        if (i >= 2) {
-            q2 = qual_first;
-            j = i >= k + 1 ? i - 1 - k : 0;
-            for( ; j <= i - 2; ++j) {
-                if (x->qual.s[j] > q2) q2 = x->qual.s[j];
-            }
-            q2 -= qual_first;
-        }
-        else q2 = 0;
+    /* case: i = 2 */
+    if (x->qual.n >= 3) {
+        qualenc_encode_qk(E, 2, x->qual.s[0], x->qual.s[1], x->qual.s[2]);
+    }
+
+    /* case: i = 3 */
+    if (x->qual.n >= 4) {
+        qualenc_encode_qk(E, 3,
+                charmax2(x->qual.s[0], x->qual.s[1]),
+                x->qual.s[2], x->qual.s[3]);
+    }
+
+    /* case: i >= 4 */
+    for (i = 4; i < x->qual.n; ++i) {
+
+        q  = x->qual.s[i];
+        q1 = x->qual.s[i - 1];
+        q2 = charmax3(
+                x->qual.s[i - 2],
+                x->qual.s[i - 3],
+                x->qual.s[i - 4]);
 
 
         qualenc_encode_qk(E, i, q2, q1, q);
-
-        /* update model */
-        dist_add(E->M->cs[(i / read_pos_bins) * qual_size * qual_size +
-                          q1 * qual_size +
-                          q2], q, 1);
-
-        if (--E->update_delay == 0) {
-            qualenc_update_dist(E);
-            E->update_delay = dist_update_delay;
-        }
     }
 }
 

@@ -18,7 +18,7 @@
 #define QUIP_AC
 
 #include "quip.h"
-#include "cumdist.h"
+#include "dist.h"
 #include <stdint.h>
 
 
@@ -45,7 +45,7 @@ typedef struct dec_t_ dec_t;
 dec_t* dec_alloc(quip_reader_t reader, void* reader_data);
 void dec_free(dec_t*);
 
-size_t dec_next(dec_t*, cumdist_t* C);
+size_t dec_next(dec_t*, dist_t* C);
 
 #endif
 

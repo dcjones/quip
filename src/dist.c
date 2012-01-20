@@ -46,6 +46,10 @@ dist_t* dist_alloc(size_t n)
     for (i = 0; i < n; ++i) P->xs[i] = 1;
     P->z = n;
 
+    for (i = 0; i < n; ++i){
+        P->ord[i] = P->rev_ord[i] = i;
+    }
+
     P->update_pending = true;
 
     dist_update(P);
@@ -87,7 +91,7 @@ void dist_add(dist_t* P, size_t i, uint32_t x)
 }
 
 
-static void sort_ord_insert_loop(uint32_t* xs, size_t* ord, const size_t n)
+static void sort_ord_insert(uint32_t* xs, size_t* ord, const size_t n)
 {
     uint32_t x;
     size_t o;
@@ -107,16 +111,16 @@ static void sort_ord_insert_loop(uint32_t* xs, size_t* ord, const size_t n)
 
 
 /* sort an array and keep track of the order */
-static void sort_ord_merge_loop(uint32_t* xs, size_t* ord, const size_t n)
+static void sort_ord_merge(uint32_t* xs, size_t* ord, const size_t n)
 {
     if (n < 2) return;
     if (n < 10) {
-        sort_ord_insert_loop(xs, ord, n);
+        sort_ord_insert(xs, ord, n);
         return;
     }
 
-    sort_ord_merge_loop(xs, ord, n / 2);
-    sort_ord_merge_loop(xs + n / 2, ord + n / 2, n - n / 2);
+    sort_ord_merge(xs, ord, n / 2);
+    sort_ord_merge(xs + n / 2, ord + n / 2, n - n / 2);
 
     /* merge */
     size_t i = 0;
@@ -145,32 +149,28 @@ static void sort_ord_merge_loop(uint32_t* xs, size_t* ord, const size_t n)
 }
 
 
-static void sort_ord(uint32_t* xs, size_t* ord, const size_t n)
-{
-    size_t i;
-    for (i = 0; i < n; ++i) ord[i] = i;
-
-    sort_ord_merge_loop(xs, ord, n);
-}
-
-
-static void permute(uint32_t* xs,
-        const size_t* ord, const size_t* rev_ord, const size_t n)
-{
-    // TODO
-}
-
 
 void dist_update(dist_t* P)
 {
     if (!P->update_pending) return;
 
-    memcpy(P->ps, P->xs, P->n * sizeof(uint32_t));
-    permute(P->ps, P->ord, P->ord_rev, P->n);
+    size_t i;
+    for (i = 0; i < P->n; ++i) {
+        P->ps[P->ord[i]] = P->xs[i];
+    }
 
     /* sort symbols by frequency */
-    sort_ord(P->ps, P->rev_ord, P->n);
-    size_t i;
+
+    /* If we have accumulated many samples, the order is unlikely to change, so
+     * we use insertion sort, otherwise merge sort. */
+    if (P->z < 10 * P->n) {
+        sort_ord_merge(P->ps, P->rev_ord, P->n);
+    }
+    else {
+        sort_ord_insert(P->ps, P->rev_ord, P->n);
+    }
+
+
     for (i = 0; i < P->n; ++i) {
         P->ord[P->rev_ord[i]] = i;
     }
