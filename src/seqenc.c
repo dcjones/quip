@@ -6,8 +6,18 @@
 
 
 /* How many dist_add calls are made before all the distributions are updated. */
-static const size_t dist_update_delay = 1000000;
+static const size_t dist_update_delay = 10000;
 
+/* map nucleotide ascii characters to numbers */
+static const uint8_t nuc_map[256] =
+  { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 struct seqenc_t_
 {
@@ -129,10 +139,11 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
         dist_add(E->cs[ctx], u, 1);
         ctx = (5 * ctx + u) % E->N;
 
-        if (--E->update_delay == 0) {
-            seqenc_update_dist(E);
-            E->update_delay = dist_update_delay;
-        }
+    }
+
+    if (--E->update_delay == 0) {
+        seqenc_update_dist(E);
+        E->update_delay = dist_update_delay;
     }
 }
 
@@ -150,14 +161,7 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
     kmer_t u;
     size_t ctx = 0;
     while (*x) {
-        switch (*x) {
-            case 'A': case 'a': case 'U': case 'u': u = 1; break;
-            case 'C': case 'c': u = 2; break;
-            case 'G': case 'g': u = 3; break;
-            case 'T': case 't': u = 4; break;
-            default: u = 0;
-        }
-
+        u = nuc_map[(uint8_t) *x];
         p = dist_P(E->cs[ctx], u);
         c = dist_C(E->cs[ctx], u);
         ac_update(E->ac, p, c);
@@ -166,11 +170,11 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
         ctx = (5 * ctx + u) % E->N;
 
         ++x;
+    }
 
-        if (--E->update_delay == 0) {
-            seqenc_update_dist(E);
-            E->update_delay = dist_update_delay;
-        }
+    if (--E->update_delay == 0) {
+        seqenc_update_dist(E);
+        E->update_delay = dist_update_delay;
     }
 }
 
@@ -253,11 +257,11 @@ void seqenc_encode_alignment(seqenc_t* E,
         }
 
         last_op = ((last_op * 4) + aln->ops[i]) % 16;
+    }
 
-        if (--E->update_delay == 0) {
-            seqenc_update_dist(E);
-            E->update_delay = dist_update_delay;
-        }
+    if (--E->update_delay == 0) {
+        seqenc_update_dist(E);
+        E->update_delay = dist_update_delay;
     }
 }
 

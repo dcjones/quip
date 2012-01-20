@@ -117,7 +117,7 @@ void fastq_get_line(fastq_t* f, str_t* s)
 
     size_t i = 0;
     while (1) {
-        while (f->c[i] != '\0' && f->c[i] != '\n') ++i;
+        while (f->c[i] >= '\r') ++i;
 
         if (f->c[i] == '\0') {
             if (s)  {

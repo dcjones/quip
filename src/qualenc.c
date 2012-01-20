@@ -24,7 +24,7 @@ static const size_t ms_size = sizeof(ms);
 static const size_t read_pos_bins = 10;
 
 /* How many dist_add calls are made before all the distributions are updated. */
-static const size_t dist_update_delay = 1000000;
+static const size_t dist_update_delay = 25000;
 
 
 /*
@@ -138,11 +138,6 @@ static void qualenc_encode_qk(qualenc_t* E,
     ac_update(E->ac, p, c);
 
     dist_add(cs, q, 1);
-
-    if (--E->update_delay == 0) {
-        qualenc_update_dist(E);
-        E->update_delay = dist_update_delay;
-    }
 }
 
 
@@ -205,6 +200,11 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
 
         qualenc_encode_qk(E, i, q2, q1, q);
+    }
+
+    if (--E->update_delay == 0) {
+        qualenc_update_dist(E);
+        E->update_delay = dist_update_delay;
     }
 }
 

@@ -111,16 +111,16 @@ void ac_free(ac_t* E)
 
 
 
-void ac_update(ac_t* E, uint64_t p, uint64_t P)
+void ac_update(ac_t* E, uint64_t p, uint64_t c)
 {
-    uint64_t y = (E->l * P) >> 32;
-    uint64_t x = (E->l * (P - p)) >> 32;
+    uint64_t y = (E->l * c) >> 32;
+    uint64_t x = (E->l * (c - p)) >> 32;
 
     assert(y > x);
 
     uint64_t b0 = E->b;
 
-    E->b += x;
+    E->b += x; // XXX mod 2^32 ??
     E->l = y - x;
 
     if (b0 > E->b) ac_propogate_carry(E);
