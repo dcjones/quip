@@ -150,3 +150,60 @@ void ac_flush(ac_t* E)
 }
 
 
+struct dec_t_
+{
+    quip_reader_t reader;
+    void* reader_data;
+
+    /* interval length */
+    uint32_t l;
+
+    /* intput buffer */
+    uint8_t* buf;
+    size_t bufsize;
+
+    /* the next byte in the input buffer */
+    uint8_t next;
+
+    /* available bytes */
+    size_t avail;
+};
+
+
+static void dec_refill(dec_t* D)
+{
+    if (D->avail > 0 && D->next != D->buf) {
+        memmove(D->buf, D->next, D->avail);
+        D->next = D->buf;
+    }
+
+    if (D->avail < D->bufsize) {
+        D->avail += D->reader(D->reader_data, D->buf + D->avail, D->bufsize - D->avail);
+    }
+}
+
+
+dec_t* dec_alloc(quip_reader_t reader, void* reader_data)
+{
+    dec_t* D = malloc_or_die(sizeof(dec_t));
+
+    D->reader      = reader;
+    D->reader_data = reader_data;
+    D->l = 0xffffffff;
+
+    D->bufsize = 4096;
+    D->buf = malloc_or_die(D->bufsize * sizeof(uint8_t));
+    D->avail = 0;
+    D->next = D->buf;
+}
+
+
+void dec_free(dec_t* D)
+{
+    free(D->buf);
+    free(D);
+}
+
+
+
+

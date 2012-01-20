@@ -17,6 +17,43 @@ struct cumdist_t_
 };
 
 
+
+static inline size_t parent_idx (size_t i) { return (i - 1) / 2; }
+static inline size_t left_idx   (size_t i) { return 2 * i + 1; }
+static inline size_t right_idx  (size_t i) { return 2 * i + 2; }
+
+/* index of the i'th leaf node */
+static inline size_t leaf_idx (size_t i, size_t n)
+{
+    return 2 * n - 2 - i;
+}
+
+
+/* If all (or many) of the leaves change at once, call this function to
+ * efficiently update the internal nodes of the heap. */
+static void cumdist_update_tree(cumdist_t* C)
+{
+    size_t i, j;
+
+    for (i = leaf_idx(C->n - 1, C->n) - 1; 1; --i) {
+        C->fs[i] = 0;
+
+        j = left_idx(i);
+        if (j < 2 * C->n - 1) {
+            C->ls[i] = C->fs[j];
+            C->fs[i] += C->fs[j];
+        }
+
+        j = right_idx(i);
+        if (j < 2 * C->n - 1) {
+            C->fs[i] += C->fs[j];
+        }
+
+        if (i == 0) break;
+    }
+}
+
+
 cumdist_t* cumdist_alloc(size_t n)
 {
     cumdist_t* C = malloc_or_die(sizeof(cumdist_t));
@@ -29,11 +66,12 @@ cumdist_t* cumdist_alloc(size_t n)
     memset(C->ls, 0, (n - 1) * sizeof(uint32_t));
 
     /* initialize every element to a pseudocount of one */
-    /* TODO: this is terribly slow */
     size_t i;
     for (i = 0; i < n; ++i) {
-        cumdist_add(C, i, 1);
+        C->fs[leaf_idx(i, C->n)] = 1;
     }
+
+    cumdist_update_tree(C);
 
     return C;
 }
@@ -48,11 +86,6 @@ void cumdist_free(cumdist_t* C)
 
 
 size_t cumdist_n(const cumdist_t* C) { return C->n; }
-
-
-static inline size_t parent_idx (size_t i) { return (i - 1) / 2; }
-static inline size_t left_idx   (size_t i) { return 2 * i + 1; }
-static inline size_t right_idx  (size_t i) { return 2 * i + 2; }
 
 
 uint32_t cumdist_p(const cumdist_t* C, size_t i)
@@ -71,7 +104,7 @@ uint32_t cumdist_p_norm(const cumdist_t* C, size_t i)
 }
 
 
-uint32_t cumdist_P(const cumdist_t* C, size_t i)
+uint32_t cumdist_c(const cumdist_t* C, size_t i)
 {
     /* ith leaf index */
     i = 2 * C->n - 2 - i;
@@ -86,7 +119,7 @@ uint32_t cumdist_P(const cumdist_t* C, size_t i)
 }
 
 
-uint32_t cumdist_P_norm(const cumdist_t* C, size_t i)
+uint32_t cumdist_c_norm(const cumdist_t* C, size_t i)
 {
     /* ith leaf index */
     i = 2 * C->n - 2 - i;
@@ -104,7 +137,7 @@ uint32_t cumdist_P_norm(const cumdist_t* C, size_t i)
 }
 
 
-uint32_t cumdist_Z(const cumdist_t* C)
+uint32_t cumdist_z(const cumdist_t* C)
 {
     return C->fs[0];
 }

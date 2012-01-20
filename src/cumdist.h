@@ -28,6 +28,7 @@ typedef struct cumdist_t_ cumdist_t;
 cumdist_t* cumdist_alloc(size_t n);
 void       cumdist_free(cumdist_t*);
 
+/* alphabet size */
 size_t cumdist_n(const cumdist_t*);
 
 /* frequency */
@@ -37,11 +38,11 @@ uint32_t cumdist_p_norm(const cumdist_t*, size_t i);
 /* the frequency of elements <= i, where the ordering is fixed but arbitrary
  * (i.e., DO NOT depend on i < j implying P(i) <= P(j))
  */
-uint32_t cumdist_P(const cumdist_t*, size_t i);
-uint32_t cumdist_P_norm(const cumdist_t*, size_t i);
+uint32_t cumdist_c(const cumdist_t*, size_t i);
+uint32_t cumdist_c_norm(const cumdist_t*, size_t i);
 
 /* total frequency */
-uint32_t cumdist_Z(const cumdist_t*);
+uint32_t cumdist_z(const cumdist_t*);
 
 /* add x to thefrequency of element i */
 void cumdist_add(cumdist_t*, size_t i, uint32_t x);

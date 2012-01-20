@@ -18,6 +18,7 @@
 #define QUIP_AC
 
 #include "quip.h"
+#include "cumdist.h"
 #include <stdint.h>
 
 
@@ -39,8 +40,12 @@ void ac_flush(ac_t*);
 
 /* Decoder */
 
-typedef struct ad_t_ ad_t;
+typedef struct dec_t_ dec_t;
 
+dec_t* dec_alloc(quip_reader_t reader, void* reader_data);
+void dec_free(dec_t*);
+
+size_t dec_next(dec_t*, cumdist_t* C);
 
 #endif
 

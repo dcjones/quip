@@ -90,12 +90,12 @@ static bool issep(char c)
 
 void idenc_encode(idenc_t* E, const seq_t* x)
 {
-    uint32_t p, P;
+    uint32_t p, c;
     size_t i, j;
     size_t matches;
     size_t group = 0;
 
-    size_t c;
+    size_t ctx;
 
     const str_t* id = &x->id1;
 
@@ -129,22 +129,22 @@ void idenc_encode(idenc_t* E, const seq_t* x)
         }
 
         p = cumdist_p_norm(E->ms[group], matches);
-        P = cumdist_p_norm(E->ms[group], matches);
-        ac_update(E->ac, p, P);
+        c = cumdist_c_norm(E->ms[group], matches);
+        ac_update(E->ac, p, c);
         cumdist_add(E->ms[group], matches, 1);
 
         /* write trailing whitespace */
         while (i < id->n + 1 && issep(id->s[i])) {
-            c = 128 * 128 * (group >= max_groups ? max_groups - 1 : group);
-            c += 128 * (i - 1 < id->n ? id->s[i - 1] : 0);
+            ctx = 128 * 128 * (group >= max_groups ? max_groups - 1 : group);
+            ctx += 128 * (i - 1 < id->n ? id->s[i - 1] : 0);
             /*c += 128 * (j - 1 < E->lastid_len ? E->lastid[j - 1] : 0);*/
-            c += j < E->lastid_len ? E->lastid[j] : 0;
-            c %= max_groups * 128 * 128;
+            ctx += j < E->lastid_len ? E->lastid[j] : 0;
+            ctx %= max_groups * 128 * 128;
 
-            p = cumdist_p_norm(E->ds[c], id->s[i]);
-            P = cumdist_p_norm(E->ds[c], id->s[i]);
-            ac_update(E->ac, p, P);
-            cumdist_add(E->ds[c], id->s[i], 1);
+            p = cumdist_p_norm(E->ds[ctx], id->s[i]);
+            c = cumdist_c_norm(E->ds[ctx], id->s[i]);
+            ac_update(E->ac, p, c);
+            cumdist_add(E->ds[ctx], id->s[i], 1);
             ++i;
 
             if (j < E->lastid_len && issep(E->lastid[j])) ++j;
@@ -152,16 +152,16 @@ void idenc_encode(idenc_t* E, const seq_t* x)
 
         /* write non-matches */
         while (i < id->n + 1 && !issep(id->s[i])) {
-            c = 128 * 128 * (group >= max_groups ? max_groups - 1 : group);
-            c += 128 * (i - 1 < id->n ? id->s[i - 1] : 0);
+            ctx = 128 * 128 * (group >= max_groups ? max_groups - 1 : group);
+            ctx += 128 * (i - 1 < id->n ? id->s[i - 1] : 0);
             /*c += 128 * (j - 1 < E->lastid_len ? E->lastid[j - 1] : 0);*/
-            c += j < E->lastid_len ? E->lastid[j] : 0;
-            c %= max_groups * 128 * 128;
+            ctx += j < E->lastid_len ? E->lastid[j] : 0;
+            ctx %= max_groups * 128 * 128;
 
-            p = cumdist_p_norm(E->ds[c], id->s[i]);
-            P = cumdist_p_norm(E->ds[c], id->s[i]);
-            ac_update(E->ac, p, P);
-            cumdist_add(E->ds[c], id->s[i], 1);
+            p = cumdist_p_norm(E->ds[ctx], id->s[i]);
+            c = cumdist_c_norm(E->ds[ctx], id->s[i]);
+            ac_update(E->ac, p, c);
+            cumdist_add(E->ds[ctx], id->s[i], 1);
             ++i;
 
             if (j < E->lastid_len && !issep(E->lastid[j])) ++j;

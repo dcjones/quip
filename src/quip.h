@@ -13,7 +13,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-typedef void (*quip_block_writer_t) (void*, const uint8_t*, size_t);
+typedef void   (*quip_block_writer_t) (void*, const uint8_t*, size_t);
+typedef size_t (*quip_reader_t) (void*, uint8_t*, size_t);
 
 typedef struct quip_compressor_t_ quip_compressor_t;
 quip_compressor_t* quip_comp_alloc(quip_block_writer_t, void* writer_data, bool quick);

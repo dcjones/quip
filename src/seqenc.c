@@ -82,11 +82,11 @@ void seqenc_free(seqenc_t* E)
 
 void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 {
-    uint32_t p, P;
+    uint32_t p, c;
 
     p = cumdist_p_norm(E->ms, 0);
-    P = cumdist_P_norm(E->ms, 0);
-    ac_update(E->ac, p, P);
+    c = cumdist_c_norm(E->ms, 0);
+    ac_update(E->ac, p, c);
     cumdist_add(E->ms, 0, 1);
 
     kmer_t u;
@@ -98,8 +98,8 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
         u = twobit_get(x, i) + 1;
 
         p = cumdist_p_norm(E->cs[ctx], u);
-        P = cumdist_P_norm(E->cs[ctx], u);
-        ac_update(E->ac, p, P);
+        c = cumdist_c_norm(E->cs[ctx], u);
+        ac_update(E->ac, p, c);
 
         cumdist_add(E->cs[ctx], u, 1);
         ctx = (5 * ctx + u) % E->N;
@@ -110,11 +110,11 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 
 void seqenc_encode_char_seq(seqenc_t* E, const char* x)
 {
-    uint32_t p, P;
+    uint32_t p, c;
 
     p = cumdist_p_norm(E->ms, 0);
-    P = cumdist_P_norm(E->ms, 0);
-    ac_update(E->ac, p, P);
+    c = cumdist_c_norm(E->ms, 0);
+    ac_update(E->ac, p, c);
     cumdist_add(E->ms, 0, 1);
 
     kmer_t u;
@@ -129,8 +129,8 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
         }
 
         p = cumdist_p_norm(E->cs[ctx], u);
-        P = cumdist_P_norm(E->cs[ctx], u);
-        ac_update(E->ac, p, P);
+        c = cumdist_c_norm(E->cs[ctx], u);
+        ac_update(E->ac, p, c);
 
         cumdist_add(E->cs[ctx], u, 1);
         ctx = (5 * ctx + u) % E->N;
@@ -145,16 +145,16 @@ void seqenc_encode_alignment(seqenc_t* E,
         size_t contig_idx, uint8_t strand,
         const sw_alignment_t* aln, const twobit_t* query)
 {
-    uint32_t p, P;
+    uint32_t p, c;
 
     p = cumdist_p_norm(E->ms, 1);
-    P = cumdist_P_norm(E->ms, 1);
-    ac_update(E->ac, p, P);
+    c = cumdist_c_norm(E->ms, 1);
+    ac_update(E->ac, p, c);
     cumdist_add(E->ms, 1, 1);
 
     p = cumdist_p_norm(E->ss, strand);
-    P = cumdist_P_norm(E->ss, strand);
-    ac_update(E->ac, p, P);
+    c = cumdist_c_norm(E->ss, strand);
+    ac_update(E->ac, p, c);
     cumdist_add(E->ss, strand, 1);
 
     // TODO: output contig number
@@ -168,8 +168,8 @@ void seqenc_encode_alignment(seqenc_t* E,
         switch (aln->ops[i]) {
             case EDIT_MATCH:
                 p = cumdist_p_norm(E->es[last_op], EDIT_MATCH);
-                P = cumdist_P_norm(E->es[last_op], EDIT_MATCH);
-                ac_update(E->ac, p, P);
+                c = cumdist_c_norm(E->es[last_op], EDIT_MATCH);
+                ac_update(E->ac, p, c);
                 cumdist_add(E->es[last_op], EDIT_MATCH, 1);
 
                 ++j;
@@ -179,13 +179,13 @@ void seqenc_encode_alignment(seqenc_t* E,
 
             case EDIT_MISMATCH:
                 p = cumdist_p_norm(E->es[last_op], EDIT_MISMATCH);
-                P = cumdist_P_norm(E->es[last_op], EDIT_MISMATCH);
-                ac_update(E->ac, p, P);
+                c = cumdist_c_norm(E->es[last_op], EDIT_MISMATCH);
+                ac_update(E->ac, p, c);
                 cumdist_add(E->es[last_op], EDIT_MISMATCH, 1);
 
                 p = cumdist_p_norm(E->cs[ctx], u);
-                P = cumdist_P_norm(E->cs[ctx], u);
-                ac_update(E->ac, p, P);
+                c = cumdist_c_norm(E->cs[ctx], u);
+                ac_update(E->ac, p, c);
                 cumdist_add(E->cs[ctx], u, 1);
 
                 ++j;
@@ -195,20 +195,20 @@ void seqenc_encode_alignment(seqenc_t* E,
 
             case EDIT_Q_GAP:
                 p = cumdist_p_norm(E->es[last_op], EDIT_Q_GAP);
-                P = cumdist_P_norm(E->es[last_op], EDIT_Q_GAP);
-                ac_update(E->ac, p, P);
+                c = cumdist_c_norm(E->es[last_op], EDIT_Q_GAP);
+                ac_update(E->ac, p, c);
                 cumdist_add(E->es[last_op], EDIT_Q_GAP, 1);
                 break;
 
             case EDIT_S_GAP:
                 p = cumdist_p_norm(E->es[last_op], EDIT_S_GAP);
-                P = cumdist_P_norm(E->es[last_op], EDIT_S_GAP);
-                ac_update(E->ac, p, P);
+                c = cumdist_c_norm(E->es[last_op], EDIT_S_GAP);
+                ac_update(E->ac, p, c);
                 cumdist_add(E->es[last_op], EDIT_S_GAP, 1);
 
                 p = cumdist_p_norm(E->cs[ctx], u);
-                P = cumdist_P_norm(E->cs[ctx], u);
-                ac_update(E->ac, p, P);
+                c = cumdist_c_norm(E->cs[ctx], u);
+                ac_update(E->ac, p, c);
                 cumdist_add(E->cs[ctx], u, 1);
 
                 ++j;
