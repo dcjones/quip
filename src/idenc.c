@@ -52,6 +52,7 @@ idenc_t* idenc_alloc(quip_writer_t writer, void* writer_data)
         E->ms[i] = dist_alloc_encode(max_group_len);
     }
 
+    /* TODO: allocate these lazily to conserve space */
     E->ds = malloc_or_die(max_groups * 128 * 128 * sizeof(dist_t*));
     for (i = 0; i < max_groups * 128 * 128; ++i) {
         E->ds[i] = dist_alloc_encode(128);

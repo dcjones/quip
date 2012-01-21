@@ -12,6 +12,9 @@
 #include <limits.h>
 #include <string.h>
 
+
+
+
 struct assembler_t_
 {
     /* don't actually assemble anything */
@@ -109,6 +112,11 @@ assembler_t* assembler_alloc(
         A->H = kmerhash_alloc();
 
         A->count_cutoff = 2;
+    }
+    else {
+        /* output the number of contigs (i.e., 0) */
+        uint8_t bytes[4] = {0, 0, 0, 0};
+        A->writer(A->writer_data, bytes, 4);
     }
 
     return A;
@@ -411,6 +419,11 @@ static void align_to_contigs(assembler_t* A,
         memset(&alns[i].a, 0, sizeof(sw_alignment_t));
     }
 
+
+    /* write the number of contigs that will be used */
+    // TODO
+
+
     uint32_t* contig_reindex = malloc_or_die(contigs_len * sizeof(uint32_t));
     size_t j;
 
@@ -470,6 +483,7 @@ static void align_to_contigs(assembler_t* A,
 
 
     if (verbose) fprintf(stderr, "done.\n");
+
 
 
     /* Lastly: output compressed reads */
