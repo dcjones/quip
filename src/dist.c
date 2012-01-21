@@ -8,30 +8,6 @@
 static const size_t update_delay_factor = 1;
 const size_t dist_length_shift = 15;
 static const size_t max_count = 1 << 15;
-static void dist_update(dist_t*);
-
-struct dist_t_
-{
-    /* alphabet size */
-    size_t n;
-
-    /* cumulative symbol frequency */
-    uint32_t* ps;
-
-    /* symbol counts */
-    uint32_t* cs;
-
-    /* total number of occurances */
-    uint32_t z;
-
-    /* decoder table */
-    uint32_t* dec;
-    size_t dec_size;
-    size_t dec_shift;
-
-    /* number of new observations until the distribution is updated */
-    size_t update_delay;
-};
 
 
 dist_t* dist_alloc_encode(size_t n)
@@ -117,7 +93,7 @@ void dist_add(dist_t* D, symb_t x, uint32_t k)
     }
 }
 
-static void dist_update(dist_t* D)
+void dist_update(dist_t* D)
 {
     size_t i;
 
@@ -131,11 +107,12 @@ static void dist_update(dist_t* D)
     }
 
     /* update frequencies */
-    uint32_t scale = 0x80000000U / D->z;
+    const uint32_t scale = 0x80000000U / D->z;
+    const uint32_t shift = 31 - dist_length_shift;
     uint32_t j, w, c = 0;
 
     for (i = 0; i < D->n; ++i) {
-        D->ps[i] = (scale * c) >> (31 - dist_length_shift);
+        D->ps[i] = (scale * c) >> shift;
         c += D->cs[i];
     }
 

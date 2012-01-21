@@ -20,7 +20,29 @@
 
 extern const size_t dist_length_shift;
 
-typedef struct dist_t_ dist_t;
+typedef struct dist_t_
+{
+    /* alphabet size */
+    size_t n;
+
+    /* cumulative symbol frequency */
+    uint32_t* ps;
+
+    /* symbol counts */
+    uint32_t* cs;
+
+    /* total number of occurances */
+    uint32_t z;
+
+    /* decoder table */
+    uint32_t* dec;
+    size_t dec_size;
+    size_t dec_shift;
+
+    /* number of new observations until the distribution is updated */
+    size_t update_delay;
+} dist_t;
+
 
 /* Integer used to represent symbols in the alphabet. */
 typedef uint32_t symb_t;
@@ -41,6 +63,9 @@ uint32_t dist_P(const dist_t*, symb_t x);
 
 /* add k to the number of occurances of symbol x */
 void dist_add(dist_t*, symb_t x, uint32_t k);
+
+/* update distribution to reflect calls to dist_add */
+void dist_update(dist_t* D);
 
 /* find the symbol corresponding to the given frequency */
 size_t dist_find(dist_t*, uint32_t);

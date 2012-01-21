@@ -129,21 +129,27 @@ void ac_encode(ac_t* ac, dist_t* D, symb_t x)
 {
     uint32_t u, b0 = ac->b;
 
-    if (x == dist_n(D) - 1) {
-        u = dist_P(D, x) * (ac->l >> dist_length_shift);
+    if (x == D->n - 1) {
+        u = D->ps[x] * (ac->l >> dist_length_shift);
         ac->b += u;
         ac->l -= u;
     }
     else {
-        u = dist_P(D, x) * (ac->l >>= dist_length_shift);
+        /* TODO: we might consider using SSE4.1 instructions to do these two
+         * multiplications in one operation. */
+
+        u = D->ps[x] * (ac->l >>= dist_length_shift);
         ac->b += u;
-        ac->l = dist_P(D, x + 1) * ac->l - u;
+        ac->l = D->ps[x + 1] * ac->l - u;
     }
 
-    if (b0 > ac->b) ac_propogate_carry(ac);
+    if (b0 > ac->b)         ac_propogate_carry(ac);
     if (ac->l < min_length) ac_renormalize_encoder(ac);
 
-    dist_add(D, x, 1);
+    /* this is "dist_add(D, x, 1)", inlined for performance */
+    D->cs[x]++;
+    D->z++;
+    if (--D->update_delay == 0) dist_update(D);
 }
 
 
