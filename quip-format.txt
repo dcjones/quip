@@ -42,9 +42,9 @@ of the file format.
 Block Header
 ------------
 
-    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+ ... +---+
-    |   Read Count  |  Id Byte Cnt  | Seq Byte Cnt  | Qual Byte Cnt |  Read Lens  |
-    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+ ... +---+
+    +---+---+---+---+---+ ... +---+---+---+---+---+---+---+---+---+---+---+---+---+
+    |   Read Count  |  Read Lens  |  Id Byte Cnt  | Seq Byte Cnt  | Qual Byte Cnt |
+    +---+---+---+---+---+ ... +---+---+---+---+---+---+---+---+---+---+---+---+---+
 
 Following the header is zero or more blocks of compressed reads.
 
@@ -61,6 +61,16 @@ A block is simply compressed chunks of read ids, sequences, and finally
 qualities.
 
 
+Compressed Id Chunk
+-------------------
+
+    +---+ ... +---+
+    |    Data     |
+    +---+ ... +---+
+
+Compressed ids are pure arithmetic coded data.
+
+
 Compressed Sequence Chunk
 -------------------------
 
@@ -71,6 +81,15 @@ Compressed Sequence Chunk
 The compressed sequence chunk is lead by a 4 byte integer giving the number of
 contigs (i.e., encoded sequences that are not reads).
 
+
+Compressed Quality Chunk
+------------------------
+
+    +---+ ... +---+
+    |    Data     |
+    +---+ ... +---+
+
+Compressed qualities are also pure arithmetic coded data.
 
 
 Quip Footer
@@ -99,4 +118,7 @@ file.
     |       Total Read Count        |                                  
     +---+---+---+---+---+---+---+---+
 
+
+These two fields allow one to quickly answer the oft-asked question: "how much
+data do I have?"
 

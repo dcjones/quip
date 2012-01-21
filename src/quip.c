@@ -64,6 +64,12 @@ static void block_writer(void* param, const uint8_t* data, size_t datalen)
     fwrite(data, 1, datalen, (FILE*) param);
 }
 
+static size_t block_reader(void* param, uint8_t* data, size_t datalen)
+{
+    return fread(data, 1, datalen, (FILE*) param);
+}
+
+
 
 /* Call fopen, and print an appropriate error message if need be. */
 static FILE* fopen_attempt(const char* fn, const char* mode)
@@ -107,7 +113,6 @@ static int quip_compress(char** fns, size_t fn_count)
     quip_compressor_t* C;
 
     if (fn_count == 0) {
-        quip_write_header(stdout);
         C = quip_comp_alloc(block_writer, stdout, quick_flag);
 
         fq = fastq_open(stdin);
@@ -120,8 +125,6 @@ static int quip_compress(char** fns, size_t fn_count)
         quip_comp_free(C);
     }
     else {
-        if (stdout_flag) quip_write_header(stdout);
-
         for (i = 0; i < fn_count; ++i) {
             fn = fns[i];
             fin = fopen_attempt(fn, "rb");
@@ -133,8 +136,6 @@ static int quip_compress(char** fns, size_t fn_count)
                 sprintf(out_fn, "%s.qp", fn);
                 fout = fopen_attempt(out_fn, "wb");
                 free(out_fn);
-
-                quip_write_header(fout);
             }
 
             C = quip_comp_alloc(block_writer, fout, quick_flag);
@@ -145,6 +146,7 @@ static int quip_compress(char** fns, size_t fn_count)
                 quip_comp_addseq(C, r);
             }
 
+            quip_comp_flush(C);
 
             fastq_close(fq);
             fclose(fin);
@@ -162,7 +164,68 @@ static int quip_compress(char** fns, size_t fn_count)
 
 static int quip_decompress(char** fns, size_t fn_count)
 {
-    // TODO
+    const char* fn;
+    FILE* fin;
+    FILE* fout;
+    char* out_fn = NULL;
+    size_t fn_len;
+    size_t i;
+
+    seq_t* r = fastq_alloc_seq();
+    quip_decompressor_t* D;
+
+    if (fn_count == 0) {
+        D = quip_decomp_alloc(block_reader, stdin);
+
+        while (quip_decomp_read(D, r)) {
+            fastq_print(stdout, r);
+        }
+
+        quip_decomp_free(D);
+
+    }
+    else {
+        for (i = 0; i < fn_count; ++i) {
+            fn = fns[i];
+            fn_len = strlen(fn);
+
+            if (fn_len < 3 || memcmp(fn + (fn_len - 3), ".qp", 3) != 0) {
+                fprintf(stderr, "%s: %s: Unknown suffix -- ignored.\n",
+                        prog_name, fn);
+                continue;
+            }
+
+            fin = fopen_attempt(fn, "rb");
+            if (!fin) continue;
+
+            if (stdout_flag) fout = stdout;
+            else {
+                out_fn = malloc_or_die((fn_len - 2) * sizeof(char));
+                memcpy(out_fn, fn, fn_len - 3);
+                out_fn[fn_len - 2] = '\0';
+                // TODO: test for clobber
+                fout = fopen_attempt(out_fn, "wb");
+                free(out_fn);
+            }
+
+            D = quip_decomp_alloc(block_reader, fin);
+
+            while (quip_decomp_read(D, r)) {
+                fastq_print(fout, r);
+            }
+
+            fclose(fin);
+
+            quip_decomp_free(D);
+
+            if (!stdout_flag) fclose(fout);
+
+        }
+    }
+
+
+    fastq_free_seq(r);
+
     return EXIT_SUCCESS;
 }
 
@@ -187,7 +250,12 @@ int main(int argc, char* argv[])
 
     prog_name = argv[0];
 
-    if (strcmp(argv[0], "unquip") == 0) decompress_flag = true;
+    size_t prog_name_len = strlen(prog_name);
+
+    /* default to decompress when invoked under the name 'unquip' */
+    if (prog_name_len >= 6 && strcmp(argv[0] + (prog_name_len - 6), "unquip") == 0) {
+        decompress_flag = true;
+    }
 
     while (1) {
         opt = getopt_long(argc, argv, "qcdkvhV", long_options, &opt_idx);
