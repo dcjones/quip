@@ -5,21 +5,62 @@
 #include <assert.h>
 #include <string.h>
 
+static const uint32_t min_length = 0x01000000U;
+static const uint32_t max_length = 0xFFFFFFFFU;
+
 
 struct ac_t_
 {
-    uint64_t b, l;
+    /* coder state */
+    uint32_t b; /* base */
+    uint32_t l; /* length */
+    uint32_t v; /* value */
 
     uint8_t* buf;
     size_t buflen;
     size_t bufpos; /* next vacant buffer position */
 
-    quip_block_writer_t writer;
+    quip_writer_t writer;
     void* writer_data;
+
+    quip_reader_t reader;
+    void* reader_data;
 };
 
 
-static void ac_buf_append(ac_t* E, uint8_t c)
+ac_t* ac_alloc_encoder(quip_writer_t writer, void* writer_data)
+{
+    ac_t* ac = malloc_or_die(sizeof(ac_t));
+    ac->b = 0;
+    ac->l = max_length;
+
+    ac->buflen = 4096;
+    ac->buf = malloc_or_die(ac->buflen * sizeof(uint8_t));
+    ac->bufpos = 0;
+
+    ac->writer = writer;
+    ac->writer_data = writer_data;
+
+    ac->reader = NULL;
+    ac->reader_data = NULL;
+
+    return ac;
+}
+
+
+// TODO
+/*ac_t* ac_alloc_decoder(quip_reader_t reader, void* reader_data);*/
+
+
+void  ac_free(ac_t* ac)
+{
+    free(ac->buf);
+    free(ac);
+}
+
+
+
+static void ac_append_byte(ac_t* E, uint8_t c)
 {
     /* when the buffer is full, try to evict as much as possible, then shift
      * everything over */
@@ -54,156 +95,55 @@ static void ac_buf_append(ac_t* E, uint8_t c)
 }
 
 
-static void ac_renormalize(ac_t* E)
+static void ac_propogate_carry(ac_t* ac)
 {
-    uint32_t v;
-    while (E->l < 0xffffff) {
-        v = E->b >> 24;
-        ac_buf_append(E, (uint8_t) v);
-        E->l <<= 8;
-        E->b <<= 8;
-    }
-}
+    if (ac->bufpos == 0) return;
 
-
-static void ac_propogate_carry(ac_t* E)
-{
     size_t i;
-    for (i = E->bufpos - 1; i > 0; --i) {
-        if (E->buf[i] < 0xff) {
-            E->buf[i] += 1;
+    for (i = ac->bufpos - 1; i > 0; --i) {
+        if (ac->buf[i] < 0xff) {
+            ac->buf[i] += 1;
             break;
         }
-        else E->buf[0] = 0;
+        else ac->buf[i] = 0;
     }
 
     if (i == 0) {
-        assert(E->buf[0] < 0xff);
-        E->buf[0] += 1;
+        assert(ac->buf[0] < 0xff);
+        ac->buf[0] += 1;
     }
 }
 
 
-
-ac_t* ac_alloc(quip_block_writer_t writer, void* writer_data)
+static void ac_renormalize_encoder(ac_t* ac)
 {
-    ac_t* E = malloc_or_die(sizeof(ac_t));
-
-    E->writer = writer;
-    E->writer_data = writer_data;
-
-    E->b = 0x00000000;
-    E->l = 0xffffffff;
-
-    E->bufpos = 0;
-    E->buflen = 1024;
-    E->buf = malloc_or_die(E->buflen * sizeof(uint8_t));
-
-    return E;
-}
-
-
-void ac_free(ac_t* E)
-{
-    free(E->buf);
-    free(E);
-}
-
-
-
-void ac_update(ac_t* E, uint64_t p, uint64_t c)
-{
-    uint64_t y = (E->l * c) >> 32;
-    uint64_t x = (E->l * (c - p)) >> 32;
-
-    assert(y > x);
-
-    uint64_t b0 = E->b;
-
-    E->b += x; // XXX mod 2^32 ??
-    E->l = y - x;
-
-    if (b0 > E->b) ac_propogate_carry(E);
-
-    ac_renormalize(E);
-}
-
-
-void ac_flush(ac_t* E)
-{
-    uint32_t b0 = E->b;
-
-    E->b = E->b + 0x800000; /* b = b + D^(P-1) / 2 */
-    E->l = 0xffff;          /* l = D^(P - 2) - 1 */
-
-    if (b0 > E->b) ac_propogate_carry(E);
-
-    ac_renormalize(E);
-
-
-    /* now, reset for continued use */
-
-    E->b = 0x00000000;
-    E->l = 0xffffffff;
-    E->bufpos = 0;
-
-}
-
-
-struct dec_t_
-{
-    quip_reader_t reader;
-    void* reader_data;
-
-    /* interval length */
-    uint64_t l;
-
-    /* intput buffer */
-    uint8_t* buf;
-    size_t bufsize;
-
-    /* the next byte in the input buffer */
-    uint8_t next;
-
-    /* available bytes */
-    size_t avail;
-};
-
-
-static void dec_refill(dec_t* D)
-{
-    if (D->avail > 0 && D->next != D->buf) {
-        memmove(D->buf, D->next, D->avail);
-        D->next = D->buf;
-    }
-
-    if (D->avail < D->bufsize) {
-        D->avail += D->reader(D->reader_data, D->buf + D->avail, D->bufsize - D->avail);
+    while (ac->l < min_length) {
+        ac_append_byte(ac, (uint8_t) (ac->b >> 24));
+        ac->b <<= 8;
+        ac->l <<= 8;
     }
 }
 
 
-dec_t* dec_alloc(quip_reader_t reader, void* reader_data)
+void ac_encode(ac_t* ac, dist_t* D, symb_t x)
 {
-    dec_t* D = malloc_or_die(sizeof(dec_t));
+    uint32_t u, b0 = ac->b;
 
-    D->reader      = reader;
-    D->reader_data = reader_data;
-    D->l = 0xffffffff;
+    if (x == dist_n(D) - 1) {
+        u = dist_P(D, x) * (ac->l >> dist_length_shift);
+        ac->b += u;
+        ac->l -= u;
+    }
+    else {
+        u = dist_P(D, x) * (ac->l >>= dist_length_shift);
+        ac->b += u;
+        ac->l = dist_P(D, x + 1) * ac->l - u;
+    }
 
-    D->bufsize = 4096;
-    D->buf = malloc_or_die(D->bufsize * sizeof(uint8_t));
-    D->avail = 0;
-    D->next = D->buf;
+    if (b0 > ac->b) ac_propogate_carry(ac);
+    if (ac->l < min_length) ac_renormalize_encoder(ac);
+
+    dist_add(D, x, 1);
 }
-
-
-void dec_free(dec_t* D)
-{
-    free(D->buf);
-    free(D);
-}
-
-
 
 

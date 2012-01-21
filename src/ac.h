@@ -1,7 +1,7 @@
 /*
  * This file is part of quip.
  *
- * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ * Copyright (c) 2012 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
  */
 
@@ -22,30 +22,21 @@
 #include <stdint.h>
 
 
-/* Encoder */
-
 typedef struct ac_t_ ac_t;
 
-ac_t* ac_alloc(quip_block_writer_t writer, void* writer_data);
+/* Allocate for encoding, decoding respectively. */
+ac_t* ac_alloc_encoder(quip_writer_t writer, void* writer_data);
+ac_t* ac_alloc_decoder(quip_reader_t reader, void* reader_data);
 void  ac_free(ac_t*);
 
-/* Update the arithmetic coder with the symbol having probability p and
- * cumulative probability P. */
-void ac_update(ac_t*, uint64_t p, uint64_t P);
+/* Encode symbol x from the given distribution */
+void ac_encode(ac_t*, dist_t*, symb_t x);
 
 /* Choose the final code value. */
-void ac_flush(ac_t*);
+void ac_encode_flush(ac_t*);
 
-
-
-/* Decoder */
-
-typedef struct dec_t_ dec_t;
-
-dec_t* dec_alloc(quip_reader_t reader, void* reader_data);
-void dec_free(dec_t*);
-
-size_t dec_next(dec_t*, dist_t* C);
+/* Decode the next symbol with the given distribution. */
+symb_t ac_decode(ac_t*, dist_t*, symb_t x);
 
 #endif
 

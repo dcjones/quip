@@ -2,265 +2,161 @@
 #include "dist.h"
 #include "misc.h"
 #include <string.h>
-#include <stdbool.h>
+
+/* The distribution is updated every "initial_update_factor * n" new
+ * observations. */
+static const size_t update_delay_factor = 1;
+const size_t dist_length_shift = 15;
+static const size_t max_count = 1 << 15;
+static void dist_update(dist_t*);
 
 struct dist_t_
 {
+    /* alphabet size */
     size_t n;
 
-    /* symbol frequency */
+    /* cumulative symbol frequency */
     uint32_t* ps;
 
-    /* cumulative symbol frequency */
+    /* symbol counts */
     uint32_t* cs;
-
-    /* symbol order, such that ps[ord[i]] is the freq. of symbol i */
-    size_t* rev_ord;
-    size_t* ord;
-
-    /* xs[i] : number of occurance of symbol i */
-    uint32_t* xs;
 
     /* total number of occurances */
     uint32_t z;
 
-    /* has dist_add been called since the last call to dist_update */
-    bool update_pending;
+    /* decoder table */
+    uint32_t* dec;
+    size_t dec_size;
+    size_t dec_shift;
+
+    /* number of new observations until the distribution is updated */
+    size_t update_delay;
 };
 
 
-dist_t* dist_alloc(size_t n)
+dist_t* dist_alloc_encode(size_t n)
 {
-    dist_t* P = malloc_or_die(sizeof(dist_t));
-    P->n = n;
-    P->ps = malloc_or_die(n * sizeof(uint32_t));
-    P->cs = malloc_or_die(n * sizeof(uint32_t));
-
-    P->rev_ord = malloc_or_die(n * sizeof(size_t));
-    P->ord     = malloc_or_die(n * sizeof(size_t));
-
-    P->xs = malloc_or_die(n * sizeof(uint32_t));
+    dist_t* D = malloc_or_die(sizeof(dist_t));
+    D->n = n;
+    D->ps = malloc_or_die(n * sizeof(uint32_t));
+    D->cs = malloc_or_die(n * sizeof(uint32_t));
+    D->dec = NULL;
+    D->update_delay = D->n * update_delay_factor;
 
     /* initialize to pseudocounts of 1 */
     size_t i;
-    for (i = 0; i < n; ++i) P->xs[i] = 1;
-    P->z = n;
+    for (i = 0; i < n; ++i) D->cs[i] = 1;
+    D->z = n;
 
-    for (i = 0; i < n; ++i){
-        P->ord[i] = P->rev_ord[i] = i;
-    }
+    dist_update(D);
 
-    P->update_pending = true;
-
-    dist_update(P);
-
-    return P;
+    return D;
 }
 
 
-void dist_free(dist_t* P)
+dist_t* dist_alloc_decode(size_t n)
 {
-    free(P->ps);
-    free(P->cs);
-    free(P->rev_ord);
-    free(P->ord);
-    free(P->xs);
-    free(P);
-}
+    dist_t* D = malloc_or_die(sizeof(dist_t));
+    D->n = n;
+    D->ps = malloc_or_die(n * sizeof(uint32_t));
+    D->cs = malloc_or_die(n * sizeof(uint32_t));
+    D->update_delay = D->n * update_delay_factor;
 
-
-uint32_t dist_P(const dist_t* P, size_t i)
-{
-    return P->ps[P->ord[i]];
-}
-
-uint32_t dist_C(const dist_t* P, size_t i)
-{
-    return P->cs[P->ord[i]];
-}
-
-
-void dist_add(dist_t* P, size_t i, uint32_t x)
-{
-    /* prevent precision loss in the arithmetic coder */
-    if (P->z + x >= 0xffffff) return;
-
-    P->xs[i] += x;
-    P->z += x;
-    P->update_pending = true;
-}
-
-
-static void sort_ord_insert(uint32_t* xs, size_t* ord, const size_t n)
-{
-    if (n < 2) return;
-
-    uint32_t x;
-    size_t o;
-    int i, j;
-    for (j = 1; j < (int) n; ++j) {
-        x = xs[j];
-        o = ord[j];
-        for (i = j - 1; i >= 0 && x < xs[i]; --i) {
-            xs[i + 1]  = xs[i];
-            ord[i + 1] = ord[i];
-        }
-
-        xs[i + 1]  = x;
-        ord[i + 1] = o;
-    }
-}
-
-static void sort_ord_quick(uint32_t* xs, size_t* ord, const size_t n)
-{
-    if (n <= 10) {
-        sort_ord_insert(xs, ord, n);
-        return;
-    }
-
-    size_t pivot;
-    /* choose pivot as the median of the first last and middle */
-    if (xs[n/2] <= xs[n-1]) {
-        if (xs[0] <= xs[n/2])      pivot = n / 2;
-        else if (xs[0] <= xs[n-1]) pivot = 0;
-        else                       pivot = n - 1;
+    if (n > 16) {
+        size_t dec_bits = 3;
+        while (n > (1U << (dec_bits + 2))) ++dec_bits;
+        D->dec_size  = (1 << dec_bits) + 4;
+        D->dec_shift = dist_length_shift - dec_bits;
+        D->dec = malloc_or_die((D->dec_size + 6) * sizeof(uint32_t));
     }
     else {
-        if (xs[0] <= xs[n-1])      pivot = n - 1;
-        else if (xs[0] <= xs[n/2]) pivot = 0;
-        else                       pivot = n / 2;
+        D->dec_shift = 0;
+        D->dec_size  = 0;
+        D->dec = NULL;
     }
 
-    uint32_t xs_tmp,  xs_piv  = xs[pivot];
-    size_t   ord_tmp, ord_piv = ord[pivot];
-
-    xs[pivot] = xs[n - 1];
-    xs[n - 1] = xs_piv;
-
-    ord[pivot] = ord[n - 1];
-    ord[n - 1] = ord_piv;
-
-    size_t i, j;
-    for (i = 0, j = 0; j < n - 1; ++j) {
-        if (xs[j] <= xs_piv) {
-            xs_tmp = xs[i];
-            xs[i]  = xs[j];
-            xs[j]  = xs_tmp;
-
-            ord_tmp = ord[i];
-            ord[i]  = ord[j];
-            ord[j]  = ord_tmp;
-
-            ++i;
-        }
-    }
-
-    xs[n - 1] = xs[i];
-    xs[i] = xs_piv;
-
-    ord[n - 1] = ord[i];
-    ord[i] = ord_piv;
-
-    sort_ord_quick(xs, ord, pivot);
-    sort_ord_quick(xs + pivot + 1, ord + pivot + 1, n - pivot - 1);
-}
-
-
-/* sort an array and keep track of the order */
-static void sort_ord_merge(uint32_t* xs, size_t* ord, const size_t n)
-{
-    if (n < 2) return;
-    if (n <= 7) {
-        sort_ord_insert(xs, ord, n);
-        return;
-    }
-
-    sort_ord_merge(xs, ord, n / 2);
-    sort_ord_merge(xs + n / 2, ord + n / 2, n - n / 2);
-
-    /* merge */
-    size_t i = 0;
-    size_t j = n / 2;
-
-    uint32_t xs_tmp;
-    size_t ord_tmp;
-
-
-    while (i < j && j < n) {
-        if (xs[i] <= xs[j]) {
-            ++i;
-        }
-        else {
-            xs_tmp = xs[i];
-            xs[i]  = xs[j];
-            xs[j]  = xs_tmp;
-
-            ord_tmp = ord[i];
-            ord[i]  = ord[j];
-            ord[j]  = ord_tmp;
-
-            ++j;
-        }
-    }
-}
-
-
-
-void dist_update(dist_t* P)
-{
-    if (!P->update_pending) return;
-
+    /* initialize to pseudocounts of 1 */
     size_t i;
-    for (i = 0; i < P->n; ++i) {
-        P->ps[P->ord[i]] = P->xs[i];
-    }
+    for (i = 0; i < n; ++i) D->cs[i] = 1;
+    D->z = n;
 
-    /* sort symbols by frequency */
+    dist_update(D);
 
-    /* If we have accumulated many samples, the order is unlikely to change, so
-     * we use insertion sort, otherwise merge sort. */
-    /*if (P->z < 10 * P->n && P->n > 7) {*/
-        /*sort_ord_quick(P->ps, P->rev_ord, P->n);*/
-    /*}*/
-    /*else {*/
-        sort_ord_insert(P->ps, P->rev_ord, P->n);
-    /*}*/
-
-
-    for (i = 0; i < P->n; ++i) {
-        P->ord[P->rev_ord[i]] = i;
-    }
-
-    /* normalize */
-    uint64_t Z = P->z;
-    for (i = 0; i < P->n; ++i) {
-        P->ps[i] = (uint32_t) (((uint64_t) P->ps[i] << 32) / Z);
-    }
-
-    /* accumulate */
-    P->cs[0] = P->ps[0];
-    for (i = 1; i < P->n - 1; ++i) {
-        P->cs[i] = P->cs[i - 1] + P->ps[i];
-    }
-    P->cs[P->n - 1] = 0xffffffff;
-
-    P->update_pending = false;
+    return D;
 }
 
 
-size_t dist_find(dist_t* P, uint32_t p)
+void dist_free(dist_t* D)
 {
-    size_t a = 0;
-    size_t b = P->n - 1;
-    size_t c;
+    free(D->ps);
+    free(D->cs);
+    free(D->dec);
+    free(D);
+}
 
-    while (a + 1 < b) {
-        c = (a + b) / 2;
 
-        if (P->cs[c] < p) a = c;
-        else              b = c;
+size_t dist_n(const dist_t* D)
+{
+    return D->n;
+}
+
+
+uint32_t dist_P(const dist_t* D, symb_t x)
+{
+    return D->ps[x];
+}
+
+
+void dist_add(dist_t* D, symb_t x, uint32_t k)
+{
+    D->cs[x] += k;
+    D->z += k;
+
+    if (--D->update_delay == 0) {
+        dist_update(D);
+    }
+}
+
+static void dist_update(dist_t* D)
+{
+    size_t i;
+
+    /* rescale when we have exceeded the maximum count */
+    if (D->z > max_count) {
+        D->z = 0;
+        for (i = 0; i < D->n; ++i) {
+            D->z += D->cs[i] / 2 + 1;
+        }
     }
 
-    return P->rev_ord[b];
+    /* update frequencies */
+    uint32_t scale = 0x80000000U / D->z;
+    uint32_t j, w, c = 0;
+
+    for (i = 0; i < D->n; ++i) {
+        D->ps[i] = (scale * c) >> (31 - dist_length_shift);
+        c += D->cs[i];
+    }
+
+    /* update decoder table */
+    if (D->dec) {
+        for (i = 0, j = 0; i < D->n; ++i) {
+            w = D->ps[i] >> D->dec_shift;
+            while (j < w) D->dec[++j] = i - 1;
+        }
+        D->dec[0] = 0;
+        while (j < D->dec_size) D->dec[++j] = D->n - 1;
+    }
+
+
+    D->update_delay = D->n * update_delay_factor;
 }
+
+
+size_t dist_find(dist_t* D, uint32_t p)
+{
+    // TODO
+    return 0;
+}
+
 
