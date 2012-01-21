@@ -36,7 +36,7 @@ void ac_encode(ac_t*, dist_t*, symb_t x);
 void ac_flush_encoder(ac_t*);
 
 /* Decode the next symbol with the given distribution. */
-symb_t ac_decode(ac_t*, dist_t*, symb_t x);
+symb_t ac_decode(ac_t*, dist_t*);
 
 #endif
 

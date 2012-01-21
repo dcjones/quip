@@ -9,6 +9,9 @@
  * dist:
  * Efficient representation of discrete probability distributions for arithmetic
  * coding.
+ *
+ * This is tightly integrated into the arithmetic coding implementation
+ * in ac.h/ac.c, so don't fiddle with it.
  */
 
 
@@ -20,10 +23,17 @@
 
 extern const size_t dist_length_shift;
 
+/* Integer used to represent symbols in the alphabet. */
+typedef uint32_t symb_t;
+
+
 typedef struct dist_t_
 {
     /* alphabet size */
     size_t n;
+
+    /* n - 1 */
+    symb_t last_symbol;
 
     /* cumulative symbol frequency */
     uint32_t* ps;
@@ -42,10 +52,6 @@ typedef struct dist_t_
     /* number of new observations until the distribution is updated */
     size_t update_delay;
 } dist_t;
-
-
-/* Integer used to represent symbols in the alphabet. */
-typedef uint32_t symb_t;
 
 /* Allocate a distribution over the alphabet [0, n - 1].
  * The structure is either allocated with the specify intent of either decoding
@@ -66,9 +72,6 @@ void dist_add(dist_t*, symb_t x, uint32_t k);
 
 /* update distribution to reflect calls to dist_add */
 void dist_update(dist_t* D);
-
-/* find the symbol corresponding to the given frequency */
-size_t dist_find(dist_t*, uint32_t);
 
 #endif
 

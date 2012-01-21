@@ -14,6 +14,7 @@ dist_t* dist_alloc_encode(size_t n)
 {
     dist_t* D = malloc_or_die(sizeof(dist_t));
     D->n = n;
+    D->last_symbol = n - 1;
     D->ps = malloc_or_die(n * sizeof(uint32_t));
     D->cs = malloc_or_die(n * sizeof(uint32_t));
     D->dec = NULL;
@@ -34,6 +35,7 @@ dist_t* dist_alloc_decode(size_t n)
 {
     dist_t* D = malloc_or_die(sizeof(dist_t));
     D->n = n;
+    D->last_symbol = n - 1;
     D->ps = malloc_or_die(n * sizeof(uint32_t));
     D->cs = malloc_or_die(n * sizeof(uint32_t));
     D->update_delay = D->n * update_delay_factor;
@@ -129,12 +131,4 @@ void dist_update(dist_t* D)
 
     D->update_delay = D->n * update_delay_factor;
 }
-
-
-size_t dist_find(dist_t* D, uint32_t p)
-{
-    // TODO
-    return 0;
-}
-
 

@@ -229,6 +229,7 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
         sw->F[idx2] = score_inf;
     }
 
+    idx = (spos + i) * (sw->m + 1) + (qpos + i);
     idx2 = (spos + 1 + i) * (sw->m + 1) + (qpos + 1 + i);
     sw->M[idx2] = sw->F[idx2] = sw->F[idx] + score_match_ext;
     assert(sw->F[idx2] < score_inf);

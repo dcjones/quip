@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <string.h>
 
+/* allowable values of the interval length before renormalization */
 static const uint32_t min_length = 0x01000000U;
 static const uint32_t max_length = 0xFFFFFFFFU;
 
@@ -16,16 +17,28 @@ struct ac_t_
     uint32_t l; /* length */
     uint32_t v; /* value */
 
+    /* input or output buffer (depending on whether we are decoding or encoding,
+     * respectively). */
     uint8_t* buf;
-    size_t buflen;
-    size_t bufpos; /* next vacant buffer position */
 
+    /* size allocated to buf */
+    size_t buflen;
+
+    /* index next vacant buffer position */
+    size_t bufpos;
+
+    /* available indput (for decoding) */
+    size_t bufavail;
+
+    /* callback function for encoder output */
     quip_writer_t writer;
     void* writer_data;
 
+    /* callback function for decoder input */
     quip_reader_t reader;
     void* reader_data;
 };
+
 
 
 ac_t* ac_alloc_encoder(quip_writer_t writer, void* writer_data)
@@ -48,8 +61,35 @@ ac_t* ac_alloc_encoder(quip_writer_t writer, void* writer_data)
 }
 
 
-// TODO
-/*ac_t* ac_alloc_decoder(quip_reader_t reader, void* reader_data);*/
+ac_t* ac_alloc_decoder(quip_reader_t reader, void* reader_data)
+{
+    ac_t* ac = malloc_or_die(sizeof(ac_t));
+    ac->l = max_length;
+
+    ac->buflen = 4096;
+    ac->buf = malloc_or_die(ac->buflen * sizeof(uint8_t));
+    ac->bufpos = 0;
+
+    ac->writer = NULL;
+    ac->writer_data = NULL;
+
+    ac->reader = reader;
+    ac->reader_data = reader_data;
+
+    ac->bufavail = ac->reader(ac->reader_data, ac->buf, ac->buflen);
+
+    if (ac->bufavail < 4) {
+        fprintf(stderr, "Malformed compressed data encountered.");
+        exit(EXIT_FAILURE);
+    }
+
+    ac->v = ((uint32_t) ac->buf[0] << 24) | ((uint32_t) ac->buf[1] << 16) |
+            ((uint32_t) ac->buf[2] << 8)  | ((uint32_t) ac->buf[3]);
+
+    ac->bufpos = 4;
+
+    return ac;
+}
 
 
 void  ac_free(ac_t* ac)
@@ -95,6 +135,20 @@ static void ac_append_byte(ac_t* E, uint8_t c)
 }
 
 
+static uint8_t ac_get_byte(ac_t* ac)
+{
+    if (ac->bufpos < ac->bufavail) {
+        return ac->buf[ac->bufpos++];
+    }
+    else {
+        ac->bufavail = ac->reader(ac->reader_data, ac->buf, ac->buflen);
+        ac->bufpos = 0;
+        if (ac->bufpos < ac->bufavail) return ac->buf[ac->bufpos++];
+        else return 0;
+    }
+}
+
+
 static void ac_propogate_carry(ac_t* ac)
 {
     if (ac->bufpos == 0) return;
@@ -125,19 +179,25 @@ static void ac_renormalize_encoder(ac_t* ac)
 }
 
 
+static void ac_renormalize_decoder(ac_t* ac)
+{
+    while (ac->l < min_length) {
+        ac->v = (ac->v << 8) | (uint32_t) ac_get_byte(ac);
+        ac->l <<= 8;
+    }
+}
+
+
 void ac_encode(ac_t* ac, dist_t* D, symb_t x)
 {
     uint32_t u, b0 = ac->b;
 
-    if (x == D->n - 1) {
+    if (x == D->last_symbol) {
         u = D->ps[x] * (ac->l >> dist_length_shift);
         ac->b += u;
         ac->l -= u;
     }
     else {
-        /* TODO: we might consider using SSE4.1 instructions to do these two
-         * multiplications in one operation. */
-
         u = D->ps[x] * (ac->l >>= dist_length_shift);
         ac->b += u;
         ac->l = D->ps[x + 1] * ac->l - u;
@@ -170,3 +230,66 @@ void ac_flush_encoder(ac_t* ac)
     ac_renormalize_encoder(ac);
 
 }
+
+
+symb_t ac_decode(ac_t* ac, dist_t* D)
+{
+    symb_t s, n, m;
+    uint32_t z, x, y = ac->l;
+
+    if (D->dec) {
+        uint32_t dv = ac->v / (ac->l >>= dist_length_shift);
+        uint32_t t = dv >> D->dec_shift;
+
+        s = D->dec[t];
+        n = D->dec[t + 1] + 1;
+
+        /* binary search in [s, n] */
+        while (n > s + 1) {
+            m = (s + n) >> 1;
+            if (D->ps[m] > dv) n = m;
+            else               s = m;
+        }
+
+        x = D->ps[s] * ac->l;
+        if (s != D->last_symbol) y = D->ps[s + 1] * ac->l;
+    }
+    else {
+        /* decode using binary search */
+        x = s = 0;
+        ac->l >>= dist_length_shift;
+        n = D->n;
+        m = n >> 1;
+
+        do {
+            z = ac->l * D->ps[m];
+            if (z > ac->v) {
+                n = m;
+                y = z;
+            }
+            else {
+                s = m;
+                x = z;
+            }
+
+            m = (s + n) >> 1;
+
+        } while(m != s);
+    }
+
+    ac->v -= x;
+    ac->l = y - x;
+
+    if (ac->l < min_length) ac_renormalize_decoder(ac);
+
+    /* this is "dist_add(D, x, 1)", inlined for performance */
+    D->cs[s]++;
+    D->z++;
+    if (--D->update_delay == 0) dist_update(D);
+
+    return s;
+}
+
+
+
+
