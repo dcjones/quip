@@ -21,11 +21,16 @@
 
 typedef struct idenc_t_ idenc_t;
 
-idenc_t* idenc_alloc(quip_writer_t writer, void* writer_data);
+idenc_t* idenc_alloc_encoder(quip_writer_t writer, void* writer_data);
 void     idenc_free(idenc_t*);
 
 void idenc_encode(idenc_t*, const seq_t*);
 void idenc_flush(idenc_t*);
+
+
+idenc_t* iddenc_alloc_decoder(quip_reader_t reader, void* reader_data);
+void     idenc_decode(idenc_t*, seq_t*);
+
 
 #endif
 

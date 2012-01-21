@@ -21,6 +21,7 @@ typedef struct
     size_t size; /* bytes allocated for s */
 } str_t;
 
+void fastq_expand_str(str_t* s);
 
 
 typedef struct

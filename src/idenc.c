@@ -35,12 +35,8 @@ struct idenc_t_
 };
 
 
-idenc_t* idenc_alloc(quip_writer_t writer, void* writer_data)
+static void idenc_init(idenc_t* E, bool decode)
 {
-    idenc_t* E = malloc_or_die(sizeof(idenc_t));
-
-    E->ac = ac_alloc_encoder(writer, writer_data);
-
     E->max_id_len = 0;
 
     E->groups = 1;
@@ -49,18 +45,42 @@ idenc_t* idenc_alloc(quip_writer_t writer, void* writer_data)
 
     E->ms = malloc_or_die(E->groups * sizeof(dist_t*));
     for (i = 0; i < E->groups; ++i) {
-        E->ms[i] = dist_alloc_encode(max_group_len);
+        E->ms[i] = dist_alloc(max_group_len, decode);
     }
 
     /* TODO: allocate these lazily to conserve space */
     E->ds = malloc_or_die(max_groups * 128 * 128 * sizeof(dist_t*));
     for (i = 0; i < max_groups * 128 * 128; ++i) {
-        E->ds[i] = dist_alloc_encode(128);
+        E->ds[i] = dist_alloc(128, decode);
     }
 
     E->lastid = NULL;
     E->lastid_len = 0;
     E->lastid_size = 0;
+}
+
+
+
+idenc_t* idenc_alloc_encoder(quip_writer_t writer, void* writer_data)
+{
+    idenc_t* E = malloc_or_die(sizeof(idenc_t));
+
+    E->ac = ac_alloc_encoder(writer, writer_data);
+
+    idenc_init(E, false);
+
+    return E;
+}
+
+
+
+idenc_t* idenc_alloc_decoder(quip_reader_t reader, void* reader_data)
+{
+    idenc_t* E = malloc_or_die(sizeof(idenc_t));
+
+    E->ac = ac_alloc_decoder(reader, reader_data);
+
+    idenc_init(E, true);
 
     return E;
 }
@@ -137,7 +157,7 @@ void idenc_encode(idenc_t* E, const seq_t* x)
         /* write trailing whitespace */
         while (i < id->n + 1 && issep(id->s[i])) {
             ctx = 128 * 128 * (group >= max_groups ? max_groups - 1 : group);
-            ctx += 128 * (i - 1 < id->n ? id->s[i - 1] : 0);
+            ctx += 128 * (i > 0 ? id->s[i - 1] : 0);
             /*c += 128 * (j - 1 < E->lastid_len ? E->lastid[j - 1] : 0);*/
             ctx += j < E->lastid_len ? E->lastid[j] : 0;
             ctx %= max_groups * 128 * 128;
@@ -152,7 +172,7 @@ void idenc_encode(idenc_t* E, const seq_t* x)
         /* write non-matches */
         while (i < id->n + 1 && !issep(id->s[i])) {
             ctx = 128 * 128 * (group >= max_groups ? max_groups - 1 : group);
-            ctx += 128 * (i - 1 < id->n ? id->s[i - 1] : 0);
+            ctx += 128 * (i > 0 ? id->s[i - 1] : 0);
             /*c += 128 * (j - 1 < E->lastid_len ? E->lastid[j - 1] : 0);*/
             ctx += j < E->lastid_len ? E->lastid[j] : 0;
             ctx %= max_groups * 128 * 128;
@@ -181,6 +201,59 @@ void idenc_encode(idenc_t* E, const seq_t* x)
 void idenc_flush(idenc_t* E)
 {
     ac_flush_encoder(E->ac);
+}
+
+// TODO:
+/* The below is a fucking distaster. */
+void idenc_decode(idenc_t* E, seq_t* seq)
+{
+    size_t i = 0;
+    size_t j = 0;
+    size_t group = 0;
+    size_t matches;
+
+    size_t ctx;
+    uint8_t x;
+
+    str_t* id = &seq->id1;
+
+    bool consume_sep;
+    
+    while (true) {
+        /* make a new group ? */
+        if (group >= E->groups) {
+            E->groups++;
+            E->ms = realloc_or_die(E->ms, E->groups * sizeof(dist_t*));
+            E->ms[group] = dist_alloc_encode(max_group_len);
+        }
+
+        matches = (size_t) ac_decode(E->ac, E->ms[group]);
+        while (i + matches >= id->size) fastq_expand_str(id);
+        memcpy(id->s + i, E->lastid + j, matches);
+        i += matches;
+        j += matches;
+
+        do {
+            ctx = 128 * 128 * (group >= max_groups ? max_groups - 1 : group);
+            ctx += 128 * (i > 0 ? id->s[i - 1] : 0);
+            ctx += j < E->lastid_len ? E->lastid[j] : 0;
+            ctx %= max_groups * 128 * 128;
+
+            x = ac_decode(E->ac, E->ds[ctx]);
+            while (id->n + 1 >= id->size) fastq_expand_str(id);
+            id->s[i++] = x;
+
+            if (j < E->lastid_len && !issep(E->lastid[j])) ++j;
+
+
+        } while (true); // TODO
+
+        /* scan through lastid group */
+        while (j < E->lastid_len && !issep(E->lastid[j])) ++j;
+    }
+
+    id->s[i] = '\0';
+    id->n = i;
 }
 
 

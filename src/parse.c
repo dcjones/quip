@@ -26,7 +26,7 @@ static void fastq_alloc_str(str_t* s)
 }
 
 
-static void fastq_expand_str(str_t* s)
+void fastq_expand_str(str_t* s)
 {
     s->size *= 2;
     realloc_or_die(s->s, s->size);

@@ -191,8 +191,8 @@ quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool
     C->total_reads = 0;
     C->total_bases = 0;
 
-    C->idenc     = idenc_alloc(id_buf_writer, (void*) C);
-    C->qualenc   = qualenc_alloc(qual_buf_writer, (void*) C);
+    C->idenc     = idenc_alloc_encoder(id_buf_writer, (void*) C);
+    C->qualenc   = qualenc_alloc_encoder(qual_buf_writer, (void*) C);
     C->assembler = assembler_alloc(seq_writer, (void*) C, assembler_k, aligner_k, quick);
 
     /* write header */
@@ -350,7 +350,10 @@ struct quip_decompressor_t_
     void* reader_data;
 
     /* algorithms to decompress ids, qualities, and sequences, resp. */
-    // TODO
+    /*idenc_t*     idenc;*/
+    qualenc_t*   qualenc;
+    // TODO: we need a special dissasembler */
+    /*assembler_t* assembler;*/
 
     /* compressed quality scores */
     uint8_t* qualbuf;
@@ -371,6 +374,8 @@ struct quip_decompressor_t_
     uint32_t* readlen_vals;
     uint32_t* readlen_lens;
     size_t readlen_count, readlen_size;
+
+    size_t readlen_idx, readlen_off;
 };
 
 
@@ -419,6 +424,8 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
     D->reader = reader;
     D->reader_data = reader_data;
 
+    D->qualenc = qualenc_alloc_decoder(qual_buf_reader, (void*) D);
+
     D->qualbuf = NULL;
     D->qualbuf_size = 0;
     D->qualbuf_len  = 0;
@@ -459,6 +466,7 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
 
 void quip_decomp_free(quip_decompressor_t* D)
 {
+    qualenc_free(D->qualenc);
     free(D->qualbuf);
     free(D->idbuf);
     free(D->seqbuf);
@@ -535,6 +543,9 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
         fprintf(stderr, "Unexpected end of file.\n");
         exit(EXIT_FAILURE);
     }
+
+    D->readlen_idx = 0;
+    D->readlen_off = 0;
 }
 
 
@@ -545,7 +556,18 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
         if (D->pending_reads == 0) return false;
     }
 
-    /* TODO */
+    /* read length */
+    size_t n = D->readlen_vals[D->readlen_idx];
+    if (++D->readlen_off >= D->readlen_lens[D->readlen_idx]) {
+        D->readlen_off = 0;
+        D->readlen_idx++;
+    }
+
+    // TODO: decode id
+    // TODO: decode sequence
+    //
+    qualenc_decode(D->qualenc, seq, n);
+
 
     return true;
 }

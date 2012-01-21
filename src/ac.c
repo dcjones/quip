@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <stdbool.h>
 
 /* allowable values of the interval length before renormalization */
 static const uint32_t min_length = 0x01000000U;
@@ -37,6 +38,9 @@ struct ac_t_
     /* callback function for decoder input */
     quip_reader_t reader;
     void* reader_data;
+
+    /* initial state: used when decoding */
+    bool init_state;
 };
 
 
@@ -76,17 +80,7 @@ ac_t* ac_alloc_decoder(quip_reader_t reader, void* reader_data)
     ac->reader = reader;
     ac->reader_data = reader_data;
 
-    ac->bufavail = ac->reader(ac->reader_data, ac->buf, ac->buflen);
-
-    if (ac->bufavail < 4) {
-        fprintf(stderr, "Malformed compressed data encountered.");
-        exit(EXIT_FAILURE);
-    }
-
-    ac->v = ((uint32_t) ac->buf[0] << 24) | ((uint32_t) ac->buf[1] << 16) |
-            ((uint32_t) ac->buf[2] << 8)  | ((uint32_t) ac->buf[3]);
-
-    ac->bufpos = 4;
+    ac->init_state = true;
 
     return ac;
 }
@@ -234,6 +228,21 @@ void ac_flush_encoder(ac_t* ac)
 
 symb_t ac_decode(ac_t* ac, dist_t* D)
 {
+    if (ac->init_state) {
+        ac->bufavail = ac->reader(ac->reader_data, ac->buf, ac->buflen);
+
+        if (ac->bufavail < 4) {
+            fprintf(stderr, "Malformed compressed data encountered.");
+            exit(EXIT_FAILURE);
+        }
+
+        ac->v = ((uint32_t) ac->buf[0] << 24) | ((uint32_t) ac->buf[1] << 16) |
+                ((uint32_t) ac->buf[2] << 8)  | ((uint32_t) ac->buf[3]);
+
+        ac->bufpos = 4;
+        ac->init_state = false;
+    }
+
     symb_t s, n, m;
     uint32_t z, x, y = ac->l;
 

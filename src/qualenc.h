@@ -7,7 +7,7 @@
 
 
 /*
- * qual:
+ * qualenc:
  * Statistical modeling of sequence quality scores.
  */
 
@@ -21,12 +21,14 @@
 
 typedef struct qualenc_t_ qualenc_t;
 
-qualenc_t* qualenc_alloc(quip_writer_t writer, void* writer_data);
+qualenc_t* qualenc_alloc_encoder(quip_writer_t writer, void* writer_data);
+qualenc_t* qualenc_alloc_decoder(quip_reader_t reader, void* reader_data);
 void       qualenc_free(qualenc_t*);
 
 void qualenc_encode(qualenc_t*, const seq_t*);
 void qualenc_flush(qualenc_t*);
 
+void qualenc_decode(qualenc_t*, seq_t*, size_t n);
 
 #endif
 

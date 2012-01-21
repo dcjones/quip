@@ -20,6 +20,7 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 extern const size_t dist_length_shift;
 
@@ -57,6 +58,7 @@ typedef struct dist_t_
  * The structure is either allocated with the specify intent of either decoding
  * or encoding to save memory.
  * */
+dist_t* dist_alloc(size_t n, bool decode);
 dist_t* dist_alloc_encode(size_t n);
 dist_t* dist_alloc_decode(size_t n);
 void    dist_free(dist_t*);

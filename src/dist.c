@@ -10,6 +10,12 @@ const size_t dist_length_shift = 15;
 static const size_t max_count = 1 << 15;
 
 
+dist_t* dist_alloc(size_t n, bool decode)
+{
+    return decode ? dist_alloc_decode(n) : dist_alloc_encode(n);
+}
+
+
 dist_t* dist_alloc_encode(size_t n)
 {
     dist_t* D = malloc_or_die(sizeof(dist_t));
