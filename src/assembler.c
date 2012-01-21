@@ -18,7 +18,7 @@ struct assembler_t_
     bool quick;
 
     /* function to write compressed output */
-    quip_block_writer_t writer;
+    quip_writer_t writer;
     void* writer_data;
 
     /* kmer bit-mask used in assembly */
@@ -63,7 +63,7 @@ struct assembler_t_
 
 
 assembler_t* assembler_alloc(
-        quip_block_writer_t writer, void* writer_data,
+        quip_writer_t writer, void* writer_data,
         size_t assemble_k, size_t align_k, bool quick)
 {
     assembler_t* A = malloc_or_die(sizeof(assembler_t));
@@ -420,7 +420,7 @@ static void align_to_contigs(assembler_t* A,
 
     int aln_score;
 
-    for (i = 0; i < contigs_len; ++i) {
+    for (i = 0, j = 0; i < contigs_len; ++i) {
 
         if (!cands[i]) continue;
 

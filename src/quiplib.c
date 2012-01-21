@@ -30,7 +30,7 @@ void quip_write_header(FILE* f)
 struct quip_compressor_t_
 {
     /* function for writing compressed data */
-    quip_block_writer_t writer;
+    quip_writer_t writer;
     void* writer_data;
 
     /* algorithms to compress ids, qualities, and sequences, reps. */
@@ -99,7 +99,7 @@ static void seq_writer(void* param, const uint8_t* data, size_t size)
 
 
 
-quip_compressor_t* quip_comp_alloc(quip_block_writer_t writer, void* writer_data, bool quick)
+quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool quick)
 {
     quip_compressor_t* C = malloc_or_die(sizeof(quip_compressor_t));
     C->writer = writer;

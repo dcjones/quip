@@ -21,7 +21,7 @@
 
 typedef struct seqenc_t_ seqenc_t;
 
-seqenc_t* seqenc_alloc(size_t k, quip_block_writer_t writer, void* writer_data);
+seqenc_t* seqenc_alloc(size_t k, quip_writer_t writer, void* writer_data);
 void      seqenc_free(seqenc_t*);
 
 void seqenc_encode_char_seq(seqenc_t*, const char*);

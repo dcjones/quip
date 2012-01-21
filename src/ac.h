@@ -33,7 +33,7 @@ void  ac_free(ac_t*);
 void ac_encode(ac_t*, dist_t*, symb_t x);
 
 /* Choose the final code value. */
-void ac_encode_flush(ac_t*);
+void ac_flush_encoder(ac_t*);
 
 /* Decode the next symbol with the given distribution. */
 symb_t ac_decode(ac_t*, dist_t*, symb_t x);

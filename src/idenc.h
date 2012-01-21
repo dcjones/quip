@@ -21,7 +21,7 @@
 
 typedef struct idenc_t_ idenc_t;
 
-idenc_t* idenc_alloc(quip_block_writer_t writer, void* writer_data);
+idenc_t* idenc_alloc(quip_writer_t writer, void* writer_data);
 void     idenc_free(idenc_t*);
 
 void idenc_encode(idenc_t*, const seq_t*);

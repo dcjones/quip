@@ -21,7 +21,7 @@
 
 typedef struct qualenc_t_ qualenc_t;
 
-qualenc_t* qualenc_alloc(quip_block_writer_t writer, void* writer_data);
+qualenc_t* qualenc_alloc(quip_writer_t writer, void* writer_data);
 void       qualenc_free(qualenc_t*);
 
 void qualenc_encode(qualenc_t*, const seq_t*);

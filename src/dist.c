@@ -125,7 +125,8 @@ static void dist_update(dist_t* D)
     if (D->z > max_count) {
         D->z = 0;
         for (i = 0; i < D->n; ++i) {
-            D->z += D->cs[i] / 2 + 1;
+            D->cs[i] = D->cs[i] / 2 + 1;
+            D->z += D->cs[i];
         }
     }
 

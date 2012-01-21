@@ -32,16 +32,14 @@ struct idenc_t_
 
     char* lastid;
     size_t lastid_len, lastid_size;
-
-    size_t update_delay;
 };
 
 
-idenc_t* idenc_alloc(quip_block_writer_t writer, void* writer_data)
+idenc_t* idenc_alloc(quip_writer_t writer, void* writer_data)
 {
     idenc_t* E = malloc_or_die(sizeof(idenc_t));
 
-    E->ac = ac_alloc(writer, writer_data);
+    E->ac = ac_alloc_encoder(writer, writer_data);
 
     E->max_id_len = 0;
 
@@ -51,19 +49,17 @@ idenc_t* idenc_alloc(quip_block_writer_t writer, void* writer_data)
 
     E->ms = malloc_or_die(E->groups * sizeof(dist_t*));
     for (i = 0; i < E->groups; ++i) {
-        E->ms[i] = dist_alloc(max_group_len);
+        E->ms[i] = dist_alloc_encode(max_group_len);
     }
 
     E->ds = malloc_or_die(max_groups * 128 * 128 * sizeof(dist_t*));
     for (i = 0; i < max_groups * 128 * 128; ++i) {
-        E->ds[i] = dist_alloc(128);
+        E->ds[i] = dist_alloc_encode(128);
     }
 
     E->lastid = NULL;
     E->lastid_len = 0;
     E->lastid_size = 0;
-
-    E->update_delay = dist_update_delay;
 
     return E;
 }
@@ -90,19 +86,6 @@ void idenc_free(idenc_t* E)
 }
 
 
-static void idenc_dist_update(idenc_t* E)
-{
-    size_t i;
-    for (i = 0; i < E->groups; ++i) {
-        dist_update(E->ms[i]);
-    }
-
-    for (i = 0; i < max_groups * 128 * 128; ++i) {
-        dist_update(E->ds[i]);
-    }
-}
-
-
 static bool issep(char c)
 {
     return isspace(c) || c == '/';
@@ -111,7 +94,6 @@ static bool issep(char c)
 
 void idenc_encode(idenc_t* E, const seq_t* x)
 {
-    uint32_t p, c;
     size_t i, j;
     size_t matches;
     size_t group = 0;
@@ -125,7 +107,7 @@ void idenc_encode(idenc_t* E, const seq_t* x)
         if (group >= E->groups) {
             E->groups++;
             E->ms = realloc_or_die(E->ms, E->groups * sizeof(dist_t*));
-            E->ms[group] = dist_alloc(max_group_len);
+            E->ms[group] = dist_alloc_encode(max_group_len);
         }
 
         /* consume matching whitespace */
@@ -149,10 +131,7 @@ void idenc_encode(idenc_t* E, const seq_t* x)
             ++matches;
         }
 
-        p = dist_P(E->ms[group], matches);
-        c = dist_C(E->ms[group], matches);
-        ac_update(E->ac, p, c);
-        dist_add(E->ms[group], matches, 1);
+        ac_encode(E->ac, E->ms[group], matches);
 
         /* write trailing whitespace */
         while (i < id->n + 1 && issep(id->s[i])) {
@@ -162,10 +141,8 @@ void idenc_encode(idenc_t* E, const seq_t* x)
             ctx += j < E->lastid_len ? E->lastid[j] : 0;
             ctx %= max_groups * 128 * 128;
 
-            p = dist_P(E->ds[ctx], id->s[i]);
-            c = dist_C(E->ds[ctx], id->s[i]);
-            ac_update(E->ac, p, c);
-            dist_add(E->ds[ctx], id->s[i], 1);
+            ac_encode(E->ac, E->ds[ctx], id->s[i]);
+
             ++i;
 
             if (j < E->lastid_len && issep(E->lastid[j])) ++j;
@@ -179,10 +156,7 @@ void idenc_encode(idenc_t* E, const seq_t* x)
             ctx += j < E->lastid_len ? E->lastid[j] : 0;
             ctx %= max_groups * 128 * 128;
 
-            p = dist_P(E->ds[ctx], id->s[i]);
-            c = dist_C(E->ds[ctx], id->s[i]);
-            ac_update(E->ac, p, c);
-            dist_add(E->ds[ctx], id->s[i], 1);
+            ac_encode(E->ac, E->ds[ctx], id->s[i]);
             ++i;
 
             if (j < E->lastid_len && !issep(E->lastid[j])) ++j;
@@ -200,17 +174,12 @@ void idenc_encode(idenc_t* E, const seq_t* x)
     }
     memcpy(E->lastid, id->s, (id->n + 1) * sizeof(char));
     E->lastid_len = id->n + 1;
-
-    if (--E->update_delay == 0) {
-        idenc_dist_update(E);
-        E->update_delay = dist_update_delay;
-    }
 }
 
 
 void idenc_flush(idenc_t* E)
 {
-    ac_flush(E->ac);
+    ac_flush_encoder(E->ac);
 }
 
 

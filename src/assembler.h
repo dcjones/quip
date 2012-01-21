@@ -25,7 +25,7 @@
 typedef struct assembler_t_ assembler_t;
 
 assembler_t* assembler_alloc(
-        quip_block_writer_t writer, void* writer_data,
+        quip_writer_t writer, void* writer_data,
         size_t assemble_k, size_t align_k, bool quick);
 void         assembler_free(assembler_t*);
 

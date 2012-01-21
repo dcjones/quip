@@ -147,3 +147,20 @@ void ac_encode(ac_t* ac, dist_t* D, symb_t x)
 }
 
 
+void ac_flush_encoder(ac_t* ac)
+{
+    uint32_t b0 = ac->b;
+
+    if (ac->l > 2 * min_length) {
+        ac->b += min_length;
+        ac->l = min_length >> 1;
+    }
+    else {
+        ac->b += min_length >> 1;
+        ac->l = min_length >> 9;
+    }
+
+    if (b0 > ac->b) ac_propogate_carry(ac);
+    ac_renormalize_encoder(ac);
+
+}

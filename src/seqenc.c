@@ -5,9 +5,6 @@
 #include "dist.h"
 
 
-/* How many dist_add calls are made before all the distributions are updated. */
-static const size_t dist_update_delay = 10000;
-
 /* map nucleotide ascii characters to numbers */
 static const uint8_t nuc_map[256] =
   { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -44,17 +41,15 @@ struct seqenc_t_
 
     /* distribution of edit operations, given the previous operation */
     dist_t** es;
-
-    size_t update_delay;
 };
 
 
 
-seqenc_t* seqenc_alloc(size_t k, quip_block_writer_t writer, void* writer_data)
+seqenc_t* seqenc_alloc(size_t k, quip_writer_t writer, void* writer_data)
 {
     seqenc_t* E = malloc_or_die(sizeof(seqenc_t));
 
-    E->ac = ac_alloc(writer, writer_data);
+    E->ac = ac_alloc_encoder(writer, writer_data);
 
     E->k = k;
     E->N = 1;
@@ -65,17 +60,14 @@ seqenc_t* seqenc_alloc(size_t k, quip_block_writer_t writer, void* writer_data)
     E->cs = malloc_or_die(E->N * sizeof(dist_t*));
 
     for (i = 0; i < E->N; ++i) {
-        /* (6 = four nucleotides, plus N, plus sequence end) */
-        E->cs[i] = dist_alloc(5);
+        E->cs[i] = dist_alloc_encode(5);
     }
 
-    E->ms = dist_alloc(2);
-    E->ss = dist_alloc(2);
+    E->ms = dist_alloc_encode(2);
+    E->ss = dist_alloc_encode(2);
 
     E->es = malloc_or_die(16 * sizeof(dist_t*));
-    for (i = 0; i < 16; ++i) E->es[i] = dist_alloc(4);
-
-    E->update_delay = dist_update_delay;
+    for (i = 0; i < 16; ++i) E->es[i] = dist_alloc_encode(4);
 
     return E;
 }
@@ -99,30 +91,9 @@ void seqenc_free(seqenc_t* E)
 }
 
 
-static void seqenc_update_dist(seqenc_t* E)
-{
-    size_t i;
-    for (i = 0; i < E->N; ++i) {
-        dist_update(E->cs[i]);
-    }
-
-    dist_update(E->ms);
-    dist_update(E->ss);
-
-    for (i = 0; i < 16; ++i) {
-        dist_update(E->es[i]);
-    }
-}
-
-
 void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 {
-    uint32_t p, c;
-
-    p = dist_P(E->ms, 0);
-    c = dist_C(E->ms, 0);
-    ac_update(E->ac, p, c);
-    dist_add(E->ms, 0, 1);
+    ac_encode(E->ac, E->ms, 0);
 
     kmer_t u;
     size_t n = twobit_len(x);
@@ -131,19 +102,8 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
     for (i = 0; i < n; ++i) {
         /* We encode 'N' as 0, so 1 is added to every nucleotide. */
         u = twobit_get(x, i) + 1;
-
-        p = dist_P(E->cs[ctx], u);
-        c = dist_C(E->cs[ctx], u);
-        ac_update(E->ac, p, c);
-
-        dist_add(E->cs[ctx], u, 1);
+        ac_encode(E->ac, E->cs[ctx], u);
         ctx = (5 * ctx + u) % E->N;
-
-    }
-
-    if (--E->update_delay == 0) {
-        seqenc_update_dist(E);
-        E->update_delay = dist_update_delay;
     }
 }
 
@@ -151,30 +111,15 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 
 void seqenc_encode_char_seq(seqenc_t* E, const char* x)
 {
-    uint32_t p, c;
-
-    p = dist_P(E->ms, 0);
-    c = dist_C(E->ms, 0);
-    ac_update(E->ac, p, c);
-    dist_add(E->ms, 0, 1);
+    ac_encode(E->ac, E->ms, 0);
 
     kmer_t u;
     size_t ctx = 0;
     while (*x) {
         u = nuc_map[(uint8_t) *x];
-        p = dist_P(E->cs[ctx], u);
-        c = dist_C(E->cs[ctx], u);
-        ac_update(E->ac, p, c);
-
-        dist_add(E->cs[ctx], u, 1);
+        ac_encode(E->ac, E->cs[ctx], u);
         ctx = (5 * ctx + u) % E->N;
-
         ++x;
-    }
-
-    if (--E->update_delay == 0) {
-        seqenc_update_dist(E);
-        E->update_delay = dist_update_delay;
     }
 }
 
@@ -184,17 +129,8 @@ void seqenc_encode_alignment(seqenc_t* E,
         size_t contig_idx, uint8_t strand,
         const sw_alignment_t* aln, const twobit_t* query)
 {
-    uint32_t p, c;
-
-    p = dist_P(E->ms, 1);
-    c = dist_C(E->ms, 1);
-    ac_update(E->ac, p, c);
-    dist_add(E->ms, 1, 1);
-
-    p = dist_P(E->ss, strand);
-    c = dist_C(E->ss, strand);
-    ac_update(E->ac, p, c);
-    dist_add(E->ss, strand, 1);
+    ac_encode(E->ac, E->ms, 1);
+    ac_encode(E->ac, E->ss, strand);
 
     // TODO: output contig number
     // TODO: output contig offset
@@ -206,10 +142,7 @@ void seqenc_encode_alignment(seqenc_t* E,
     for (i = 0, j = 0; i < aln->len; ++i) {
         switch (aln->ops[i]) {
             case EDIT_MATCH:
-                p = dist_P(E->es[last_op], EDIT_MATCH);
-                c = dist_C(E->es[last_op], EDIT_MATCH);
-                ac_update(E->ac, p, c);
-                dist_add(E->es[last_op], EDIT_MATCH, 1);
+                ac_encode(E->ac, E->es[last_op], EDIT_MATCH);
 
                 ++j;
                 ctx = (5 * ctx + u) % E->N;
@@ -217,15 +150,8 @@ void seqenc_encode_alignment(seqenc_t* E,
                 break;
 
             case EDIT_MISMATCH:
-                p = dist_P(E->es[last_op], EDIT_MISMATCH);
-                c = dist_C(E->es[last_op], EDIT_MISMATCH);
-                ac_update(E->ac, p, c);
-                dist_add(E->es[last_op], EDIT_MISMATCH, 1);
-
-                p = dist_P(E->cs[ctx], u);
-                c = dist_C(E->cs[ctx], u);
-                ac_update(E->ac, p, c);
-                dist_add(E->cs[ctx], u, 1);
+                ac_encode(E->ac, E->es[last_op], EDIT_MISMATCH);
+                ac_encode(E->ac, E->cs[ctx], u);
 
                 ++j;
                 ctx = (5 * ctx + u) % E->N;
@@ -233,22 +159,12 @@ void seqenc_encode_alignment(seqenc_t* E,
                 break;
 
             case EDIT_Q_GAP:
-                p = dist_P(E->es[last_op], EDIT_Q_GAP);
-                c = dist_C(E->es[last_op], EDIT_Q_GAP);
-                ac_update(E->ac, p, c);
-                dist_add(E->es[last_op], EDIT_Q_GAP, 1);
+                ac_encode(E->ac, E->es[last_op], EDIT_Q_GAP);
                 break;
 
             case EDIT_S_GAP:
-                p = dist_P(E->es[last_op], EDIT_S_GAP);
-                c = dist_C(E->es[last_op], EDIT_S_GAP);
-                ac_update(E->ac, p, c);
-                dist_add(E->es[last_op], EDIT_S_GAP, 1);
-
-                p = dist_P(E->cs[ctx], u);
-                c = dist_C(E->cs[ctx], u);
-                ac_update(E->ac, p, c);
-                dist_add(E->cs[ctx], u, 1);
+                ac_encode(E->ac, E->es[last_op], EDIT_S_GAP);
+                ac_encode(E->ac, E->cs[ctx], u);
 
                 ++j;
                 ctx = (5 * ctx + u) % E->N;
@@ -258,17 +174,12 @@ void seqenc_encode_alignment(seqenc_t* E,
 
         last_op = ((last_op * 4) + aln->ops[i]) % 16;
     }
-
-    if (--E->update_delay == 0) {
-        seqenc_update_dist(E);
-        E->update_delay = dist_update_delay;
-    }
 }
 
 
 void seqenc_flush(seqenc_t* E)
 {
-    ac_flush(E->ac);
+    ac_flush_encoder(E->ac);
 }
 
 
