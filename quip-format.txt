@@ -1,0 +1,102 @@
+
+The Quip File Format
+====================
+
+Quip compresses FASTQ files with extreme prejudice. This document gives a brief
+overview of the file format that it outputs. This is not information that any
+user needs or would want to know, but will be useful for anyone indending to
+hack on the quip source code.
+
+Conventions
+
+
+The Quip format consists of a file header, zero or more blocks of compressed
+reads, and a footer. Seperating the reads into blocks may seem a bit old
+fashioned, but it allows us to do fancy things to subsets of the data (e.g., try
+to assembly the reads).
+
+
+Quip Header
+-----------
+
+    +---+---+---+---+---+---+---+
+    |      Magic Number     | V |
+    +---+---+---+---+---+---+---+
+
+
+The header of a Quip file in seven bytes.  The first six bytes of a Quip file
+are a magic number used to quickly identify that the file is of the correct
+format. The magic number defined as,
+
+    const uint8_t quip_header_magic[6] = 
+        {0xff, 'Q', 'U', 'I', 'P', 0x00};
+
+Which in hexidecimal is,
+
+          FF 51 55 49 50 00
+
+The seventh and last byte of the header is a number used to identify the version
+of the file format.
+
+
+Block Header
+------------
+
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+ ... +---+
+    |   Read Count  |  Id Byte Cnt  | Seq Byte Cnt  | Qual Byte Cnt |  Read Lens  |
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+ ... +---+
+
+Following the header is zero or more blocks of compressed reads.
+
+
+
+Block
+-----
+
+    +---+ ... +---+---+ ... +---+---+ ... +---+
+    |  Comp. Ids  | Comp. Seqs. | Comp. Quals.|
+    +---+ ... +---+---+ ... +---+---+ ... +---+
+
+A block is simply compressed chunks of read ids, sequences, and finally
+qualities.
+
+
+Compressed Sequence Chunk
+-------------------------
+
+    +---+---+---+---+---+ ... +---+
+    | Contig Count  |    Data     |
+    +---+---+---+---+---+ ... +---+
+
+The compressed sequence chunk is lead by a 4 byte integer giving the number of
+contigs (i.e., encoded sequences that are not reads).
+
+
+
+Quip Footer
+-----------
+
+The sequence of blocks is terminated by a block header of all zeros:
+
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    |       0       |       0       |       0       |       0       |
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+
+
+This followed by an eight byte integer giving the total number of bases in the
+file.
+
+
+    +---+---+---+---+---+---+---+---+
+    |       Total Base Count        |                                  
+    +---+---+---+---+---+---+---+---+
+
+
+And finally, another eight byte integer giving the total number of reads in the
+file.
+
+    +---+---+---+---+---+---+---+---+
+    |       Total Read Count        |                                  
+    +---+---+---+---+---+---+---+---+
+
+

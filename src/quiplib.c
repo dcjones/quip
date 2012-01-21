@@ -33,7 +33,7 @@ struct quip_compressor_t_
     quip_writer_t writer;
     void* writer_data;
 
-    /* algorithms to compress ids, qualities, and sequences, reps. */
+    /* algorithms to compress ids, qualities, and sequences, resp. */
     idenc_t*     idenc;
     qualenc_t*   qualenc;
     assembler_t* assembler;
@@ -46,13 +46,17 @@ struct quip_compressor_t_
     uint8_t* idbuf;
     size_t idbuf_size, idbuf_len;
 
+    /* compressed sequence */
+    uint8_t* seqbuf;
+    size_t seqbuf_size, seqbuf_len;
+
     /* number of bases encoded in the current block */
     size_t buffered_bases;
 
     /* for compression statistics */
     size_t id_bytes;
     size_t qual_bytes;
-    size_t seq_bytes, seq_comp_bytes;
+    size_t seq_bytes;
 };
 
 
@@ -93,8 +97,17 @@ static void id_buf_writer(void* param, const uint8_t* data, size_t size)
 static void seq_writer(void* param, const uint8_t* data, size_t size)
 {
     quip_compressor_t* C = (quip_compressor_t*) param;
-    C->seq_comp_bytes += size;
-    C->writer(C->writer_data, data, size);
+
+    if (C->seqbuf_size < C->seqbuf_len + size) {
+        while (C->seqbuf_size < C->seqbuf_len + size) {
+            C->seqbuf_size *= 2;
+        }
+
+        C->seqbuf = realloc_or_die(C->seqbuf, C->seqbuf_size * sizeof(uint8_t));
+    }
+
+    memcpy(C->seqbuf + C->seqbuf_len, data, size);
+    C->seqbuf_len += size;
 }
 
 
@@ -116,6 +129,10 @@ quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool
     C->idbuf_size = 1024;
     C->idbuf_len = 0;
     C->idbuf = malloc_or_die(C->idbuf_size * sizeof(uint8_t));
+
+    C->seqbuf_size = 1024;
+    C->seqbuf_len = 0;
+    C->seqbuf = malloc_or_die(C->seqbuf_size * sizeof(uint8_t));
 
     C->buffered_bases = 0;
 
@@ -154,10 +171,10 @@ void quip_comp_flush(quip_compressor_t* C)
     assembler_assemble(C->assembler);
     if (verbose) {
         fprintf(stderr, "\tseq: %zu / %zu (%0.2f%%)\n",
-                C->seq_comp_bytes, C->seq_bytes,
-                100.0 * (double) C->seq_comp_bytes / (double) C->seq_bytes);
+                C->seqbuf_len, C->seq_bytes,
+                100.0 * (double) C->seqbuf_len / (double) C->seq_bytes);
     }
-    C->seq_comp_bytes = 0;
+    C->seqbuf_len = 0;
 
 
     idenc_flush(C->idenc);
@@ -194,8 +211,8 @@ void quip_comp_free(quip_compressor_t* C)
     assembler_free(C->assembler);
     free(C->qualbuf);
     free(C->idbuf);
+    free(C->seqbuf);
     free(C);
 }
-
 
 
