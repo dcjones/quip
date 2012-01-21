@@ -72,6 +72,7 @@ dist_t* dist_alloc_decode(size_t n)
 
 void dist_free(dist_t* D)
 {
+    if (D == NULL) return;
     free(D->ps);
     free(D->cs);
     free(D->dec);
