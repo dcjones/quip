@@ -10,7 +10,7 @@
 
 
 static const size_t max_group_len  = 100;
-static const size_t max_groups     = 20;
+static const size_t max_groups     = 10;
 static const size_t max_offset     = 100;
 
 /* groups that do match the previous id are encoded either as a numerical offset
@@ -178,6 +178,9 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
     size_t i; /* position within the current id */
     size_t j; /* position within the last id */
 
+    size_t i0; /* first non-sep position within the current id group */
+    size_t j0; /* first non-sep position within the last id group */
+
     size_t u; /* index of the end of the group in id */
     size_t v; /* index of the end of the group in lost_id */
 
@@ -209,16 +212,12 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
                id->s[i] == E->lastid[j] &&
                issep(id->s[i]))
         {
-            is_num      = false;
-            last_is_num = false;
-            is_num      = is_num && isdigit(id->s[i]);
-            last_is_num = last_is_num && isdigit(E->lastid[j]);
-
             ++i;
             ++j;
             ++matches;
         }
-
+        i0 = i;
+        j0 = j;
 
         /* consume leading non-separator matches */
         while (i < id->n + 1 &&
@@ -227,79 +226,27 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
                id->s[i] == E->lastid[j] &&
                !issep(id->s[i]))
         {
-            is_num      = is_num && isdigit(id->s[i]);
-            last_is_num = last_is_num && isdigit(E->lastid[j]);
-
             ++i;
             ++j;
             ++matches;
+
+            is_num      = is_num && isdigit(id->s[i]);
+            last_is_num = last_is_num && isdigit(E->lastid[j]);
         }
-
-
-        /* find trailing numbers */
-        if (is_num && last_is_num) {
-            u = i;
-            while (u <- id->n + 1 &&
-                   isdigit(id->s[u]) &&
-                   matches + (u - i) < max_group_len)
-            {
-                ++u;
-            }
-
-            v = j;
-            while (v <- E->lastid_len &&
-                   isdigit(E->lastid[v]) &&
-                   matches + (v - j) < max_group_len)
-            {
-                ++v;
-            }
-
-            if (matches > 0 || ((u - i) > 0 && (v - j) > 0)) {
-                x = strtoull(id->s + (i - matches), NULL, 10);
-                y = strtoull(E->lastid + (j - matches), NULL, 10);
-
-                if (x > y && x - y <= max_offset) {
-                    ac_encode(E->ac, E->ts[group], ID_GROUP_NUM);
-                    ac_encode(E->ac, E->ns[group], x - y);
-
-                    i = u;
-                    j = v;
-
-                    continue;
-                }
-            }
-        }
-
-
-        /* encode matches */
-        if (matches > 0) {
-            /* try to consume the trailing seperator */
-            /*if (i < id->n + 1 &&*/
-                /*j < E->lastid_len &&*/
-                /*matches < max_group_len &&*/
-                /*id->s[i] == E->lastid[j]) {*/
-                /*++i;*/
-                /*++j;*/
-                /*++matches;*/
-            /*}*/
-
-            ac_encode(E->ac, E->ts[group], ID_GROUP_MATCH);
-            ac_encode(E->ac, E->ms[group], matches);
-            continue;
-        }
-
-
-        /* encode non-matches up to and including the first separator */
 
         /* find the end of the current id group */
 
         /* consume leading non-matching separators when nothing matched */
         u = i;
-        while (u < id->n + 1 &&
-               issep(id->s[u]) &&
-               matches + (u - i) < max_group_len)
-        {
-            ++u;
+        is_num = true;
+        if (matches == 0) {
+            while (u < id->n + 1 &&
+                   issep(id->s[u]) &&
+                   (u - i) < max_group_len)
+            {
+                is_num = false;
+                ++u;
+            }
         }
 
         /* consume trailing non-matching characters */
@@ -307,11 +254,9 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
                !issep(id->s[u]) &&
                matches + (u - i) < max_group_len)
         {
+            is_num = is_num && isdigit(id->s[u]);
             ++u;
         }
-
-        /* include the final separator */
-        /*if (u < id->n + 1 && matches + (u - i) < max_group_len) ++u;*/
 
         /* find the end of the last id group */
         v = j;
@@ -320,34 +265,13 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
                !issep(E->lastid[v]) &&
                matches + (v - j) < max_group_len)
         {
+            last_is_num = last_is_num && isdigit(E->lastid[v]);
             ++v;
         }
-
-        /* include the final separator */
-        /*if (v < E->lastid_len && matches + (v - j) < max_group_len) ++v;*/
 
         /* TODO: handle the case when we are at the maximum number of groups */
         /* TODO: handle the case in which we are at the maximum group length */
 
-        ac_encode(E->ac, E->ts[group], ID_GROUP_TEXT);
-        ac_encode(E->ac, E->ls[group], u - i);
-
-        ctx = 0;
-        while (i < u) {
-            ctx = 128 * (i > 0 ? id->s[i - 1] : 0);
-            ctx += j < E->lastid_len ? E->lastid[j] : 0;
-
-            ac_encode(E->ac, E->ds[group][ctx], id->s[i]);
-
-            if (j + 1 < v) ++j;
-            ++i;
-        }
-
-        j = v;
-
-
-
-#if 0
         /* groups match completely */
         if (i == u && j == v) {
             ac_encode(E->ac, E->ts[group], ID_GROUP_MATCH);
@@ -380,7 +304,8 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
         ctx = 0;
         while (i < u) {
             ctx = 128 * (i > 0 ? id->s[i - 1] : 0);
-            ctx += j < E->lastid_len ? E->lastid[j] : 0;
+            ctx += (i > 1 ? id->s[i - 2] : 0);
+            /*ctx += j < E->lastid_len ? E->lastid[j] : 0;*/
 
             ac_encode(E->ac, E->ds[group][ctx], id->s[i]);
 
@@ -389,7 +314,6 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
         }
 
         j = v;
-#endif
     }
 
 
