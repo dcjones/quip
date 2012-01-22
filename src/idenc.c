@@ -18,6 +18,7 @@ static const size_t max_offset     = 100;
 typedef enum {
     ID_GROUP_MATCH = 0,
     ID_GROUP_TEXT,
+    ID_GROUP_OFF,
     ID_GROUP_NUM
 } group_type_t;
 
@@ -42,6 +43,12 @@ struct idenc_t_
 
     /* distribution over numerical offset given group */
     dist_t** ns;
+
+    /* distribution over the number of bytes used to encode a number */
+    dist_t** bs;
+
+    /* distribution over byte values used when encoding numbers */
+    dist_t*** ks;
 
     /* number of whitespace seperated groups allowed for */
     size_t groups;
@@ -72,6 +79,12 @@ static void idenc_init(idenc_t* E)
 
     E->ns = malloc_or_die(max_groups * sizeof(dist_t*));
     memset(E->ns, 0, max_groups * sizeof(dist_t*));
+
+    E->bs = malloc_or_die(max_groups * sizeof(dist_t*));
+    memset(E->bs, 0, max_groups * sizeof(dist_t*));
+
+    E->ks = malloc_or_die(max_groups * sizeof(dist_t**));
+    memset(E->ks, 0, max_groups * sizeof(dist_t*));
 
     E->lastid = NULL;
     E->lastid_len = 0;
@@ -132,8 +145,18 @@ void idenc_free(idenc_t* E)
             }
         }
         free(E->ds[i]);
+
+        if (E->ks[i]) {
+            for (j = 0; j < 8; ++j) {
+                dist_free(E->ks[i][j]);
+            }
+        }
+        free(E->ks[i]);
     }
     free(E->ds);
+
+    for (i = 0; i < max_groups; ++i) dist_free(E->bs[i]);
+    free(E->bs);
 
     for (i = 0; i < max_groups; ++i) dist_free(E->ns[i]);
     free(E->ns);
@@ -153,7 +176,7 @@ static bool idenc_add_group(idenc_t* E)
     if (E->groups == max_groups) return false;
 
     E->ms[E->groups] = dist_alloc(max_group_len, E->decoder);
-    E->ts[E->groups] = dist_alloc(3, E->decoder);
+    E->ts[E->groups] = dist_alloc(4, E->decoder);
     E->ls[E->groups] = dist_alloc(max_group_len, E->decoder);
 
     E->ds[E->groups] = malloc_or_die(128 * 128 * sizeof(dist_t*));
@@ -163,6 +186,13 @@ static bool idenc_add_group(idenc_t* E)
     }
 
     E->ns[E->groups] = dist_alloc(max_offset + 1, E->decoder);
+
+    E->bs[E->groups] = dist_alloc(8, E->decoder);
+
+    E->ks[E->groups] = malloc_or_die(8 * sizeof(dist_t*));
+    for (j = 0; j < 8; ++j) {
+        E->ks[E->groups][j] = dist_alloc(256, E->decoder);
+    }
 
     E->groups++;
 
@@ -281,15 +311,42 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
             continue;
         }
 
+        /* TODO: handle the case of leading zeros */
+
         /* difference encoded as a numerical offset */
         if (is_num && last_is_num) {
             x = strtoull(id->s + i0, NULL, 10);
             y = strtoull(E->lastid + j0, NULL, 10);
 
             if (x > y && x - y <= max_offset) {
-                ac_encode(E->ac, E->ts[group], ID_GROUP_NUM);
+                ac_encode(E->ac, E->ts[group], ID_GROUP_OFF);
                 ac_encode(E->ac, E->ms[group], matches);
                 ac_encode(E->ac, E->ns[group], x - y);
+                i = u;
+                j = v;
+                continue;
+            }
+            else {
+                ac_encode(E->ac, E->ts[group], ID_GROUP_NUM);
+                ac_encode(E->ac, E->ms[group], matches);
+
+                size_t bytes = 0;
+                y = x;
+                while (y > 0) {
+                    y >>= 8;
+                    ++bytes;
+                }
+
+                /* encode the number of bytes needed (i.e., ceil(log2(x))) */
+                ac_encode(E->ac, E->bs[group], bytes);
+
+                /* encode the bytes */
+                while (x > 0) {
+                    ac_encode(E->ac, E->ks[group][bytes - 1], x & 0xff);
+                    x >>= 8;
+                    bytes--;
+                }
+
                 i = u;
                 j = v;
                 continue;
