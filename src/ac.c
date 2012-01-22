@@ -245,6 +245,8 @@ symb_t ac_decode(ac_t* ac, dist_t* D)
         ac->v = ((uint32_t) ac->buf[0] << 24) | ((uint32_t) ac->buf[1] << 16) |
                 ((uint32_t) ac->buf[2] << 8)  | ((uint32_t) ac->buf[3]);
 
+        ac->l = max_length;
+
         ac->bufpos = 4;
         ac->init_state = false;
     }
