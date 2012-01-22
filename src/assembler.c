@@ -13,6 +13,24 @@
 #include <string.h>
 
 
+static const size_t seqenc_order = 6;
+
+
+static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
+{
+    uint8_t bytes[4];
+    size_t cnt = reader(reader_data, bytes, 4);
+
+    if (cnt < 4) {
+        fprintf(stderr, "Unexpected end of file.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return ((uint32_t) bytes[0] << 24) |
+           ((uint32_t) bytes[1] << 16) |
+           ((uint32_t) bytes[2] << 8) |
+           ((uint32_t) bytes[3]);
+}
 
 
 struct assembler_t_
@@ -91,7 +109,7 @@ assembler_t* assembler_alloc(
         A->align_kmer_mask = (A->align_kmer_mask << 2) | 0x3;
     }
 
-    A->seqenc = seqenc_alloc(6, writer, writer_data);
+    A->seqenc = seqenc_alloc_encoder(seqenc_order, writer, writer_data);
 
     /* If we are not assembling, we do not need any of the data structure
      * initialized below. */
@@ -602,5 +620,58 @@ void assembler_assemble(assembler_t* A)
 
     assembler_reset(A);
 }
+
+
+struct disassembler_t_
+{
+    seqenc_t* seqenc;
+    uint32_t contig_count;
+
+    quip_reader_t reader;
+    void* reader_data;
+
+    bool init_state;
+};
+
+
+disassembler_t* disassembler_alloc(quip_reader_t reader, void* reader_data)
+{
+    disassembler_t* D = malloc_or_die(sizeof(disassembler_t));
+
+    D->seqenc = NULL;
+    D->reader = reader;
+    D->reader_data = reader_data;
+    D->init_state = true;
+
+    return D;
+}
+
+
+void disassembler_free(disassembler_t* D)
+{
+    if (D == NULL) return;
+    seqenc_free(D->seqenc);
+    free(D);
+}
+
+
+void disassembler_read(disassembler_t* D, seq_t* x, size_t n)
+{
+    if (D->init_state) {
+        D->contig_count = read_uint32(D->reader, D->reader_data);
+        
+        /* TODO: decompressing alignemnts */
+        assert(D->contig_count == 0);
+
+        /* read the contig count and lengths */
+        D->seqenc = seqenc_alloc_decoder(seqenc_order, D->reader, D->reader_data);
+
+        D->init_state = false;
+    }
+
+    seqenc_decode(D->seqenc, x, n);
+}
+
+
 
 

@@ -32,5 +32,14 @@ void         assembler_free(assembler_t*);
 void assembler_add_seq(assembler_t*, const char* seq, size_t seqlen);
 void assembler_assemble(assembler_t* A);
 
+
+/* disassemble */
+typedef struct disassembler_t_ disassembler_t;
+
+disassembler_t* disassembler_alloc(quip_reader_t reader, void* reader_data);
+void            disassembler_free(disassembler_t*);
+
+void disassembler_read(disassembler_t*, seq_t* x, size_t n);
+
 #endif
 

@@ -3,6 +3,7 @@
 #include "misc.h"
 #include "ac.h"
 #include "dist.h"
+#include <assert.h>
 
 
 /* map nucleotide ascii characters to numbers */
@@ -15,6 +16,9 @@ static const uint8_t nuc_map[256] =
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
+static const uint8_t rev_nuc_map[5] = { 'N', 'A', 'C', 'G', 'T' };
+
 
 struct seqenc_t_
 {
@@ -37,20 +41,15 @@ struct seqenc_t_
     dist_t* ss;
 
     /* distribution over contig number */
-    // XXX: fuck!!!! How do I do this? 
+    // TODO
 
     /* distribution of edit operations, given the previous operation */
     dist_t** es;
 };
 
 
-
-seqenc_t* seqenc_alloc(size_t k, quip_writer_t writer, void* writer_data)
+static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
 {
-    seqenc_t* E = malloc_or_die(sizeof(seqenc_t));
-
-    E->ac = ac_alloc_encoder(writer, writer_data);
-
     E->k = k;
     E->N = 1;
 
@@ -60,14 +59,36 @@ seqenc_t* seqenc_alloc(size_t k, quip_writer_t writer, void* writer_data)
     E->cs = malloc_or_die(E->N * sizeof(dist_t*));
 
     for (i = 0; i < E->N; ++i) {
-        E->cs[i] = dist_alloc_encode(5);
+        E->cs[i] = dist_alloc(5, decoder);
     }
 
-    E->ms = dist_alloc_encode(2);
-    E->ss = dist_alloc_encode(2);
+    E->ms = dist_alloc(2, decoder);
+    E->ss = dist_alloc(2, decoder);
 
     E->es = malloc_or_die(16 * sizeof(dist_t*));
-    for (i = 0; i < 16; ++i) E->es[i] = dist_alloc_encode(4);
+    for (i = 0; i < 16; ++i) E->es[i] = dist_alloc(4, decoder);
+}
+
+
+seqenc_t* seqenc_alloc_encoder(size_t k, quip_writer_t writer, void* writer_data)
+{
+    seqenc_t* E = malloc_or_die(sizeof(seqenc_t));
+
+    E->ac = ac_alloc_encoder(writer, writer_data);
+
+    seqenc_init(E, k, false);
+
+    return E;
+}
+
+
+seqenc_t* seqenc_alloc_decoder(size_t k, quip_reader_t reader, void* reader_data)
+{
+    seqenc_t* E = malloc_or_die(sizeof(seqenc_t));
+
+    E->ac = ac_alloc_decoder(reader, reader_data);
+
+    seqenc_init(E, k, true);
 
     return E;
 }
@@ -75,6 +96,8 @@ seqenc_t* seqenc_alloc(size_t k, quip_writer_t writer, void* writer_data)
 
 void seqenc_free(seqenc_t* E)
 {
+    if (E == NULL) return;
+
     ac_free(E->ac);
     size_t i;
     for (i = 0; i < E->N; ++i) {
@@ -174,6 +197,33 @@ void seqenc_encode_alignment(seqenc_t* E,
 
         last_op = ((last_op * 4) + aln->ops[i]) % 16;
     }
+}
+
+
+static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
+{
+    kmer_t u;
+    size_t ctx = 0;
+
+    size_t i;
+    for (i = 0; i < n; ++i) {
+        u = ac_decode(E->ac, E->cs[ctx]);
+        x->seq.s[i] = rev_nuc_map[u];
+        ctx = (5 * ctx + u) % E->N;
+    }
+}
+
+
+void seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
+{
+    while (n > x->seq.size) fastq_expand_str(&x->seq);
+
+    symb_t t = ac_decode(E->ac, E->ms);
+
+    if (t == 0) seqenc_decode_seq(E, x, n);
+
+    /* TODO: decoding alignments */
+    assert(t == 0);
 }
 
 

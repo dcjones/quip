@@ -21,7 +21,8 @@
 
 typedef struct seqenc_t_ seqenc_t;
 
-seqenc_t* seqenc_alloc(size_t k, quip_writer_t writer, void* writer_data);
+seqenc_t* seqenc_alloc_encoder(size_t k, quip_writer_t writer, void* writer_data);
+seqenc_t* seqenc_alloc_decoder(size_t k, quip_reader_t writer, void* reader_data);
 void      seqenc_free(seqenc_t*);
 
 void seqenc_encode_char_seq(seqenc_t*, const char*);
@@ -30,6 +31,7 @@ void seqenc_encode_alignment(seqenc_t* E,
         size_t contig_idx, uint8_t strand,
         const sw_alignment_t* aln, const twobit_t* query);
 
+void seqenc_decode(seqenc_t* E, seq_t* seq, size_t n);
 void seqenc_flush(seqenc_t* E);
 
 
