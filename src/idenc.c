@@ -503,5 +503,9 @@ void idenc_decode(idenc_t* E, seq_t* seq)
 }
 
 
+void idenc_reset_decoder(idenc_t* E)
+{
+    ac_reset_decoder(E->ac);
+}
 
 

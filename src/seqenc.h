@@ -30,9 +30,10 @@ void seqenc_encode_twobit_seq(seqenc_t*, const twobit_t*);
 void seqenc_encode_alignment(seqenc_t* E,
         size_t contig_idx, uint8_t strand,
         const sw_alignment_t* aln, const twobit_t* query);
+void seqenc_flush(seqenc_t* E);
 
 void seqenc_decode(seqenc_t* E, seq_t* seq, size_t n);
-void seqenc_flush(seqenc_t* E);
+void seqenc_reset_decoder(seqenc_t* E);
 
 
 #endif

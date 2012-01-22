@@ -29,6 +29,7 @@ void idenc_flush(idenc_t*);
 
 idenc_t* idenc_alloc_decoder(quip_reader_t reader, void* reader_data);
 void     idenc_decode(idenc_t*, seq_t*);
+void     idenc_reset_decoder(idenc_t*);
 
 
 #endif

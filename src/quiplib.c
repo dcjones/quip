@@ -16,7 +16,8 @@ const size_t assembler_k = 25;
 const size_t aligner_k = 15;
 
 /* approximate number of bases per block */
-const size_t block_size = 100000000;
+/*const size_t block_size = 100000000;*/
+const size_t block_size = 10000;
 
 bool verbose = true;
 
@@ -199,7 +200,6 @@ quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool
     C->writer(C->writer_data, quip_header_magic, 6);
     C->writer(C->writer_data, &quip_header_version, 1);
 
-
     return C;
 }
 
@@ -292,8 +292,8 @@ void quip_comp_addseq(quip_compressor_t* C, seq_t* seq)
         quip_comp_flush_block(C);
     }
 
-    idenc_encode(C->idenc, seq);
     qualenc_encode(C->qualenc, seq);
+    idenc_encode(C->idenc, seq);
     assembler_add_seq(C->assembler, seq->seq.s, seq->seq.n);
 
     C->buffered_reads++;
@@ -534,18 +534,21 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
         fprintf(stderr, "Unexpected end of file.\n");
         exit(EXIT_FAILURE);
     }
+    D->idbuf_pos = 0;
 
     D->seqbuf_len = D->reader(D->reader_data, D->seqbuf, seq_byte_cnt);
     if (D->seqbuf_len < seq_byte_cnt) {
         fprintf(stderr, "Unexpected end of file.\n");
         exit(EXIT_FAILURE);
     }
+    D->seqbuf_pos = 0;
 
     D->qualbuf_len = D->reader(D->reader_data, D->qualbuf, qual_byte_cnt);
     if (D->qualbuf_len < qual_byte_cnt) {
         fprintf(stderr, "Unexpected end of file.\n");
         exit(EXIT_FAILURE);
     }
+    D->qualbuf_pos = 0;
 
     D->readlen_idx = 0;
     D->readlen_off = 0;
@@ -557,6 +560,11 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
     if (D->pending_reads == 0) {
         quip_decomp_read_block_header(D);
         if (D->pending_reads == 0) return false;
+
+        /* reset decoders */
+        idenc_reset_decoder(D->idenc);
+        disassembler_reset(D->disassembler);
+        qualenc_reset_decoder(D->qualenc);
     }
 
     /* read length */
@@ -566,12 +574,9 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
         D->readlen_idx++;
     }
 
-    /*
-     * disassembler
-     */
-    idenc_decode(D->idenc, seq);
     disassembler_read(D->disassembler, seq, n);
     qualenc_decode(D->qualenc, seq, n);
+    idenc_decode(D->idenc, seq);
 
     D->pending_reads--;
 

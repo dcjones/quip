@@ -80,6 +80,9 @@ struct assembler_t_
 
     /* nucleotide sequence encoder */
     seqenc_t* seqenc;
+
+    /* nothing has been written yet */
+    bool initial_state;
 };
 
 
@@ -131,9 +134,7 @@ assembler_t* assembler_alloc(
         A->count_cutoff = 2;
     }
     else {
-        /* output the number of contigs (i.e., 0) */
-        uint8_t bytes[4] = {0, 0, 0, 0};
-        A->writer(A->writer_data, bytes, 4);
+        A->initial_state = true;
     }
 
     return A;
@@ -166,6 +167,14 @@ void assembler_free(assembler_t* A)
 void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
 {
     if (A->quick) {
+        if (A->initial_state) {
+            /* output the number of contigs (i.e., 0) */
+            uint8_t bytes[4] = {0, 0, 0, 0};
+            A->writer(A->writer_data, bytes, 4);
+
+            A->initial_state = false;
+        }
+
         seqenc_encode_char_seq(A->seqenc, seq);
         return;
     }
@@ -547,6 +556,7 @@ void assembler_assemble(assembler_t* A)
 {
     if (A->quick) {
         seqenc_flush(A->seqenc);
+        A->initial_state = true;
         return;
     }
 
@@ -638,7 +648,7 @@ disassembler_t* disassembler_alloc(quip_reader_t reader, void* reader_data)
 {
     disassembler_t* D = malloc_or_die(sizeof(disassembler_t));
 
-    D->seqenc = NULL;
+    D->seqenc = seqenc_alloc_decoder(seqenc_order, reader, reader_data);
     D->reader = reader;
     D->reader_data = reader_data;
     D->init_state = true;
@@ -663,15 +673,18 @@ void disassembler_read(disassembler_t* D, seq_t* x, size_t n)
         /* TODO: decompressing alignemnts */
         assert(D->contig_count == 0);
 
-        /* read the contig count and lengths */
-        D->seqenc = seqenc_alloc_decoder(seqenc_order, D->reader, D->reader_data);
-
         D->init_state = false;
     }
 
     seqenc_decode(D->seqenc, x, n);
 }
 
+
+void disassembler_reset(disassembler_t* D)
+{
+    seqenc_reset_decoder(D->seqenc);
+    D->init_state = true;
+}
 
 
 

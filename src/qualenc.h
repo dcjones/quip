@@ -29,6 +29,7 @@ void qualenc_encode(qualenc_t*, const seq_t*);
 void qualenc_flush(qualenc_t*);
 
 void qualenc_decode(qualenc_t*, seq_t*, size_t n);
+void qualenc_reset_decoder(qualenc_t*);
 
 #endif
 

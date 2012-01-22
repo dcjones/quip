@@ -38,5 +38,8 @@ void ac_flush_encoder(ac_t*);
 /* Decode the next symbol with the given distribution. */
 symb_t ac_decode(ac_t*, dist_t*);
 
+/* Start over decoding. */
+void ac_reset_decoder(ac_t*);
+
 #endif
 

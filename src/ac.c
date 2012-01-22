@@ -224,6 +224,11 @@ void ac_flush_encoder(ac_t* ac)
     ac_renormalize_encoder(ac);
 
     ac->writer(ac->writer_data, ac->buf, ac->bufpos);
+
+    /* reset encoder */
+    ac->b = 0;
+    ac->l = max_length;
+    ac->bufpos = 0;
 }
 
 
@@ -301,5 +306,11 @@ symb_t ac_decode(ac_t* ac, dist_t* D)
 }
 
 
+void ac_reset_decoder(ac_t* ac)
+{
+    ac->bufpos = 0;
+    ac->bufavail = 0;
+    ac->init_state = true;
+}
 
 

@@ -233,3 +233,9 @@ void seqenc_flush(seqenc_t* E)
 }
 
 
+void seqenc_reset_decoder(seqenc_t* E)
+{
+    ac_reset_decoder(E->ac);
+}
+
+
