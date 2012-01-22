@@ -91,8 +91,7 @@ assembler_t* assembler_alloc(
         A->align_kmer_mask = (A->align_kmer_mask << 2) | 0x3;
     }
 
-
-    A->seqenc = seqenc_alloc(5, writer, writer_data);
+    A->seqenc = seqenc_alloc(6, writer, writer_data);
 
     /* If we are not assembling, we do not need any of the data structure
      * initialized below. */

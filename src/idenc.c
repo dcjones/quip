@@ -211,6 +211,8 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
     size_t i0; /* first non-sep position within the current id group */
     size_t j0; /* first non-sep position within the last id group */
 
+    size_t i_last;
+
     size_t u; /* index of the end of the group in id */
     size_t v; /* index of the end of the group in lost_id */
 
@@ -234,6 +236,8 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
         is_num      = true;
         last_is_num = true;
 
+        i_last = i;
+
         /* consume leading separator matches */
         matches = 0;
         while (i < id->n + 1 &&
@@ -256,12 +260,12 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
                id->s[i] == E->lastid[j] &&
                !issep(id->s[i]))
         {
+            is_num      = is_num && isdigit(id->s[i]);
+            last_is_num = last_is_num && isdigit(E->lastid[j]);
+
             ++i;
             ++j;
             ++matches;
-
-            is_num      = is_num && isdigit(id->s[i]);
-            last_is_num = last_is_num && isdigit(E->lastid[j]);
         }
 
         /* find the end of the current id group */
@@ -320,7 +324,7 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
 
             if (x > y && x - y <= max_offset) {
                 ac_encode(E->ac, E->ts[group], ID_GROUP_OFF);
-                ac_encode(E->ac, E->ms[group], matches);
+                ac_encode(E->ac, E->ms[group], i0 - i_last);
                 ac_encode(E->ac, E->ns[group], x - y);
                 i = u;
                 j = v;
@@ -328,7 +332,7 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
             }
             else {
                 ac_encode(E->ac, E->ts[group], ID_GROUP_NUM);
-                ac_encode(E->ac, E->ms[group], matches);
+                ac_encode(E->ac, E->ms[group], i0 - i_last);
 
                 size_t bytes = 0;
                 y = x;
@@ -361,8 +365,7 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
         ctx = 0;
         while (i < u) {
             ctx = 128 * (i > 0 ? id->s[i - 1] : 0);
-            ctx += (i > 1 ? id->s[i - 2] : 0);
-            /*ctx += j < E->lastid_len ? E->lastid[j] : 0;*/
+            ctx += j < E->lastid_len ? E->lastid[j] : 0;
 
             ac_encode(E->ac, E->ds[group][ctx], id->s[i]);
 
@@ -389,9 +392,114 @@ void idenc_flush(idenc_t* E)
     ac_flush_encoder(E->ac);
 }
 
+
 void idenc_decode(idenc_t* E, seq_t* seq)
 {
-    /* TODO */
+    str_t* id = &seq->id1; /* for convenience */
+
+    group_type_t t;
+
+    size_t i; /* position within the current id */
+    size_t j; /* position within the last id */
+
+    size_t u;
+
+    size_t matches;    /* number of leading matches */
+    size_t group = 0;  /* group number */
+    size_t ctx; /* context for 2nd order model of text groups */
+
+    size_t bytes; /* number of bytes used to encode a number */
+
+    /* current and last numeric values */
+    unsigned long long x, y, off;
+
+    i = 0;
+    j = 0;
+
+    do{
+        /* make a new group ? */
+        if (group >= E->groups) {
+            assert(group < max_groups - 1);
+            idenc_add_group(E);
+        }
+
+        t = ac_decode(E->ac, E->ts[group]);
+        matches = ac_decode(E->ac, E->ms[group]);
+        assert(j + matches <= E->lastid_len);
+
+        while (i + matches >= id->size) fastq_expand_str(id);
+        memcpy(id->s + i, E->lastid + j, matches);
+
+        i += matches;
+        j += matches;
+
+        if (t == ID_GROUP_MATCH) {
+            /* do nothing more */
+        }
+        else if (t == ID_GROUP_OFF) {
+            off = ac_decode(E->ac, E->ns[group]);
+
+            assert(off <= max_offset);
+
+            /* this might be a little dangerous */
+            y = strtoull(E->lastid + j, NULL, 10);
+            x = y + off;
+
+            /* note: 20 = ceil(log10(2**64))  */
+            while (i + 20 >= id->size) fastq_expand_str(id);
+            i += snprintf(id->s + i, 20, "%llu", x);
+
+            /* consume numbers in lasdid */
+            while (j < E->lastid_len && isdigit(E->lastid[j])) ++j;
+        }
+        else if (t == ID_GROUP_NUM) {
+            bytes = ac_decode(E->ac, E->bs[group]);
+
+            x = 0;
+            size_t b;
+            for (b = 0; b < bytes; ++b) {
+                x |= ac_decode(E->ac, E->ks[group][bytes - b - 1]) << (8 * b);
+            }
+
+            /* note: 20 = ceil(log10(2**64))  */
+            while (i + 20 >= id->size) fastq_expand_str(id);
+            i += snprintf(id->s + i, 20, "%llu", x);
+
+            /* consume numbers in lasdid */
+            while (j < E->lastid_len && isdigit(E->lastid[j])) ++j;
+        }
+        else {
+            u = i + ac_decode(E->ac, E->ls[group]);
+            while (u >= id->size) fastq_expand_str(id);
+
+            ctx = 0;
+            while (i < u) {
+                ctx = 128 * (i > 0 ? id->s[i - 1] : 0);
+                ctx += j < E->lastid_len ? E->lastid[j] : 0;
+
+                id->s[i] = (char) ac_decode(E->ac, E->ds[group][ctx]);
+
+                if (j + 1 < E->lastid_len && !issep(j + 1)) ++j;
+                ++i;
+            }
+
+            if (j + 1 < E->lastid_len) ++j;
+        }
+
+        ++group;
+
+    } while (i == 0 || id->s[i - 1] != '\0');
+
+    id->n = i;
+
+
+    if (E->lastid_size < id->n + 1) {
+        E->lastid_size = id->n + 1;
+        free(E->lastid);
+        E->lastid = malloc_or_die((id->n + 1) * sizeof(char));
+    }
+    memcpy(E->lastid, id->s, (id->n + 1) * sizeof(char));
+    E->lastid_len = id->n + 1;
 }
 
 

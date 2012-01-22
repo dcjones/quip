@@ -223,6 +223,7 @@ void ac_flush_encoder(ac_t* ac)
     if (b0 > ac->b) ac_propogate_carry(ac);
     ac_renormalize_encoder(ac);
 
+    ac->writer(ac->writer_data, ac->buf, ac->bufpos);
 }
 
 

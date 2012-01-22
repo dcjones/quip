@@ -350,7 +350,7 @@ struct quip_decompressor_t_
     void* reader_data;
 
     /* algorithms to decompress ids, qualities, and sequences, resp. */
-    /*idenc_t*     idenc;*/
+    idenc_t*     idenc;
     qualenc_t*   qualenc;
     // TODO: we need a special dissasembler */
     /*assembler_t* assembler;*/
@@ -425,6 +425,7 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
     D->reader_data = reader_data;
 
     D->qualenc = qualenc_alloc_decoder(qual_buf_reader, (void*) D);
+    D->idenc   = idenc_alloc_decoder(id_buf_reader, (void*) D);
 
     D->qualbuf = NULL;
     D->qualbuf_size = 0;
@@ -466,6 +467,7 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
 
 void quip_decomp_free(quip_decompressor_t* D)
 {
+    idenc_free(D->idenc);
     qualenc_free(D->qualenc);
     free(D->qualbuf);
     free(D->idbuf);
@@ -563,11 +565,13 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
         D->readlen_idx++;
     }
 
-    // TODO: decode id
+    idenc_decode(D->idenc, seq);
+
     // TODO: decode sequence
-    //
+
     qualenc_decode(D->qualenc, seq, n);
 
+    D->pending_reads--;
 
     return true;
 }
