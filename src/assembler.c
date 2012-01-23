@@ -160,6 +160,7 @@ void assembler_free(assembler_t* A)
     kmerhash_free(A->H);
     twobit_free(A->x);
     seqenc_free(A->seqenc);
+    free(A);
 }
 
 

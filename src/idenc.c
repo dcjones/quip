@@ -154,6 +154,7 @@ void idenc_free(idenc_t* E)
         free(E->ks[i]);
     }
     free(E->ds);
+    free(E->ks);
 
     for (i = 0; i < max_groups; ++i) dist_free(E->bs[i]);
     free(E->bs);
