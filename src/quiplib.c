@@ -374,6 +374,8 @@ struct quip_decompressor_t_
     size_t readlen_count, readlen_size;
 
     size_t readlen_idx, readlen_off;
+
+    bool end_of_stream;
 };
 
 
@@ -447,6 +449,8 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
     D->readlen_count = 0;
     D->readlen_vals = malloc_or_die(D->readlen_size * sizeof(uint32_t));
     D->readlen_lens = malloc_or_die(D->readlen_size * sizeof(uint32_t));
+
+    D->end_of_stream = false;
 
     uint8_t header[7];
     D->reader(D->reader_data, header, 7);
@@ -527,6 +531,15 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
         D->qualbuf = malloc_or_die(D->qualbuf_size * sizeof(uint8_t));
     }
 
+    if (D->pending_reads == 0 &&
+             id_byte_cnt == 0 &&
+            seq_byte_cnt == 0 &&
+           qual_byte_cnt == 0)
+    {
+        D->end_of_stream = true;
+        return;
+    }
+
     /* read compressed data into buffers */
     D->idbuf_len = D->reader(D->reader_data, D->idbuf, id_byte_cnt);
     if (D->idbuf_len < id_byte_cnt) {
@@ -556,6 +569,8 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
 
 bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
 {
+    if (D->end_of_stream) return false;
+
     if (D->pending_reads == 0) {
         quip_decomp_read_block_header(D);
         if (D->pending_reads == 0) return false;

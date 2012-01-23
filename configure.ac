@@ -21,7 +21,7 @@ opt_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O3 -DNDEBUG"
 dbg_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O0"
 
 AC_ARG_ENABLE([debug],
-              [AS_HELP_STRING([--enable-debugging],
+              [AS_HELP_STRING([--enable-debug],
                               [enable debugging info (default is no)])],
               [], [enable_debug=no])
 
