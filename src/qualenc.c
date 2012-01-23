@@ -123,7 +123,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     char* qs = x->qual.s;
     size_t n = x->qual.n;
 
-    size_t bin_size = n / read_pos_bins;
+    size_t bin_size = (n / read_pos_bins) + 1;
     size_t i;
 
 
@@ -187,7 +187,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     unsigned char q1;  /* preceding quality score */
     unsigned char q2;  /* maximum of three quality scores preceding q1 */
 
-    size_t bin_size = n / read_pos_bins;
+    size_t bin_size = (n / read_pos_bins) + 1;
 
     /* case: i = 0 */
     if (n >= 1) {
