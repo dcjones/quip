@@ -168,7 +168,7 @@ void idenc_free(idenc_t* E)
 
 static bool issep(char c)
 {
-    return isspace(c) || c == '/' || c == '.' || c == ':';
+    return isspace(c) || c == '/' || c == '.' || c == ':' || c == '\0';
 }
 
 
