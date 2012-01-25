@@ -34,7 +34,7 @@ typedef struct dist_t_
     size_t n;
 
     /* cumulative symbol frequency */
-    uint32_t* ps;
+    uint16_t* ps;
 
     /* symbol counts */
     uint32_t* cs;
@@ -43,7 +43,7 @@ typedef struct dist_t_
     uint32_t z;
 
     /* decoder table */
-    uint32_t* dec;
+    uint32_t* dec; // TODO: make this 16bit integers
     size_t dec_size;
     size_t dec_shift;
 

@@ -186,9 +186,9 @@ void ac_encode(ac_t* ac, dist_t* D, symb_t x)
 {
     uint32_t u, b0 = ac->b;
 
-    u = D->ps[x] * (ac->l >>= dist_length_shift);
+    u = (uint32_t) D->ps[x] * (ac->l >>= dist_length_shift);
     ac->b += u;
-    ac->l = D->ps[x + 1] * ac->l - u;
+    ac->l = (uint32_t) D->ps[x + 1] * ac->l - u;
 
     if (b0 > ac->b)         ac_propogate_carry(ac);
     if (ac->l < min_length) ac_renormalize_encoder(ac);

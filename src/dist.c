@@ -21,7 +21,7 @@ dist_t* dist_alloc_encode(size_t n)
 {
     dist_t* D = malloc_or_die(sizeof(dist_t));
     D->n = n;
-    D->ps = malloc_or_die(n * sizeof(uint32_t));
+    D->ps = malloc_or_die((n + 1) * sizeof(uint16_t));
     D->cs = malloc_or_die(n * sizeof(uint32_t));
     D->dec = NULL;
     D->update_delay = D->n * update_delay_factor;
@@ -41,7 +41,7 @@ dist_t* dist_alloc_decode(size_t n)
 {
     dist_t* D = malloc_or_die(sizeof(dist_t));
     D->n = n;
-    D->ps = malloc_or_die((n + 1) * sizeof(uint32_t));
+    D->ps = malloc_or_die((n + 1) * sizeof(uint16_t));
     D->cs = malloc_or_die(n * sizeof(uint32_t));
     D->update_delay = D->n * update_delay_factor;
 
@@ -120,10 +120,10 @@ void dist_update(dist_t* D)
     uint32_t j, w, c = 0;
 
     for (i = 0; i < D->n; ++i) {
-        D->ps[i] = (scale * c) >> shift;
+        D->ps[i] = (uint16_t) ((scale * c) >> shift);
         c += D->cs[i];
     }
-    D->ps[D->n] = 0x80000000U >> shift;
+    D->ps[D->n] = (uint16_t) (0x80000000U >> shift);
 
     /* update decoder table */
     if (D->dec) {
@@ -151,8 +151,8 @@ dist_t** dist_alloc_array(size_t m, size_t n, bool decode)
     ds[0]->n = n;
     ds[0]->update_delay = n * update_delay_factor;
     ds[0]->z = n;
-    ds[0]->ps = malloc_or_die(m * (n + n + 1) * sizeof(uint32_t));
-    ds[0]->cs = ds[0]->ps + n + 1;
+    ds[0]->ps = malloc_or_die(m * (n + 1) * sizeof(uint16_t));
+    ds[0]->cs = malloc_or_die(m * n * sizeof(uint32_t));
 
     size_t i;
     for (i = 0; i < n * m; ++i) ds[0]->cs[i] = 1;
@@ -180,9 +180,10 @@ dist_t** dist_alloc_array(size_t m, size_t n, bool decode)
         ds[i]->update_delay = n * update_delay_factor;
         ds[i]->z = n;
 
-        ds[i]->ps = ds[i - 1]->cs + n;
-        ds[i]->cs = ds[i]->ps + n + 1;
-        memcpy(ds[i]->ps, ds[0]->ps, (n + n + 1) * sizeof(uint32_t));
+        ds[i]->ps = ds[i - 1]->ps + n + 1;
+        memcpy(ds[i]->ps, ds[0]->ps, (n + 1) * sizeof(uint16_t));
+        ds[i]->cs = ds[i - 1]->cs + n;
+        memcpy(ds[i]->cs, ds[0]->cs, n * sizeof(uint32_t));
 
         if (decode && n > 16) {
             ds[i]->dec_size  = ds[i - 1]->dec_size;
