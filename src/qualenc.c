@@ -29,11 +29,7 @@ struct qualenc_t_
 
 static void qualenc_init(qualenc_t* E, bool decode)
 {
-    E->cs = malloc_or_die(read_pos_bins * qual_size * qual_size * sizeof(dist_t*));
-    size_t i;
-    for (i = 0; i < read_pos_bins * qual_size * qual_size; ++i) {
-        E->cs[i] = dist_alloc(qual_size, decode);
-    }
+    E->cs = dist_alloc_array(read_pos_bins * qual_size * qual_size, qual_size, decode);
 }
 
 
@@ -61,12 +57,7 @@ qualenc_t* qualenc_alloc_decoder(quip_reader_t reader, void* reader_data)
 
 void qualenc_free(qualenc_t* E)
 {
-    size_t i;
-    for (i = 0; i < read_pos_bins * qual_size * qual_size; ++i) {
-        dist_free(E->cs[i]);
-    }
-    free(E->cs);
-
+    dist_free_array(E->cs);
     ac_free(E->ac);
     free(E);
 }

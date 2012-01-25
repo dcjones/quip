@@ -13,6 +13,17 @@ static const size_t max_group_len  = 100;
 static const size_t max_groups     = 10;
 static const size_t max_offset     = 100;
 
+/* does a particular character constitute a separator */
+static const bool issep[256] =
+  { 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+
 /* groups that do match the previous id are encoded either as a numerical offset
  * or as text. */
 typedef enum {
@@ -128,7 +139,7 @@ void idenc_free(idenc_t* E)
     free(E->lastid);
     ac_free(E->ac);
 
-    size_t i, j;
+    size_t i;
     for (i = 0; i < max_groups; ++i) dist_free(E->ms[i]);
     free(E->ms);
 
@@ -139,19 +150,8 @@ void idenc_free(idenc_t* E)
     free(E->ls);
 
     for (i = 0; i < max_groups; ++i) {
-        if (E->ds[i]) {
-            for (j = 0; j < 128 * 128; ++j) {
-                dist_free(E->ds[i][j]);
-            }
-        }
-        free(E->ds[i]);
-
-        if (E->ks[i]) {
-            for (j = 0; j < 8; ++j) {
-                dist_free(E->ks[i][j]);
-            }
-        }
-        free(E->ks[i]);
+        dist_free_array(E->ds[i]);
+        dist_free_array(E->ks[i]);
     }
     free(E->ds);
     free(E->ks);
@@ -166,12 +166,6 @@ void idenc_free(idenc_t* E)
 }
 
 
-static bool issep(char c)
-{
-    return isspace(c) || c == '/' || c == '.' || c == ':' || c == '\0';
-}
-
-
 static bool idenc_add_group(idenc_t* E)
 {
     if (E->groups == max_groups) return false;
@@ -179,21 +173,10 @@ static bool idenc_add_group(idenc_t* E)
     E->ms[E->groups] = dist_alloc(max_group_len, E->decoder);
     E->ts[E->groups] = dist_alloc(4, E->decoder);
     E->ls[E->groups] = dist_alloc(max_group_len, E->decoder);
-
-    E->ds[E->groups] = malloc_or_die(128 * 128 * sizeof(dist_t*));
-    size_t j;
-    for (j = 0; j < 128 * 128; ++j) {
-        E->ds[E->groups][j] = dist_alloc(128, E->decoder);
-    }
-
+    E->ds[E->groups] = dist_alloc_array(128 * 128, 128, E->decoder);
     E->ns[E->groups] = dist_alloc(max_offset + 1, E->decoder);
-
     E->bs[E->groups] = dist_alloc(8, E->decoder);
-
-    E->ks[E->groups] = malloc_or_die(8 * sizeof(dist_t*));
-    for (j = 0; j < 8; ++j) {
-        E->ks[E->groups][j] = dist_alloc(256, E->decoder);
-    }
+    E->ks[E->groups] = dist_alloc_array(8, 256, E->decoder);
 
     E->groups++;
 
@@ -245,7 +228,7 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
                j < E->lastid_len &&
                matches < max_group_len &&
                id->s[i] == E->lastid[j] &&
-               issep(id->s[i]))
+               issep[(uint8_t) id->s[i]])
         {
             ++i;
             ++j;
@@ -259,7 +242,7 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
                j < E->lastid_len &&
                matches < max_group_len &&
                id->s[i] == E->lastid[j] &&
-               !issep(id->s[i]))
+               !issep[(uint8_t) id->s[i]])
         {
             is_num      = is_num && isdigit(id->s[i]);
             last_is_num = last_is_num && isdigit(E->lastid[j]);
@@ -276,7 +259,7 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
         is_num = true;
         if (matches == 0) {
             while (u < id->n + 1 &&
-                   issep(id->s[u]) &&
+                   issep[(uint8_t) id->s[u]] &&
                    (u - i) < max_group_len)
             {
                 is_num = false;
@@ -286,7 +269,7 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
 
         /* consume trailing non-matching characters */
         while (u < id->n + 1 &&
-               !issep(id->s[u]) &&
+               !issep[(uint8_t) id->s[u]] &&
                matches + (u - i) < max_group_len)
         {
             is_num = is_num && isdigit(id->s[u]);
@@ -297,7 +280,7 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
         v = j;
         last_is_num = true;
         while (v < E->lastid_len &&
-               !issep(E->lastid[v]) &&
+               !issep[(uint8_t) E->lastid[v]] &&
                matches + (v - j) < max_group_len)
         {
             last_is_num = last_is_num && isdigit(E->lastid[v]);
@@ -480,7 +463,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
 
                 id->s[i] = (char) ac_decode(E->ac, E->ds[group][ctx]);
 
-                if (j + 1 < E->lastid_len && !issep(j + 1)) ++j;
+                if (j + 1 < E->lastid_len && !issep[(uint8_t) (j + 1)]) ++j;
                 ++i;
             }
 

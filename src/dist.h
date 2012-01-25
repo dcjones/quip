@@ -75,5 +75,14 @@ void dist_add(dist_t*, symb_t x, uint32_t k);
 /* update distribution to reflect calls to dist_add */
 void dist_update(dist_t* D);
 
+
+
+/* allocate and free an array of m dist_t objects, each of size n. 
+ * This saves a lot of time and some memory by making allocations in one chunk
+ * rather than many. */
+dist_t** dist_alloc_array(size_t m, size_t n, bool decode);
+void dist_free_array(dist_t**);
+
+
 #endif
 

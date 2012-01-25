@@ -31,6 +31,9 @@ struct seqenc_t_
     /* 5 ^ k */
     size_t N;
 
+    /* bitmask for two bit encoded context */
+    unsigned int ctx_mask;
+
     /* nucelotide probability given the last k nucleotides */
     dist_t** cs;
 
@@ -54,19 +57,17 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
     E->N = 1;
 
     size_t i;
-    for (i = 0; i < k; ++i) E->N *= 5;
-
-    E->cs = malloc_or_die(E->N * sizeof(dist_t*));
-
-    for (i = 0; i < E->N; ++i) {
-        E->cs[i] = dist_alloc(5, decoder);
+    E->ctx_mask = 0;
+    for (i = 0; i < k; ++i) {
+        E->ctx_mask = (E->ctx_mask << 2) | 0x3;
+        E->N *= 4;
     }
+
+    E->cs = dist_alloc_array(E->N, 5, decoder);
 
     E->ms = dist_alloc(2, decoder);
     E->ss = dist_alloc(2, decoder);
-
-    E->es = malloc_or_die(16 * sizeof(dist_t*));
-    for (i = 0; i < 16; ++i) E->es[i] = dist_alloc(4, decoder);
+    E->es = dist_alloc_array(16, 4, decoder);
 }
 
 
@@ -99,17 +100,10 @@ void seqenc_free(seqenc_t* E)
     if (E == NULL) return;
 
     ac_free(E->ac);
-    size_t i;
-    for (i = 0; i < E->N; ++i) {
-        dist_free(E->cs[i]);
-    }
-    free(E->cs);
+    dist_free_array(E->cs);
     dist_free(E->ms);
     dist_free(E->ss);
-    for (i = 0; i < 16; ++i) {
-        dist_free(E->es[i]);
-    }
-    free(E->es);
+    dist_free_array(E->es);
     free(E);
 }
 
@@ -121,12 +115,13 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
     kmer_t u;
     size_t n = twobit_len(x);
     size_t i;
-    size_t ctx = 0;
+    unsigned int ctx = 0;
     for (i = 0; i < n; ++i) {
         /* We encode 'N' as 0, so 1 is added to every nucleotide. */
         u = twobit_get(x, i) + 1;
         ac_encode(E->ac, E->cs[ctx], u);
-        ctx = (5 * ctx + u) % E->N;
+        u = u == 0 ? 1 : u - 1;
+        ctx = (ctx << 2 | u) & E->ctx_mask;
     }
 }
 
@@ -137,11 +132,12 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
     ac_encode(E->ac, E->ms, 0);
 
     kmer_t u;
-    size_t ctx = 0;
+    unsigned int ctx = 0;
     while (*x) {
         u = nuc_map[(uint8_t) *x];
         ac_encode(E->ac, E->cs[ctx], u);
-        ctx = (5 * ctx + u) % E->N;
+        u = u == 0 ? 1 : u - 1;
+        ctx = (ctx << 2 | u) & E->ctx_mask;
         ++x;
     }
 }
@@ -168,7 +164,8 @@ void seqenc_encode_alignment(seqenc_t* E,
                 ac_encode(E->ac, E->es[last_op], EDIT_MATCH);
 
                 ++j;
-                ctx = (5 * ctx + u) % E->N;
+                u = u == 0 ? 1 : u - 1;
+                ctx = (ctx << 2 | u) & E->ctx_mask;
                 u = twobit_get(query, j) + 1;
                 break;
 
@@ -177,7 +174,8 @@ void seqenc_encode_alignment(seqenc_t* E,
                 ac_encode(E->ac, E->cs[ctx], u);
 
                 ++j;
-                ctx = (5 * ctx + u) % E->N;
+                u = u == 0 ? 1 : u - 1;
+                ctx = (ctx << 2 | u) & E->ctx_mask;
                 u = twobit_get(query, j) + 1;
                 break;
 
@@ -190,7 +188,8 @@ void seqenc_encode_alignment(seqenc_t* E,
                 ac_encode(E->ac, E->cs[ctx], u);
 
                 ++j;
-                ctx = (5 * ctx + u) % E->N;
+                u = u == 0 ? 1 : u - 1;
+                ctx = (ctx << 2 | u) & E->ctx_mask;
                 u = twobit_get(query, j) + 1;
                 break;
         }
@@ -209,7 +208,8 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
     for (i = 0; i < n; ++i) {
         u = ac_decode(E->ac, E->cs[ctx]);
         x->seq.s[i] = rev_nuc_map[u];
-        ctx = (5 * ctx + u) % E->N;
+        u = u == 0 ? 1 : u - 1;
+        ctx = (ctx << 2 | u) & E->ctx_mask;
     }
 }
 

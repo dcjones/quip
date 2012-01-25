@@ -2,6 +2,7 @@
 #include "dist.h"
 #include "misc.h"
 #include <string.h>
+#include <assert.h>
 
 /* The distribution is updated every "initial_update_factor * n" new
  * observations. */
@@ -138,4 +139,78 @@ void dist_update(dist_t* D)
 
     D->update_delay = D->n * update_delay_factor;
 }
+
+
+
+dist_t** dist_alloc_array(size_t m, size_t n, bool decode)
+{
+    assert(m > 0);
+
+    dist_t** ds = malloc_or_die(m * sizeof(dist_t*));
+
+    ds[0] = malloc_or_die(m * sizeof(dist_t));
+    ds[0]->n = n;
+    ds[0]->last_symbol = n - 1;
+    ds[0]->update_delay = n * update_delay_factor;
+    ds[0]->z = n;
+    ds[0]->ps = malloc_or_die(2 * m * n * sizeof(uint32_t));
+    ds[0]->cs = ds[0]->ps + n;
+
+    size_t i;
+    for (i = 0; i < n * m; ++i) ds[0]->cs[i] = 1;
+
+
+    if (decode && n > 16) {
+        size_t dec_bits = 3;
+        while (n > (1U << (dec_bits + 2))) ++dec_bits;
+        ds[0]->dec_size = (1 << dec_bits) + 4;
+        ds[0]->dec_shift = dist_length_shift - dec_bits;
+        ds[0]->dec = malloc_or_die(m * (ds[0]->dec_size + 6) * sizeof(uint32_t));
+    }
+    else {
+        ds[0]->dec_shift = 0;
+        ds[0]->dec_size = 0;
+        ds[0]->dec = NULL;
+    }
+
+    dist_update(ds[0]);
+
+
+    for (i = 1; i < m; ++i) {
+        ds[i] = ds[i - 1] + 1;
+        ds[i]->n = n;
+        ds[i]->last_symbol = n - 1;
+        ds[i]->update_delay = n * update_delay_factor;
+        ds[i]->z = n;
+
+        ds[i]->ps = ds[i - 1]->cs + n;
+        ds[i]->cs = ds[i]->ps + n;
+        memcpy(ds[i]->ps, ds[0]->ps, 2 * n * sizeof(uint32_t));
+
+        if (decode && n > 16) {
+            ds[i]->dec_size  = ds[i - 1]->dec_size;
+            ds[i]->dec_shift = ds[i - 1]->dec_shift;
+            ds[i]->dec = ds[i - 1]->dec + ds[0]->dec_size + 6;
+            memcpy(ds[i]->dec, ds[0]->dec, (ds[0]->dec_size + 6) * sizeof(uint32_t));
+        }
+        else {
+            ds[i]->dec_shift = 0;
+            ds[i]->dec_size = 0;
+            ds[i]->dec = NULL;
+        }
+    }
+
+    return ds;
+}
+
+
+void dist_free_array(dist_t** ds)
+{
+    if (ds == NULL) return;
+    free(ds[0]->ps);
+    free(ds[0]->dec);
+    free(ds[0]);
+    free(ds);
+}
+
 
