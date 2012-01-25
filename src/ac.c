@@ -186,16 +186,9 @@ void ac_encode(ac_t* ac, dist_t* D, symb_t x)
 {
     uint32_t u, b0 = ac->b;
 
-    if (x == D->last_symbol) {
-        u = D->ps[x] * (ac->l >> dist_length_shift);
-        ac->b += u;
-        ac->l -= u;
-    }
-    else {
-        u = D->ps[x] * (ac->l >>= dist_length_shift);
-        ac->b += u;
-        ac->l = D->ps[x + 1] * ac->l - u;
-    }
+    u = D->ps[x] * (ac->l >>= dist_length_shift);
+    ac->b += u;
+    ac->l = D->ps[x + 1] * ac->l - u;
 
     if (b0 > ac->b)         ac_propogate_carry(ac);
     if (ac->l < min_length) ac_renormalize_encoder(ac);
@@ -269,7 +262,7 @@ symb_t ac_decode(ac_t* ac, dist_t* D)
         }
 
         x = D->ps[s] * ac->l;
-        if (s != D->last_symbol) y = D->ps[s + 1] * ac->l;
+        y = D->ps[s + 1] * ac->l;
     }
     else {
         /* decode using binary search */

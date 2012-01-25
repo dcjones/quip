@@ -21,7 +21,6 @@ dist_t* dist_alloc_encode(size_t n)
 {
     dist_t* D = malloc_or_die(sizeof(dist_t));
     D->n = n;
-    D->last_symbol = n - 1;
     D->ps = malloc_or_die(n * sizeof(uint32_t));
     D->cs = malloc_or_die(n * sizeof(uint32_t));
     D->dec = NULL;
@@ -42,8 +41,7 @@ dist_t* dist_alloc_decode(size_t n)
 {
     dist_t* D = malloc_or_die(sizeof(dist_t));
     D->n = n;
-    D->last_symbol = n - 1;
-    D->ps = malloc_or_die(n * sizeof(uint32_t));
+    D->ps = malloc_or_die((n + 1) * sizeof(uint32_t));
     D->cs = malloc_or_die(n * sizeof(uint32_t));
     D->update_delay = D->n * update_delay_factor;
 
@@ -125,6 +123,7 @@ void dist_update(dist_t* D)
         D->ps[i] = (scale * c) >> shift;
         c += D->cs[i];
     }
+    D->ps[D->n] = 0x80000000U >> shift;
 
     /* update decoder table */
     if (D->dec) {
@@ -150,11 +149,10 @@ dist_t** dist_alloc_array(size_t m, size_t n, bool decode)
 
     ds[0] = malloc_or_die(m * sizeof(dist_t));
     ds[0]->n = n;
-    ds[0]->last_symbol = n - 1;
     ds[0]->update_delay = n * update_delay_factor;
     ds[0]->z = n;
-    ds[0]->ps = malloc_or_die(2 * m * n * sizeof(uint32_t));
-    ds[0]->cs = ds[0]->ps + n;
+    ds[0]->ps = malloc_or_die(m * (n + n + 1) * sizeof(uint32_t));
+    ds[0]->cs = ds[0]->ps + n + 1;
 
     size_t i;
     for (i = 0; i < n * m; ++i) ds[0]->cs[i] = 1;
@@ -179,13 +177,12 @@ dist_t** dist_alloc_array(size_t m, size_t n, bool decode)
     for (i = 1; i < m; ++i) {
         ds[i] = ds[i - 1] + 1;
         ds[i]->n = n;
-        ds[i]->last_symbol = n - 1;
         ds[i]->update_delay = n * update_delay_factor;
         ds[i]->z = n;
 
         ds[i]->ps = ds[i - 1]->cs + n;
-        ds[i]->cs = ds[i]->ps + n;
-        memcpy(ds[i]->ps, ds[0]->ps, 2 * n * sizeof(uint32_t));
+        ds[i]->cs = ds[i]->ps + n + 1;
+        memcpy(ds[i]->ps, ds[0]->ps, (n + n + 1) * sizeof(uint32_t));
 
         if (decode && n > 16) {
             ds[i]->dec_size  = ds[i - 1]->dec_size;

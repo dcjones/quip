@@ -33,9 +33,6 @@ typedef struct dist_t_
     /* alphabet size */
     size_t n;
 
-    /* n - 1 */
-    symb_t last_symbol;
-
     /* cumulative symbol frequency */
     uint32_t* ps;
 
