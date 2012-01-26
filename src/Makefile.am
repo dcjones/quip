@@ -18,5 +18,5 @@ quip_SOURCES = quip.c version.h \
 			   qualenc.h     qualenc.c \
 			   quiplib.c     quip.h
 
-noinst_HEADERS = dist_header.h dist_source.c
+noinst_HEADERS = dist_impl.h dist_impl.c dist_template_on.h dist_template_off.h
 
