@@ -287,10 +287,10 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
             x = strtoull(id->s + i0, NULL, 10);
             y = strtoull(E->lastid + j0, NULL, 10);
 
-            if (x > y && x - y <= max_offset) {
+            if (x > y && x - y < max_offset) {
                 dist4_encode   (E->ac, &E->ts[group], ID_GROUP_OFF);
                 dist100_encode (E->ac, &E->ms[group], i0 - i_last);
-                dist100_encode (E->ac, &E->ms[group], x - y);
+                dist100_encode (E->ac, &E->ns[group], x - y);
                 i = u;
                 j = v;
                 continue;
@@ -403,7 +403,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
         else if (t == ID_GROUP_OFF) {
             off = dist100_decode(E->ac, &E->ns[group]);
 
-            assert(off <= max_offset);
+            assert(off < max_offset);
 
             /* this might be a little dangerous */
             y = strtoull(E->lastid + j, NULL, 10);

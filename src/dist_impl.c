@@ -138,7 +138,7 @@ symb_t dfun(decode)(ac_t* ac, dist_t* D)
         }
 
         x = D->xs[s].freq * ac->l;
-        y = D->xs[s + 1].freq * ac->l;
+        if (s != DISTSIZE - 1) y = D->xs[s + 1].freq * ac->l;
     }
     else {
         x = s = 0;
