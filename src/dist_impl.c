@@ -181,6 +181,7 @@ void cdfun(init) (cond_dist_t* D, size_t n, bool decode)
 {
     D->xss   = malloc_or_die(n * sizeof(dist_t));
     D->index = malloc_or_die(n * sizeof(uint32_t));
+    D->ord   = malloc_or_die(n * sizeof(uint32_t));
     D->n = n;
 
     D->xss[0].update_delay = DISTSIZE * update_delay_factor;
@@ -226,9 +227,11 @@ void cdfun(free) (cond_dist_t* D)
 
     free(D->xss);
     free(D->index);
+    free(D->ord);
 }
 
 
+#if 0
 void cdfun(reorder) (cond_dist_t* D)
 {
     /* TODO:
@@ -237,6 +240,7 @@ void cdfun(reorder) (cond_dist_t* D)
      * 3. scale the counts if they are large
      */
 }
+#endif
 
 
 

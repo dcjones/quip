@@ -10,7 +10,6 @@
 
 
 static const size_t max_group_len  = 100;
-static const size_t max_groups     = 10;
 static const size_t max_offset     = 100;
 
 /* does a particular character constitute a separator */
@@ -38,28 +37,26 @@ struct idenc_t_
 {
     ac_t* ac;
 
-    size_t max_id_len;
-
     /* distribution over number of leading matches given group */
-    dist_t** ms;
+    dist100_t* ms;
 
     /* distribution over how the group is stored (numeric offset or text) */
-    dist_t** ts;
+    dist4_t* ts;
 
     /* distribution over the length text given group */
-    dist_t** ls;
+    dist100_t* ls;
 
     /* distribution over new characters given group */
-    dist_t*** ds;
+    cond_dist128_t* ds;
 
     /* distribution over numerical offset given group */
-    dist_t** ns;
+    dist100_t* ns;
 
     /* distribution over the number of bytes used to encode a number */
-    dist_t** bs;
+    dist8_t* bs;
 
     /* distribution over byte values used when encoding numbers */
-    dist_t*** ks;
+    cond_dist256_t* ks;
 
     /* number of whitespace seperated groups allowed for */
     size_t groups;
@@ -73,29 +70,15 @@ struct idenc_t_
 
 static void idenc_init(idenc_t* E)
 {
-    E->max_id_len = 0;
     E->groups = 0;
 
-    E->ms = malloc_or_die(max_groups * sizeof(dist_t*));
-    memset(E->ms, 0, max_groups * sizeof(dist_t*));
-
-    E->ts = malloc_or_die(max_groups * sizeof(dist_t*));
-    memset(E->ts, 0, max_groups * sizeof(dist_t*));
-
-    E->ls = malloc_or_die(max_groups * sizeof(dist_t*));
-    memset(E->ls, 0, max_groups * sizeof(dist_t*));
-
-    E->ds = malloc_or_die(max_groups * sizeof(dist_t**));
-    memset(E->ds, 0, max_groups * sizeof(dist_t**));
-
-    E->ns = malloc_or_die(max_groups * sizeof(dist_t*));
-    memset(E->ns, 0, max_groups * sizeof(dist_t*));
-
-    E->bs = malloc_or_die(max_groups * sizeof(dist_t*));
-    memset(E->bs, 0, max_groups * sizeof(dist_t*));
-
-    E->ks = malloc_or_die(max_groups * sizeof(dist_t**));
-    memset(E->ks, 0, max_groups * sizeof(dist_t*));
+    E->ms = NULL;
+    E->ts = NULL;
+    E->ls = NULL;
+    E->ds = NULL;
+    E->ns = NULL;
+    E->bs = NULL;
+    E->ks = NULL;
 
     E->lastid = NULL;
     E->lastid_len = 0;
@@ -140,47 +123,46 @@ void idenc_free(idenc_t* E)
     ac_free(E->ac);
 
     size_t i;
-    for (i = 0; i < max_groups; ++i) dist_free(E->ms[i]);
-    free(E->ms);
-
-    for (i = 0; i < max_groups; ++i) dist_free(E->ts[i]);
-    free(E->ts);
-
-    for (i = 0; i < max_groups; ++i) dist_free(E->ls[i]);
-    free(E->ls);
-
-    for (i = 0; i < max_groups; ++i) {
-        dist_free_array(E->ds[i]);
-        dist_free_array(E->ks[i]);
+    for (i = 0; i < E->groups; ++i){
+        dist100_free(&E->ms[i]);
+        dist4_free(&E->ts[i]);
+        dist100_free(&E->ls[i]);
+        cond_dist128_free(&E->ds[i]);
+        dist100_free(&E->ns[i]);
+        dist8_free(&E->bs[i]);
+        cond_dist256_free(&E->ks[i]);
     }
+
+    free(E->ms);
+    free(E->ts);
+    free(E->ls);
     free(E->ds);
-    free(E->ks);
-
-    for (i = 0; i < max_groups; ++i) dist_free(E->bs[i]);
-    free(E->bs);
-
-    for (i = 0; i < max_groups; ++i) dist_free(E->ns[i]);
     free(E->ns);
+    free(E->bs);
+    free(E->ks);
 
     free(E);
 }
 
 
-static bool idenc_add_group(idenc_t* E)
+static void idenc_add_group(idenc_t* E)
 {
-    if (E->groups == max_groups) return false;
-
-    E->ms[E->groups] = dist_alloc(max_group_len, E->decoder);
-    E->ts[E->groups] = dist_alloc(4, E->decoder);
-    E->ls[E->groups] = dist_alloc(max_group_len, E->decoder);
-    E->ds[E->groups] = dist_alloc_array(128 * 128, 128, E->decoder);
-    E->ns[E->groups] = dist_alloc(max_offset + 1, E->decoder);
-    E->bs[E->groups] = dist_alloc(8, E->decoder);
-    E->ks[E->groups] = dist_alloc_array(8, 256, E->decoder);
-
     E->groups++;
+    E->ms = realloc_or_die(E->ms, E->groups * sizeof(dist100_t));
+    E->ts = realloc_or_die(E->ts, E->groups * sizeof(dist4_t));
+    E->ls = realloc_or_die(E->ls, E->groups * sizeof(dist100_t));
+    E->ds = realloc_or_die(E->ds, E->groups * sizeof(cond_dist128_t));
+    E->ns = realloc_or_die(E->ns, E->groups * sizeof(dist100_t));
+    E->bs = realloc_or_die(E->bs, E->groups * sizeof(dist8_t));
+    E->ks = realloc_or_die(E->ks, E->groups * sizeof(cond_dist256_t));
 
-    return true;
+    dist100_init      (&E->ms[E->groups - 1], E->decoder);
+    dist4_init        (&E->ts[E->groups - 1], E->decoder);
+    dist100_init      (&E->ls[E->groups - 1], E->decoder);
+    cond_dist128_init (&E->ds[E->groups - 1], 128 * 128, E->decoder);
+    dist100_init      (&E->ns[E->groups - 1], E->decoder);
+    dist8_init        (&E->bs[E->groups - 1], E->decoder);
+    cond_dist256_init (&E->ks[E->groups - 1], 8, E->decoder);
 }
 
 
@@ -213,7 +195,6 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
     for (i = 0, j = 0; i < id->n + 1; ++group) {
         /* make a new group ? */
         if (group >= E->groups) {
-            assert(group < max_groups - 1);
             idenc_add_group(E);
         }
 
@@ -292,8 +273,8 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
 
         /* groups match completely */
         if (i == u && j == v) {
-            ac_encode(E->ac, E->ts[group], ID_GROUP_MATCH);
-            ac_encode(E->ac, E->ms[group], matches);
+            dist4_encode   (E->ac, &E->ts[group], ID_GROUP_MATCH);
+            dist100_encode (E->ac, &E->ms[group], matches);
             i = u;
             j = v;
             continue;
@@ -307,16 +288,16 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
             y = strtoull(E->lastid + j0, NULL, 10);
 
             if (x > y && x - y <= max_offset) {
-                ac_encode(E->ac, E->ts[group], ID_GROUP_OFF);
-                ac_encode(E->ac, E->ms[group], i0 - i_last);
-                ac_encode(E->ac, E->ns[group], x - y);
+                dist4_encode   (E->ac, &E->ts[group], ID_GROUP_OFF);
+                dist100_encode (E->ac, &E->ms[group], i0 - i_last);
+                dist100_encode (E->ac, &E->ms[group], x - y);
                 i = u;
                 j = v;
                 continue;
             }
             else {
-                ac_encode(E->ac, E->ts[group], ID_GROUP_NUM);
-                ac_encode(E->ac, E->ms[group], i0 - i_last);
+                dist4_encode   (E->ac, &E->ts[group], ID_GROUP_NUM);
+                dist100_encode (E->ac, &E->ms[group], i0 - i_last);
 
                 size_t bytes = 0;
                 y = x;
@@ -326,11 +307,11 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
                 }
 
                 /* encode the number of bytes needed (i.e., ceil(log2(x))) */
-                ac_encode(E->ac, E->bs[group], bytes);
+                dist8_encode(E->ac, &E->bs[group], bytes);
 
                 /* encode the bytes */
                 while (x > 0) {
-                    ac_encode(E->ac, E->ks[group][bytes - 1], x & 0xff);
+                    cond_dist256_encode(E->ac, &E->ks[group], bytes - 1, x & 0xff);
                     x >>= 8;
                     bytes--;
                 }
@@ -342,16 +323,16 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
         }
 
         /* difference encoded as text */
-        ac_encode(E->ac, E->ts[group], ID_GROUP_TEXT);
-        ac_encode(E->ac, E->ms[group], matches);
-        ac_encode(E->ac, E->ls[group], u - i);
+        dist4_encode   (E->ac, &E->ts[group], ID_GROUP_TEXT);
+        dist100_encode (E->ac, &E->ms[group], matches);
+        dist100_encode (E->ac, &E->ls[group], u - i);
 
         ctx = 0;
         while (i < u) {
             ctx = 128 * (i > 0 ? id->s[i - 1] : 0);
             ctx += j < E->lastid_len ? E->lastid[j] : 0;
 
-            ac_encode(E->ac, E->ds[group][ctx], id->s[i]);
+            cond_dist128_encode(E->ac, &E->ds[group], ctx, id->s[i]);
 
             if (j + 1 < v) ++j;
             ++i;
@@ -403,12 +384,11 @@ void idenc_decode(idenc_t* E, seq_t* seq)
     do{
         /* make a new group ? */
         if (group >= E->groups) {
-            assert(group < max_groups - 1);
             idenc_add_group(E);
         }
 
-        t = ac_decode(E->ac, E->ts[group]);
-        matches = ac_decode(E->ac, E->ms[group]);
+        t       = dist4_decode   (E->ac, &E->ts[group]);
+        matches = dist100_decode (E->ac, &E->ms[group]);
         assert(j + matches <= E->lastid_len);
 
         while (i + matches >= id->size) fastq_expand_str(id);
@@ -421,7 +401,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             /* do nothing more */
         }
         else if (t == ID_GROUP_OFF) {
-            off = ac_decode(E->ac, E->ns[group]);
+            off = dist100_decode(E->ac, &E->ns[group]);
 
             assert(off <= max_offset);
 
@@ -437,12 +417,12 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             while (j < E->lastid_len && isdigit(E->lastid[j])) ++j;
         }
         else if (t == ID_GROUP_NUM) {
-            bytes = ac_decode(E->ac, E->bs[group]);
+            bytes = dist8_decode(E->ac, &E->bs[group]);
 
             x = 0;
             size_t b;
             for (b = 0; b < bytes; ++b) {
-                x |= ac_decode(E->ac, E->ks[group][bytes - b - 1]) << (8 * b);
+                x |= cond_dist256_decode(E->ac, &E->ks[group], bytes - b - 1) << (8 * b);
             }
 
             /* note: 20 = ceil(log10(2**64))  */
@@ -453,7 +433,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             while (j < E->lastid_len && isdigit(E->lastid[j])) ++j;
         }
         else {
-            u = i + ac_decode(E->ac, E->ls[group]);
+            u = i + dist100_decode(E->ac, &E->ls[group]);
             while (u >= id->size) fastq_expand_str(id);
 
             ctx = 0;
@@ -461,7 +441,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
                 ctx = 128 * (i > 0 ? id->s[i - 1] : 0);
                 ctx += j < E->lastid_len ? E->lastid[j] : 0;
 
-                id->s[i] = (char) ac_decode(E->ac, E->ds[group][ctx]);
+                id->s[i] = (char) cond_dist128_decode(E->ac, &E->ds[group], ctx);
 
                 if (j + 1 < E->lastid_len && !issep[(uint8_t) (j + 1)]) ++j;
                 ++i;
