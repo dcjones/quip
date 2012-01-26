@@ -25,12 +25,6 @@ static void fastq_alloc_str(str_t* s)
     s->size = init_str_size;
 }
 
-static void fastq_copy_str(str_t* dest, const str_t* src)
-{
-    while (dest->size < src->n) fastq_expand_str(dest);
-    memcpy(dest->s, src->s, src->n * sizeof(char));
-    dest->n = src->n;
-}
 
 void fastq_expand_str(str_t* s)
 {
@@ -51,15 +45,6 @@ seq_t* fastq_alloc_seq()
 }
 
 
-void fastq_clear_seq(seq_t* seq)
-{
-    seq->id1.n = 0;
-    seq->seq.n = 0;
-    seq->id2.n = 0;
-    seq->qual.n = 0;
-}
-
-
 void fastq_free_seq(seq_t* seq)
 {
     free(seq->id1.s);
@@ -67,14 +52,6 @@ void fastq_free_seq(seq_t* seq)
     free(seq->id2.s);
     free(seq->qual.s);
     free(seq);
-}
-
-void fastq_copy_seq(seq_t* dest, const seq_t* src)
-{
-    fastq_copy_str(&dest->id1, &src->id1);
-    fastq_copy_str(&dest->seq, &src->seq);
-    fastq_copy_str(&dest->id2, &src->id2);
-    fastq_copy_str(&dest->qual, &src->qual);
 }
 
 

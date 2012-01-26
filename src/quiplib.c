@@ -69,11 +69,6 @@ struct quip_compressor_t_
     quip_writer_t writer;
     void* writer_data;
 
-    /* buffered reads */
-    seq_t** reads;
-    size_t reads_len;
-    size_t reads_size;
-
     /* algorithms to compress ids, qualities, and sequences, resp. */
     idenc_t*     idenc;
     qualenc_t*   qualenc;
@@ -169,14 +164,6 @@ quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool
     C->writer = writer;
     C->writer_data = writer_data;
 
-    C->reads_size = 4096;
-    C->reads = malloc_or_die(C->reads_size * sizeof(seq_t));
-    size_t i;
-    for (i = 0; i < C->reads_size; ++i) {
-        C->reads[i] = fastq_alloc_seq();
-    }
-    C->reads_len = 0;
-
     C->qualbuf_size = 1024;
     C->qualbuf_len = 0;
     C->qualbuf = malloc_or_die(C->qualbuf_size * sizeof(uint8_t));
@@ -235,45 +222,11 @@ static void quip_comp_add_readlen(quip_compressor_t* C, size_t l)
 }
 
 
-static void quip_comp_flush_read_buffer(quip_compressor_t* C)
-{
-    size_t i;
-    for (i = 0; i < C->reads_len; ++i) {
-        qualenc_encode(C->qualenc, C->reads[i]);
-    }
-
-    for (i = 0; i < C->reads_len; ++i) {
-        idenc_encode(C->idenc, C->reads[i]);
-    }
-
-    for (i = 0; i < C->reads_len; ++i) {
-        assembler_add_seq(C->assembler, C->reads[i]->seq.s, C->reads[i]->seq.n);
-    }
-
-    C->buffered_reads += C->reads_len;
-    C->total_reads += C->reads_len;
-    for (i = 0; i < C->reads_len; ++i) {
-        C->buffered_bases += C->reads[i]->seq.n;
-        C->id_bytes       += C->reads[i]->id1.n;
-        C->qual_bytes     += C->reads[i]->qual.n;
-        C->seq_bytes      += C->reads[i]->seq.n;
-        C->total_bases    += C->reads[i]->qual.n;
-        quip_comp_add_readlen(C, C->reads[i]->seq.n);
-        fastq_clear_seq(C->reads[i]);
-    }
-
-    C->reads_len = 0;
-}
-
-
-
 void quip_comp_flush_block(quip_compressor_t* C)
 {
     if (verbose) {
         fprintf(stderr, "writing a block of %zu compressed bases...\n", C->buffered_bases);
     }
-
-    if (C->reads_len > 0) quip_comp_flush_read_buffer(C);
 
     /* write the number of encoded reads in the block */
     write_uint32(C->writer, C->writer_data, C->buffered_reads);
@@ -332,27 +285,31 @@ void quip_comp_flush_block(quip_compressor_t* C)
 }
 
 
-
 void quip_comp_addseq(quip_compressor_t* C, seq_t* seq)
 {
     if (C->buffered_bases > block_size) {
         quip_comp_flush_block(C);
     }
 
-    if (C->reads_len < C->reads_size) {
-        fastq_copy_seq(C->reads[C->reads_len++], seq);
-        return;
-    }
-    else {
-        quip_comp_flush_read_buffer(C);
-    }
+    qualenc_encode(C->qualenc, seq);
+    idenc_encode(C->idenc, seq);
+    assembler_add_seq(C->assembler, seq->seq.s, seq->seq.n);
+
+    C->buffered_reads++;
+    C->buffered_bases += seq->seq.n;
+
+    C->id_bytes   += seq->id1.n;
+    C->qual_bytes += seq->qual.n;
+    C->seq_bytes  += seq->seq.n;
+
+    quip_comp_add_readlen(C, seq->seq.n);
+    C->total_reads++;
+    C->total_bases += seq->qual.n;
 }
 
 
 void quip_comp_flush(quip_compressor_t* C)
 {
-    if (C->reads_len > 0) quip_comp_flush_read_buffer(C);
-
     if (C->buffered_bases > 0) quip_comp_flush_block(C);
 
     /* write an empty header to signify the end of the stream */
@@ -372,10 +329,6 @@ void quip_comp_flush(quip_compressor_t* C)
 
 void quip_comp_free(quip_compressor_t* C)
 {
-    size_t i;
-    for (i = 0; i < C->reads_size; ++i) fastq_free_seq(C->reads[i]);
-    free(C->reads);
-
     idenc_free(C->idenc);
     qualenc_free(C->qualenc);
     assembler_free(C->assembler);
