@@ -23,13 +23,13 @@ static const size_t read_pos_bins = 10;
 struct qualenc_t_
 {
     ac_t* ac;
-    dist_t** cs;
+    cond_dist72_t cs;
 };
 
 
 static void qualenc_init(qualenc_t* E, bool decode)
 {
-    E->cs = dist_alloc_array(read_pos_bins * qual_size * qual_size, qual_size, decode);
+    cond_dist72_init(&E->cs, read_pos_bins * qual_size * qual_size, decode);
 }
 
 
@@ -57,39 +57,37 @@ qualenc_t* qualenc_alloc_decoder(quip_reader_t reader, void* reader_data)
 
 void qualenc_free(qualenc_t* E)
 {
-    dist_free_array(E->cs);
+    cond_dist72_free(&E->cs);
     ac_free(E->ac);
     free(E);
 }
 
 
 static void qualenc_encode_pos(qualenc_t* E,
-                              size_t        i,
+                              uint32_t      i,
                               unsigned char q2,
                               unsigned char q1,
                               unsigned char q)
 {
-    size_t idx = i  * qual_size_sq +
-                 q1 * qual_size +
-                 q2;
+    uint32_t idx = i  * qual_size_sq +
+                   q1 * qual_size +
+                   q2;
 
-    dist_t* cs = E->cs[idx];
-    ac_encode(E->ac, cs, q);
+    cond_dist72_encode(E->ac, &E->cs, idx, q);
 }
 
 
 static unsigned char qualenc_decode_pos(
             qualenc_t* E,
-            size_t        i,
+            uint32_t      i,
             unsigned char q2,
             unsigned char q1)
 {
-    size_t idx = i  * qual_size_sq +
-                 q1 * qual_size +
-                 q2;
+    uint32_t idx = i  * qual_size_sq +
+                   q1 * qual_size +
+                   q2;
 
-    dist_t* cs = E->cs[idx];
-    return ac_decode(E->ac, cs);
+    return cond_dist72_decode(E->ac, &E->cs, idx);
 }
 
 
@@ -114,8 +112,8 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     char* qs = x->qual.s;
     size_t n = x->qual.n;
 
-    size_t bin_size = (n / read_pos_bins) + 1;
-    size_t i;
+    uint32_t bin_size = (n / read_pos_bins) + 1;
+    uint32_t i;
 
 
     /* I am using the previous 4 positions to predict the next quality score.

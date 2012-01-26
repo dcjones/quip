@@ -8,16 +8,16 @@
 
 /* map nucleotide ascii characters to numbers */
 static const uint8_t nuc_map[256] =
-  { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+  { 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0 };
 
-static const uint8_t rev_nuc_map[5] = { 'N', 'A', 'C', 'G', 'T' };
+static const uint8_t rev_nuc_map[5] = { 'A', 'C', 'G', 'T', 'N' };
 
 
 struct seqenc_t_
@@ -28,46 +28,42 @@ struct seqenc_t_
     /* order of markev chain model of nucleotide probabilities */
     size_t k;
 
-    /* 5 ^ k */
-    size_t N;
-
     /* bitmask for two bit encoded context */
-    unsigned int ctx_mask;
+    uint32_t ctx_mask;
 
     /* nucelotide probability given the last k nucleotides */
-    dist_t** cs;
+    cond_dist5_t cs;
 
     /* binary distribution of unique (0) / match (1) */
-    dist_t* ms;
+    dist2_t ms;
 
     /* distribution over match strand */
-    dist_t* ss;
+    dist2_t ss;
 
     /* distribution over contig number */
     // TODO
 
     /* distribution of edit operations, given the previous operation */
-    dist_t** es;
+    cond_dist4_t es;
 };
 
 
 static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
 {
     E->k = k;
-    E->N = 1;
+    size_t N = 1;
 
     size_t i;
     E->ctx_mask = 0;
     for (i = 0; i < k; ++i) {
         E->ctx_mask = (E->ctx_mask << 2) | 0x3;
-        E->N *= 4;
+        N *= 4;
     }
 
-    E->cs = dist_alloc_array(E->N, 5, decoder);
-
-    E->ms = dist_alloc(2, decoder);
-    E->ss = dist_alloc(2, decoder);
-    E->es = dist_alloc_array(16, 4, decoder);
+    cond_dist5_init(&E->cs, N, decoder);
+    dist2_init(&E->ms, decoder);
+    dist2_init(&E->ss, decoder);
+    cond_dist4_init(&E->es, 16, decoder);
 }
 
 
@@ -100,28 +96,26 @@ void seqenc_free(seqenc_t* E)
     if (E == NULL) return;
 
     ac_free(E->ac);
-    dist_free_array(E->cs);
-    dist_free(E->ms);
-    dist_free(E->ss);
-    dist_free_array(E->es);
+    cond_dist5_free(&E->cs);
+    dist2_free(&E->ms);
+    dist2_free(&E->ss);
+    cond_dist4_free(&E->es);
     free(E);
 }
 
 
 void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 {
-    ac_encode(E->ac, E->ms, 0);
+    dist2_encode(E->ac, &E->ms, 0);
 
     kmer_t u;
     size_t n = twobit_len(x);
     size_t i;
-    unsigned int ctx = 0;
+    uint32_t ctx = 0;
     for (i = 0; i < n; ++i) {
-        /* We encode 'N' as 0, so 1 is added to every nucleotide. */
-        u = twobit_get(x, i) + 1;
-        ac_encode(E->ac, E->cs[ctx], u);
-        u = u == 0 ? 1 : u - 1;
-        ctx = (ctx << 2 | u) & E->ctx_mask;
+        u = twobit_get(x, i);
+        cond_dist5_encode(E->ac, &E->cs, ctx, u);
+        ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
     }
 }
 
@@ -129,15 +123,14 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 
 void seqenc_encode_char_seq(seqenc_t* E, const char* x)
 {
-    ac_encode(E->ac, E->ms, 0);
+    dist2_encode(E->ac, &E->ms, 0);
 
     kmer_t u;
-    unsigned int ctx = 0;
+    uint32_t ctx = 0;
     while (*x) {
         u = nuc_map[(uint8_t) *x];
-        ac_encode(E->ac, E->cs[ctx], u);
-        u = u == 0 ? 1 : u - 1;
-        ctx = (ctx << 2 | u) & E->ctx_mask;
+        cond_dist5_encode(E->ac, &E->cs, ctx, u);
+        ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
         ++x;
     }
 }
@@ -148,20 +141,20 @@ void seqenc_encode_alignment(seqenc_t* E,
         size_t contig_idx, uint8_t strand,
         const sw_alignment_t* aln, const twobit_t* query)
 {
-    ac_encode(E->ac, E->ms, 1);
-    ac_encode(E->ac, E->ss, strand);
+    dist2_encode(E->ac, &E->ms, 1);
+    dist2_encode(E->ac, &E->ss, strand);
 
     // TODO: output contig number
     // TODO: output contig offset
 
     kmer_t u = twobit_get(query, 0);
-    size_t last_op = EDIT_MATCH;
-    size_t ctx = 0;
+    uint32_t last_op = EDIT_MATCH;
+    uint32_t ctx = 0;
     size_t i, j;
     for (i = 0, j = 0; i < aln->len; ++i) {
         switch (aln->ops[i]) {
             case EDIT_MATCH:
-                ac_encode(E->ac, E->es[last_op], EDIT_MATCH);
+                cond_dist4_encode(E->ac, &E->es, last_op, EDIT_MATCH);
 
                 ++j;
                 u = u == 0 ? 1 : u - 1;
@@ -170,27 +163,25 @@ void seqenc_encode_alignment(seqenc_t* E,
                 break;
 
             case EDIT_MISMATCH:
-                ac_encode(E->ac, E->es[last_op], EDIT_MISMATCH);
-                ac_encode(E->ac, E->cs[ctx], u);
+                cond_dist4_encode(E->ac, &E->es, last_op, EDIT_MISMATCH);
+                cond_dist5_encode(E->ac, &E->cs, ctx, u);
 
                 ++j;
-                u = u == 0 ? 1 : u - 1;
-                ctx = (ctx << 2 | u) & E->ctx_mask;
-                u = twobit_get(query, j) + 1;
+                ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
+                u = twobit_get(query, j);
                 break;
 
             case EDIT_Q_GAP:
-                ac_encode(E->ac, E->es[last_op], EDIT_Q_GAP);
+                cond_dist4_encode(E->ac, &E->es, last_op, EDIT_Q_GAP);
                 break;
 
             case EDIT_S_GAP:
-                ac_encode(E->ac, E->es[last_op], EDIT_S_GAP);
-                ac_encode(E->ac, E->cs[ctx], u);
+                cond_dist4_encode(E->ac, &E->es, last_op, EDIT_S_GAP);
+                cond_dist5_encode(E->ac, &E->cs, ctx, u);
 
                 ++j;
-                u = u == 0 ? 1 : u - 1;
-                ctx = (ctx << 2 | u) & E->ctx_mask;
-                u = twobit_get(query, j) + 1;
+                ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
+                u = twobit_get(query, j);
                 break;
         }
 
@@ -202,14 +193,13 @@ void seqenc_encode_alignment(seqenc_t* E,
 static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 {
     kmer_t u;
-    size_t ctx = 0;
+    uint32_t ctx = 0;
 
     size_t i;
     for (i = 0; i < n; ++i) {
-        u = ac_decode(E->ac, E->cs[ctx]);
+        u = cond_dist5_decode(E->ac, &E->cs, ctx);
         x->seq.s[i] = rev_nuc_map[u];
-        u = u == 0 ? 1 : u - 1;
-        ctx = (ctx << 2 | u) & E->ctx_mask;
+        ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
     }
 }
 
@@ -218,7 +208,7 @@ void seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
 {
     while (n > x->seq.size) fastq_expand_str(&x->seq);
 
-    symb_t t = ac_decode(E->ac, E->ms);
+    symb_t t = dist2_decode(E->ac, &E->ms);
 
     if (t == 0) seqenc_decode_seq(E, x, n);
 
