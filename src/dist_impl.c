@@ -220,11 +220,7 @@ void cdfun(free) (cond_dist_t* D)
 {
     if (D == NULL) return;
 
-    uint32_t i;
-    for (i = 0; i < D->n; ++i) {
-        free(D->xss[i].dec);
-    }
-
+    free(D->xss[0].dec);
     free(D->xss);
     free(D->index);
     free(D->ord);
