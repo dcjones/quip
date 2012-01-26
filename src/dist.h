@@ -33,12 +33,6 @@ typedef struct dist_t_
     /* alphabet size */
     size_t n;
 
-    /* cumulative symbol frequency */
-    uint16_t* ps;
-
-    /* symbol counts */
-    uint32_t* cs;
-
     /* total number of occurances */
     uint32_t z;
 
@@ -49,7 +43,17 @@ typedef struct dist_t_
 
     /* number of new observations until the distribution is updated */
     size_t update_delay;
+
+    /* cumulative symbol frequency */
+    uint16_t* ps;
+
+    /* symbol counts */
+    uint32_t* cs;
+
 } dist_t;
+
+
+
 
 /* Allocate a distribution over the alphabet [0, n - 1].
  * The structure is either allocated with the specify intent of either decoding
