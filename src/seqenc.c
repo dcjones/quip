@@ -123,6 +123,8 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 
 void seqenc_encode_char_seq(seqenc_t* E, const char* x)
 {
+    static size_t N = 0;
+
     dist2_encode(E->ac, &E->ms, 0);
 
     kmer_t u;
@@ -133,6 +135,10 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
         ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
         ++x;
     }
+
+    /*if (++N == 1000000) {*/
+        /*cond_dist5_reorder(&E->cs);*/
+    /*}*/
 }
 
 

@@ -1,6 +1,5 @@
 
-/* NOTE: Do not compile this file directly! Define DISTSIZE first, then include this
- * file.
+/* WARNING: DO NOT COMPILE THIS FILE DIRECTLY. You should compile "dist.c".
  */
 
 
@@ -227,29 +226,125 @@ void cdfun(free) (cond_dist_t* D)
 }
 
 
-#if 0
+
+/* Sort the ord array in a cond_dist. */
+
+#define getkey(i) (D->xss[D->index[D->ord[i]]].use_count)
+
+static void cdfun(inssort_ord) (cond_dist_t* D, size_t i, size_t j)
+{
+    if (j - i + 1 < 2) return;
+
+    uint32_t key, ord;
+    dist_t val;
+    size_t u, v;
+    for (u = i + 1; u <= j; ++u) {
+        key = getkey(u);
+        ord = D->ord[u];
+        memcpy(&val, &D->ord[u], sizeof(dist_t));
+
+        for (v = u - 1; v < 0U - 1 && key < getkey(v); --v) {
+            D->ord[v + 1] = D->ord[v];
+            memcpy(&D->xss[v + 1], &D->xss[v], sizeof(dist_t));
+        }
+
+        D->ord[v + 1] = ord;
+        memcpy(&D->ord[v + 1], &val, sizeof(dist_t));
+    }
+}
+
+
+static void cdfun(quicksort_ord) (cond_dist_t* D, size_t i, size_t j)
+{
+    if (j - i + 1 < 7) {
+        cdfun(inssort_ord) (D, i, j);
+        return;
+    }
+
+    size_t pivot = i + rand() % (j - i + 1);
+
+    uint32_t pivot_key = getkey(pivot);
+    uint32_t pivot_ord = D->ord[pivot];
+    dist_t   pivot_val;
+    memcpy(&pivot_val, &D->xss[pivot], sizeof(dist_t));
+
+    uint32_t key, ord;
+    dist_t val;
+
+    uint32_t min_left_key = 0U - 1;
+
+    D->ord[pivot] = D->ord[j];
+    D->ord[j]     = pivot_ord;
+
+    memcpy(&D->xss[pivot], &D->xss[j], sizeof(dist_t));
+    memcpy(&D->xss[j],     &pivot_val, sizeof(dist_t));
+
+    size_t u, v;
+    for (u = i, v = i; v < j; ++v) {
+        key = getkey(v);
+        if (key <= pivot_key) {
+
+            ord = D->ord[v];
+            D->ord[v] = D->ord[u];
+            D->ord[u] = ord;
+
+            memcpy(&val,       &D->xss[v], sizeof(dist_t));
+            memcpy(&D->xss[v], &D->xss[u], sizeof(dist_t));
+            memcpy(&D->xss[u], &val,       sizeof(dist_t));
+
+            if (key < min_left_key) min_left_key = key;
+
+            ++u;
+        }
+    }
+
+    D->ord[j] = D->ord[u];
+    D->ord[u] = pivot_ord;
+
+    memcpy(&D->xss[j], &D->xss[u], sizeof(dist_t));
+    memcpy(&D->xss[u], &pivot_val, sizeof(dist_t));
+
+    if (i > u && min_left_key != pivot_key) cdfun(quicksort_ord) (D, i, u - 1);
+    cdfun(quicksort_ord) (D, u + 1, j);
+}
+
+
+
+
 void cdfun(reorder) (cond_dist_t* D)
 {
-    /* TODO:
-     * 1. sort the ord array based on the counts.
-     * 2. shuffle memory arround accordingly,
-     * 3. scale the counts if they are large
-     */
+    /* sort ord based on use count */
+    cdfun(quicksort_ord) (D, 0, D->n - 1);
+
+    size_t i;
+    for (i = 0; i < D->n; ++i) {
+        D->index[D->ord[i]] = i;
+    }
 }
-#endif
+
+
+
+#undef getkey
+#undef getval
+
+
 
 
 
 
 void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x)
 {
+    /* XXX */
     dfun(encode)(ac, D->xss + D->index[y], x);
+    /*dfun(encode)(ac, D->xss + y, x);*/
 }
 
 
 symb_t cdfun(decode)(ac_t* ac, cond_dist_t* D, uint32_t y)
 {
+    /* XXX */
     return dfun(decode)(ac, D->xss + D->index[y]);
+    /*return dfun(decode)(ac, D->xss + y);*/
 }
 
 

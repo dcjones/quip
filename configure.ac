@@ -10,6 +10,7 @@ AM_PROG_CC_C_O
 AC_C_BIGENDIAN
 
 AC_TYPE_UINT8_T
+AC_TYPE_UINT16_T
 AC_TYPE_INT32_T
 AC_TYPE_UINT32_T
 AC_TYPE_UINT64_T
@@ -33,12 +34,9 @@ AS_IF([test "x$enable_debug" = xyes],
 AC_DEFINE([_FILE_OFFSET_BITS], [64],
           [Do not crash on >4GB files on 32bit machines.])
 
-AC_PROG_LIBTOOL
-
 AC_CHECK_FUNC(fileno, ,
               AC_MSG_ERROR([The 'fileno' function is missing.]))
 
-# check getopt
 AC_CHECK_HEADER(getopt.h, ,
                 AC_MSG_ERROR([The posix getopt.h header is needed.]))
 
