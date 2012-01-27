@@ -229,8 +229,6 @@ void cdfun(free) (cond_dist_t* D)
 
 /* Sort the ord array in a cond_dist. */
 
-#define getkey(i) (D->xss[D->index[D->ord[i]]].use_count)
-
 static void cdfun(inssort_ord) (cond_dist_t* D, size_t i, size_t j)
 {
     if (j - i + 1 < 2) return;
@@ -239,11 +237,11 @@ static void cdfun(inssort_ord) (cond_dist_t* D, size_t i, size_t j)
     dist_t val;
     size_t u, v;
     for (u = i + 1; u <= j; ++u) {
-        key = getkey(u);
+        key = D->xss[u].use_count;
         ord = D->ord[u];
         memcpy(&val, &D->ord[u], sizeof(dist_t));
 
-        for (v = u - 1; v < 0U - 1 && key < getkey(v); --v) {
+        for (v = u - 1; v < 0U - 1 && key > D->xss[v].use_count; --v) {
             D->ord[v + 1] = D->ord[v];
             memcpy(&D->xss[v + 1], &D->xss[v], sizeof(dist_t));
         }
@@ -256,56 +254,78 @@ static void cdfun(inssort_ord) (cond_dist_t* D, size_t i, size_t j)
 
 static void cdfun(quicksort_ord) (cond_dist_t* D, size_t i, size_t j)
 {
+    /*if (j - i + 1 < 2) return;*/
     if (j - i + 1 < 7) {
         cdfun(inssort_ord) (D, i, j);
         return;
     }
 
     size_t pivot = i + rand() % (j - i + 1);
+    uint32_t pivot_key = D->xss[pivot].use_count;
 
-    uint32_t pivot_key = getkey(pivot);
-    uint32_t pivot_ord = D->ord[pivot];
-    dist_t   pivot_val;
-    memcpy(&pivot_val, &D->xss[pivot], sizeof(dist_t));
+    uint32_t key;
+    uint32_t ord;
+    dist_t   val;
 
-    uint32_t key, ord;
-    dist_t val;
+    /* swap pivot to j */
+    ord           = D->ord[j];
+    D->ord[j]     = D->ord[pivot];
+    D->ord[pivot] = ord;
 
-    uint32_t min_left_key = 0U - 1;
+    memcpy(&val,           &D->xss[j],     sizeof(dist_t));
+    memcpy(&D->xss[j],     &D->xss[pivot], sizeof(dist_t));
+    memcpy(&D->xss[pivot], &val,           sizeof(dist_t));
 
-    D->ord[pivot] = D->ord[j];
-    D->ord[j]     = pivot_ord;
+    size_t u = i;
+    size_t v = i;
+    size_t w = j;
 
-    memcpy(&D->xss[pivot], &D->xss[j], sizeof(dist_t));
-    memcpy(&D->xss[j],     &pivot_val, sizeof(dist_t));
+    while (u < w) {
+        key = D->xss[u].use_count;
 
-    size_t u, v;
-    for (u = i, v = i; v < j; ++v) {
-        key = getkey(v);
-        if (key <= pivot_key) {
+        if (key > pivot_key) {
+            /* swap u and v */
+            ord       = D->ord[u];
+            D->ord[u] = D->ord[v];
+            D->ord[v] = ord;
 
-            ord = D->ord[v];
-            D->ord[v] = D->ord[u];
-            D->ord[u] = ord;
-
-            memcpy(&val,       &D->xss[v], sizeof(dist_t));
-            memcpy(&D->xss[v], &D->xss[u], sizeof(dist_t));
-            memcpy(&D->xss[u], &val,       sizeof(dist_t));
-
-            if (key < min_left_key) min_left_key = key;
+            memcpy(&val,       &D->xss[u], sizeof(dist_t));
+            memcpy(&D->xss[u], &D->xss[v], sizeof(dist_t));
+            memcpy(&D->xss[v], &val,       sizeof(dist_t));
 
             ++u;
+            ++v;
         }
+        else if (key == pivot_key) {
+            --w;
+
+            /* swap u and w */
+            ord       = D->ord[u];
+            D->ord[u] = D->ord[w];
+            D->ord[w] = ord;
+
+            memcpy(&val,       &D->xss[u], sizeof(dist_t));
+            memcpy(&D->xss[u], &D->xss[w], sizeof(dist_t));
+            memcpy(&D->xss[w], &val,       sizeof(dist_t));
+        }
+        else ++u;
     }
 
-    D->ord[j] = D->ord[u];
-    D->ord[u] = pivot_ord;
+    /* move pivots to center */
+    size_t x;
+    for (x = 0; D->xss[u + x].use_count < pivot_key; ++x) {
+        /* swap v + x with j - x */
+        ord           = D->ord[u + x];
+        D->ord[u + x] = D->ord[j - x];
+        D->ord[j - x] = ord;
 
-    memcpy(&D->xss[j], &D->xss[u], sizeof(dist_t));
-    memcpy(&D->xss[u], &pivot_val, sizeof(dist_t));
+        memcpy(&val,           &D->xss[u + x], sizeof(dist_t));
+        memcpy(&D->xss[u + x], &D->xss[j - x], sizeof(dist_t));
+        memcpy(&D->xss[j - x], &val,           sizeof(dist_t));
+    }
 
-    if (i > u && min_left_key != pivot_key) cdfun(quicksort_ord) (D, i, u - 1);
-    cdfun(quicksort_ord) (D, u + 1, j);
+    cdfun(quicksort_ord) (D, i, v - 1);
+    if (j - w + v < j) cdfun(quicksort_ord) (D, j - w + v + 1, j);
 }
 
 

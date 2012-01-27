@@ -136,9 +136,9 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x)
         ++x;
     }
 
-    /*if (++N == 1000000) {*/
-        /*cond_dist5_reorder(&E->cs);*/
-    /*}*/
+    if (++N == 10000) {
+        cond_dist5_reorder(&E->cs);
+    }
 }
 
 
