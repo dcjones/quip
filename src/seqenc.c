@@ -6,20 +6,6 @@
 #include <assert.h>
 
 
-/* map nucleotide ascii characters to numbers */
-static const uint8_t nuc_map[256] =
-  { 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0 };
-
-static const uint8_t rev_nuc_map[5] = { 'A', 'C', 'G', 'T', 'N' };
-
-
 struct seqenc_t_
 {
     /* coder */
@@ -32,7 +18,7 @@ struct seqenc_t_
     uint32_t ctx_mask;
 
     /* nucelotide probability given the last k nucleotides */
-    cond_dist25_t cs;
+    cond_dist125_t cs;
 
     /* binary distribution of unique (0) / match (1) */
     dist2_t ms;
@@ -60,7 +46,7 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
         N *= 4;
     }
 
-    cond_dist25_init(&E->cs, N, decoder);
+    cond_dist125_init(&E->cs, N, decoder);
     dist2_init(&E->ms, decoder);
     dist2_init(&E->ss, decoder);
     cond_dist4_init(&E->es, 16, decoder);
@@ -96,7 +82,7 @@ void seqenc_free(seqenc_t* E)
     if (E == NULL) return;
 
     ac_free(E->ac);
-    cond_dist25_free(&E->cs);
+    cond_dist125_free(&E->cs);
     dist2_free(&E->ms);
     dist2_free(&E->ss);
     cond_dist4_free(&E->es);
@@ -108,44 +94,83 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 {
     dist2_encode(E->ac, &E->ms, 0);
 
-    kmer_t u, v;
+    kmer_t u, v, w;
     size_t n = twobit_len(x);
     size_t i;
     uint32_t ctx = 0;
-    for (i = 0; i < n - 1; i += 2) {
-        v = twobit_get(x, i);
-        u = twobit_get(x, i + 1);
-        cond_dist25_encode(E->ac, &E->cs, ctx, (u * 5) + v);
-        ctx = ((ctx << 4) | ((u & 0x3) << 2) | (v & 0x3)) & E->ctx_mask;
+
+    /* We encode trinucleotides to improve efficiency. If the length of a read
+     * is not divisible by three, we in effect pad the beginning of the read
+     * with one or two Ns.
+     */
+    switch (n % 3) {
+        case 0:
+            i = 0;
+            break;
+
+        case 1:
+            u = twobit_get(x, 0);
+            cond_dist125_encode(E->ac, &E->cs, 0, u * 25);
+            ctx = (u & 0x3) << 4;
+            i = 1;
+            break;
+
+        case 2:
+            v = twobit_get(x, 0);
+            u = twobit_get(x, 1);
+            cond_dist125_encode(E->ac, &E->cs, 0, (u * 25) + (v * 5));
+            ctx = ((u & 0x3) << 4) | ((v & 0x3) << 2);
+            i = 2;
+            break;
     }
 
-    /* handle odd read lengths */
-    if (i < n) {
-        u = twobit_get(x, i);
-        cond_dist25_encode(E->ac, &E->cs, ctx, u);
+
+    for (; i < n - 2; i += 3) {
+        w = twobit_get(x, i);
+        v = twobit_get(x, i + 1);
+        u = twobit_get(x, i + 2);
+        cond_dist125_encode(E->ac, &E->cs, ctx, (u * 25) + (v * 5) + w);
+        ctx = ((ctx << 6) | ((u & 0x3) << 4) | ((v & 0x3) << 2) | (w & 0x3)) & E->ctx_mask;
     }
 }
 
 
 
-void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
+void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t n)
 {
     dist2_encode(E->ac, &E->ms, 0);
 
-    kmer_t u, v;
-    uint32_t ctx = 0;
+    kmer_t u, v, w;
     size_t i;
-    for (i = 0; i < len - 1; i += 2) {
-        v = nuc_map[(uint8_t) *x++];
-        u = nuc_map[(uint8_t) *x++];
-        cond_dist25_encode(E->ac, &E->cs, ctx, (u * 5) + v);
-        ctx = ((ctx << 4) | ((u & 0x3) << 2) | (v & 0x3)) & E->ctx_mask;
+    uint32_t ctx = 0;
+
+    switch (n % 3) {
+        case 0:
+            i = 0;
+            break;
+
+        case 1:
+            u = nuc_map[(uint8_t) *x++];
+            cond_dist125_encode(E->ac, &E->cs, 0, u * 25);
+            ctx = (u & 0x3) << 4;
+            i = 1;
+            break;
+
+        case 2:
+            v = nuc_map[(uint8_t) *x++];
+            u = nuc_map[(uint8_t) *x++];
+            cond_dist125_encode(E->ac, &E->cs, 0, (u * 25) + (v * 5));
+            ctx = ((u & 0x3) << 4) | ((v & 0x3) << 2);
+            i = 2;
+            break;
     }
 
-    /* handle odd read lengths */
-    if (i < len) {
-        u = nuc_map[(uint8_t) *x];
-        cond_dist25_encode(E->ac, &E->cs, ctx, u);
+    for (; i < n - 2; i += 3) {
+        w = nuc_map[(uint8_t) *x++];
+        v = nuc_map[(uint8_t) *x++];
+        u = nuc_map[(uint8_t) *x++];
+        cond_dist125_encode(E->ac, &E->cs, ctx, (u * 25) + (v * 5) + w);
+        ctx = ((ctx << 6) | ((u & 0x3) << 4) | ((v & 0x3) << 2) | (w & 0x3)) & E->ctx_mask;
     }
 }
 
@@ -206,17 +231,39 @@ void seqenc_encode_alignment(seqenc_t* E,
 
 static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 {
-    kmer_t uv, u, v;
+    kmer_t uvw, u, v, w;
+    size_t i;
     uint32_t ctx = 0;
 
-    size_t i;
-    for (i = 0; i < n - 1;) {
-        uv = cond_dist25_decode(E->ac, &E->cs, ctx);
-        v = uv % 5;
-        u = uv / 5;
+    switch (n % 3) {
+        case 0:
+            i = 0;
+            break;
+
+        case 1:
+            // TODO
+
+            i = 1;
+            break;
+
+        case 2:
+            // TODO
+
+            i = 2;
+            break;
+    }
+
+    for (; i < n - 2;) {
+        uvw = cond_dist125_decode(E->ac, &E->cs, ctx);
+        u = uvw / 25;
+        uvw %= 25;
+        v = uvw / 5;
+        w = uvw % 5;
+
+        x->seq.s[i++] = rev_nuc_map[w];
         x->seq.s[i++] = rev_nuc_map[v];
         x->seq.s[i++] = rev_nuc_map[u];
-        ctx = ((ctx << 4) | ((u & 0x3) << 2) | (v & 0x3)) & E->ctx_mask;
+        ctx = ((ctx << 6) | ((u & 0x3) << 4) | ((v & 0x3) << 2) | (w & 0x3)) & E->ctx_mask;
     }
 }
 

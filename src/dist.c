@@ -73,17 +73,6 @@ static const size_t max_count = 1 << 15;
 #include "dist_template_off.h"
 
 
-#define DISTSIZE 25
-#define dist_t dist25_t
-#define cond_dist_t cond_dist25_t
-#define dec_size  12
-#define dec_shift 12
-
-#include "dist_template_on.h"
-#include "dist_impl.c"
-#include "dist_template_off.h"
-
-
 #define DISTSIZE 72
 #define dist_t dist72_t
 #define cond_dist_t cond_dist72_t
@@ -100,6 +89,17 @@ static const size_t max_count = 1 << 15;
 #define cond_dist_t cond_dist100_t
 #define dec_size  36
 #define dec_shift 10
+
+#include "dist_template_on.h"
+#include "dist_impl.c"
+#include "dist_template_off.h"
+
+
+#define DISTSIZE 125
+#define dist_t dist125_t
+#define cond_dist_t cond_dist125_t
+#define dec_size  12
+#define dec_shift 12
 
 #include "dist_template_on.h"
 #include "dist_impl.c"

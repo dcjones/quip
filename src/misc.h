@@ -22,5 +22,12 @@ FILE* fopen_or_die(const char*, const char*);
 
 uint32_t strhash(const char*, size_t len);
 
+/* map nucleotide ascii characters to numbers */
+extern const uint8_t nuc_map[256];
+
+/* map numbers to (upper case) nucleotide ascii characters */
+extern const uint8_t rev_nuc_map[5];
+
+
 #endif
 

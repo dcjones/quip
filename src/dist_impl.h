@@ -17,7 +17,7 @@
 typedef struct dfun(t_)
 {
     /* number of new observations until the distribution is updated */
-    uint32_t update_delay;
+    uint16_t update_delay;
 
     struct {
         uint16_t count;
