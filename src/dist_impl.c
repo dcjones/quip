@@ -94,7 +94,6 @@ void dfun(encode)(ac_t* ac, dist_t* D, symb_t x)
     if (ac->l < min_length) ac_renormalize_encoder(ac);
 
     D->xs[x].count++;
-    D->use_count++;
 
     if(--D->update_delay == 0) dfun(update)(D);
 }
@@ -167,7 +166,6 @@ symb_t dfun(decode)(ac_t* ac, dist_t* D)
     if (ac->l < min_length) ac_renormalize_decoder(ac);
 
     D->xs[s].count++;
-    D->use_count++;
 
     if (--D->update_delay == 0) dfun(update)(D);
 
@@ -178,10 +176,8 @@ symb_t dfun(decode)(ac_t* ac, dist_t* D)
 
 void cdfun(init) (cond_dist_t* D, size_t n, bool decode)
 {
-    D->xss   = malloc_or_die(n * sizeof(dist_t));
-    D->index = malloc_or_die(n * sizeof(uint32_t));
-    D->ord   = malloc_or_die(n * sizeof(uint32_t));
     D->n = n;
+    D->xss   = malloc_or_die(n * sizeof(dist_t));
 
     D->xss[0].update_delay = DISTSIZE * update_delay_factor;
     if (decode && DISTSIZE > 16) {
@@ -194,14 +190,10 @@ void cdfun(init) (cond_dist_t* D, size_t n, bool decode)
     for (i = 0; i < DISTSIZE; ++i) D->xss[0].xs[i].count = 1;
     dfun(update)(D->xss);
 
-    D->index[0] = 0;
-    D->ord[0]   = 0;
 
     for (i = 1; i < n; ++i) {
         memcpy(D->xss + i, D->xss, sizeof(dist_t));
         D->xss[i].dec = NULL;
-        D->index[i] = i;
-        D->ord[i]   = i;
     }
 
     /* properly initialize the dec tables */
@@ -211,7 +203,6 @@ void cdfun(init) (cond_dist_t* D, size_t n, bool decode)
             memcpy(D->xss[i].dec, D->xss[i - 1].dec, (dec_size + 6) * sizeof(uint16_t));
         }
     }
-
 }
 
 
@@ -221,150 +212,18 @@ void cdfun(free) (cond_dist_t* D)
 
     free(D->xss[0].dec);
     free(D->xss);
-    free(D->index);
-    free(D->ord);
 }
-
-
-
-/* Sort the ord array in a cond_dist. */
-
-static void cdfun(inssort_ord) (cond_dist_t* D, size_t i, size_t j)
-{
-    if (j - i + 1 < 2) return;
-
-    uint32_t key, ord;
-    dist_t val;
-    size_t u, v;
-    for (u = i + 1; u <= j; ++u) {
-        key = D->xss[u].use_count;
-        ord = D->ord[u];
-        memcpy(&val, &D->ord[u], sizeof(dist_t));
-
-        for (v = u - 1; v < 0U - 1 && key > D->xss[v].use_count; --v) {
-            D->ord[v + 1] = D->ord[v];
-            memcpy(&D->xss[v + 1], &D->xss[v], sizeof(dist_t));
-        }
-
-        D->ord[v + 1] = ord;
-        memcpy(&D->ord[v + 1], &val, sizeof(dist_t));
-    }
-}
-
-
-static void cdfun(quicksort_ord) (cond_dist_t* D, size_t i, size_t j)
-{
-    /*if (j - i + 1 < 2) return;*/
-    if (j - i + 1 < 7) {
-        cdfun(inssort_ord) (D, i, j);
-        return;
-    }
-
-    size_t pivot = i + rand() % (j - i + 1);
-    uint32_t pivot_key = D->xss[pivot].use_count;
-
-    uint32_t key;
-    uint32_t ord;
-    dist_t   val;
-
-    /* swap pivot to j */
-    ord           = D->ord[j];
-    D->ord[j]     = D->ord[pivot];
-    D->ord[pivot] = ord;
-
-    memcpy(&val,           &D->xss[j],     sizeof(dist_t));
-    memcpy(&D->xss[j],     &D->xss[pivot], sizeof(dist_t));
-    memcpy(&D->xss[pivot], &val,           sizeof(dist_t));
-
-    size_t u = i;
-    size_t v = i;
-    size_t w = j;
-
-    while (u < w) {
-        key = D->xss[u].use_count;
-
-        if (key > pivot_key) {
-            /* swap u and v */
-            ord       = D->ord[u];
-            D->ord[u] = D->ord[v];
-            D->ord[v] = ord;
-
-            memcpy(&val,       &D->xss[u], sizeof(dist_t));
-            memcpy(&D->xss[u], &D->xss[v], sizeof(dist_t));
-            memcpy(&D->xss[v], &val,       sizeof(dist_t));
-
-            ++u;
-            ++v;
-        }
-        else if (key == pivot_key) {
-            --w;
-
-            /* swap u and w */
-            ord       = D->ord[u];
-            D->ord[u] = D->ord[w];
-            D->ord[w] = ord;
-
-            memcpy(&val,       &D->xss[u], sizeof(dist_t));
-            memcpy(&D->xss[u], &D->xss[w], sizeof(dist_t));
-            memcpy(&D->xss[w], &val,       sizeof(dist_t));
-        }
-        else ++u;
-    }
-
-    /* move pivots to center */
-    size_t x;
-    for (x = 0; D->xss[u + x].use_count < pivot_key; ++x) {
-        /* swap v + x with j - x */
-        ord           = D->ord[u + x];
-        D->ord[u + x] = D->ord[j - x];
-        D->ord[j - x] = ord;
-
-        memcpy(&val,           &D->xss[u + x], sizeof(dist_t));
-        memcpy(&D->xss[u + x], &D->xss[j - x], sizeof(dist_t));
-        memcpy(&D->xss[j - x], &val,           sizeof(dist_t));
-    }
-
-    cdfun(quicksort_ord) (D, i, v - 1);
-    if (j - w + v < j) cdfun(quicksort_ord) (D, j - w + v + 1, j);
-}
-
-
-
-
-void cdfun(reorder) (cond_dist_t* D)
-{
-    /* sort ord based on use count */
-    cdfun(quicksort_ord) (D, 0, D->n - 1);
-
-    size_t i;
-    for (i = 0; i < D->n; ++i) {
-        D->index[D->ord[i]] = i;
-    }
-}
-
-
-
-#undef getkey
-#undef getval
-
-
-
-
 
 
 void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x)
 {
-    /* XXX */
-    dfun(encode)(ac, D->xss + D->index[y], x);
-    /*dfun(encode)(ac, D->xss + y, x);*/
+    dfun(encode)(ac, D->xss + y, x);
 }
 
 
 symb_t cdfun(decode)(ac_t* ac, cond_dist_t* D, uint32_t y)
 {
-    /* XXX */
-    return dfun(decode)(ac, D->xss + D->index[y]);
-    /*return dfun(decode)(ac, D->xss + y);*/
+    return dfun(decode)(ac, D->xss + y);
 }
 
 

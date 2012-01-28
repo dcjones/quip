@@ -63,7 +63,7 @@ void qualenc_free(qualenc_t* E)
 }
 
 
-static void qualenc_encode_pos(qualenc_t* E,
+static inline void qualenc_encode_pos(qualenc_t* E,
                               uint32_t      i,
                               unsigned char q2,
                               unsigned char q1,
@@ -77,11 +77,11 @@ static void qualenc_encode_pos(qualenc_t* E,
 }
 
 
-static unsigned char qualenc_decode_pos(
-            qualenc_t* E,
-            uint32_t      i,
-            unsigned char q2,
-            unsigned char q1)
+static inline unsigned char qualenc_decode_pos(
+                qualenc_t* E,
+                uint32_t      i,
+                unsigned char q2,
+                unsigned char q1)
 {
     uint32_t idx = i  * qual_size_sq +
                    q1 * qual_size +

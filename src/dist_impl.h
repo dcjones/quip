@@ -16,16 +16,13 @@
 
 typedef struct dfun(t_)
 {
+    /* number of new observations until the distribution is updated */
+    uint32_t update_delay;
+
     struct {
         uint16_t count;
         uint16_t freq;
     } xs[DISTSIZE];
-
-    /* number of new observations until the distribution is updated */
-    uint32_t update_delay;
-
-    /* total number of observations */
-    uint32_t use_count;
 
     /* decoder table */
     uint16_t* dec;
@@ -57,13 +54,6 @@ typedef struct cdfun(t_)
 {
     /* an array of distributions */
     dist_t* xss;
-
-    /* Use xss[index[i]] to access element i. */
-    uint32_t* index;
-
-    /* The reverse of index. An array such that xss[i] corresponds to item
-     * ord[i] */
-    uint32_t* ord;
 
     /* alphabet over which the distribution is conditioned */
     uint32_t n;

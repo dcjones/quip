@@ -13,7 +13,7 @@
 #include <string.h>
 
 
-static const size_t seqenc_order = 11;
+static const size_t seqenc_order = 10;
 
 
 static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
@@ -176,7 +176,7 @@ void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
             A->initial_state = false;
         }
 
-        seqenc_encode_char_seq(A->seqenc, seq);
+        seqenc_encode_char_seq(A->seqenc, seq, seqlen);
         return;
     }
 
@@ -515,6 +515,7 @@ static void align_to_contigs(assembler_t* A,
 
     /* Lastly: output compressed reads */
     size_t aln_count = 0;
+    const char* ebseq;
     for (i = 0; i < A->N; ++i) {
         if (alns[A->ord[i]].aln_score < INT_MAX) {
             seqenc_encode_alignment(A->seqenc,
@@ -528,7 +529,8 @@ static void align_to_contigs(assembler_t* A,
                 seqenc_encode_twobit_seq(A->seqenc, xs[A->ord[i]].seq.tb);
             }
             else {
-                seqenc_encode_char_seq(A->seqenc, xs[A->ord[i]].seq.eb);
+                ebseq = xs[A->ord[i]].seq.eb;
+                seqenc_encode_char_seq(A->seqenc, ebseq, strlen(ebseq));
             }
         }
     }

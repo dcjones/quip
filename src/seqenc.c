@@ -32,7 +32,7 @@ struct seqenc_t_
     uint32_t ctx_mask;
 
     /* nucelotide probability given the last k nucleotides */
-    cond_dist5_t cs;
+    cond_dist25_t cs;
 
     /* binary distribution of unique (0) / match (1) */
     dist2_t ms;
@@ -60,7 +60,7 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
         N *= 4;
     }
 
-    cond_dist5_init(&E->cs, N, decoder);
+    cond_dist25_init(&E->cs, N, decoder);
     dist2_init(&E->ms, decoder);
     dist2_init(&E->ss, decoder);
     cond_dist4_init(&E->es, 16, decoder);
@@ -96,7 +96,7 @@ void seqenc_free(seqenc_t* E)
     if (E == NULL) return;
 
     ac_free(E->ac);
-    cond_dist5_free(&E->cs);
+    cond_dist25_free(&E->cs);
     dist2_free(&E->ms);
     dist2_free(&E->ss);
     cond_dist4_free(&E->es);
@@ -108,36 +108,44 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 {
     dist2_encode(E->ac, &E->ms, 0);
 
-    kmer_t u;
+    kmer_t u, v;
     size_t n = twobit_len(x);
     size_t i;
     uint32_t ctx = 0;
-    for (i = 0; i < n; ++i) {
+    for (i = 0; i < n - 1; i += 2) {
+        v = twobit_get(x, i);
+        u = twobit_get(x, i + 1);
+        cond_dist25_encode(E->ac, &E->cs, ctx, (u * 5) + v);
+        ctx = ((ctx << 4) | ((u & 0x3) << 2) | (v & 0x3)) & E->ctx_mask;
+    }
+
+    /* handle odd read lengths */
+    if (i < n) {
         u = twobit_get(x, i);
-        cond_dist5_encode(E->ac, &E->cs, ctx, u);
-        ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
+        cond_dist25_encode(E->ac, &E->cs, ctx, u);
     }
 }
 
 
 
-void seqenc_encode_char_seq(seqenc_t* E, const char* x)
+void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
 {
-    static size_t N = 0;
-
     dist2_encode(E->ac, &E->ms, 0);
 
-    kmer_t u;
+    kmer_t u, v;
     uint32_t ctx = 0;
-    while (*x) {
-        u = nuc_map[(uint8_t) *x];
-        cond_dist5_encode(E->ac, &E->cs, ctx, u);
-        ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
-        ++x;
+    size_t i;
+    for (i = 0; i < len - 1; i += 2) {
+        v = nuc_map[(uint8_t) *x++];
+        u = nuc_map[(uint8_t) *x++];
+        cond_dist25_encode(E->ac, &E->cs, ctx, (u * 5) + v);
+        ctx = ((ctx << 4) | ((u & 0x3) << 2) | (v & 0x3)) & E->ctx_mask;
     }
 
-    if (++N == 10000) {
-        cond_dist5_reorder(&E->cs);
+    /* handle odd read lengths */
+    if (i < len) {
+        u = nuc_map[(uint8_t) *x];
+        cond_dist25_encode(E->ac, &E->cs, ctx, u);
     }
 }
 
@@ -170,7 +178,7 @@ void seqenc_encode_alignment(seqenc_t* E,
 
             case EDIT_MISMATCH:
                 cond_dist4_encode(E->ac, &E->es, last_op, EDIT_MISMATCH);
-                cond_dist5_encode(E->ac, &E->cs, ctx, u);
+                /*cond_dist5_encode(E->ac, &E->cs, ctx, u);*/ // TODO
 
                 ++j;
                 ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
@@ -183,7 +191,7 @@ void seqenc_encode_alignment(seqenc_t* E,
 
             case EDIT_S_GAP:
                 cond_dist4_encode(E->ac, &E->es, last_op, EDIT_S_GAP);
-                cond_dist5_encode(E->ac, &E->cs, ctx, u);
+                /*cond_dist5_encode(E->ac, &E->cs, ctx, u);*/ // TODO
 
                 ++j;
                 ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
@@ -198,14 +206,17 @@ void seqenc_encode_alignment(seqenc_t* E,
 
 static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 {
-    kmer_t u;
+    kmer_t uv, u, v;
     uint32_t ctx = 0;
 
     size_t i;
-    for (i = 0; i < n; ++i) {
-        u = cond_dist5_decode(E->ac, &E->cs, ctx);
-        x->seq.s[i] = rev_nuc_map[u];
-        ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
+    for (i = 0; i < n - 1;) {
+        uv = cond_dist25_decode(E->ac, &E->cs, ctx);
+        v = uv % 5;
+        u = uv / 5;
+        x->seq.s[i++] = rev_nuc_map[v];
+        x->seq.s[i++] = rev_nuc_map[u];
+        ctx = ((ctx << 4) | ((u & 0x3) << 2) | (v & 0x3)) & E->ctx_mask;
     }
 }
 
