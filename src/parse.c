@@ -175,79 +175,66 @@ int fastq_next(fastq_t* f, seq_t* seq)
 
         /* skip over leading whitespace */
         else if (isspace(*f->c)) {
-            /* do nothing */
+            f->c++;
+            continue;
         }
 
-        /* skip comments */
-        /*
-        else if (*f->c == ';') {
-            fastq_get_line(f, NULL);
-            if (f->state == STATE_EOF) return 0;
-        }
-        */
+        switch (f->state) {
+            case STATE_ID1:
+                if (*f->c == '@' || *f->c == '>') {
+                    f->c++;
+                    fastq_get_line(f, &seq->id1);
+                    if (f->state == STATE_EOF) return 0;
 
-        /* read id1 */
-        else if (f->state == STATE_ID1) {
-            if (*f->c == '@' || *f->c == '>') {
-                f->c++;
-                fastq_get_line(f, &seq->id1);
+                    f->state = STATE_SEQ;
+                }
+                else {
+                    fprintf(stderr,
+                            "Malformed FASTQ file: expecting an '@' or '>', saw a '%c'\n",
+                            *f->c);
+                    exit(1);
+                }
+                break;
+
+
+            case STATE_SEQ:
+                fastq_get_line(f, &seq->seq);
                 if (f->state == STATE_EOF) return 0;
 
-                f->state = STATE_SEQ;
-            }
-            else {
-                fprintf(stderr,
-                        "Malformed FASTQ file: expecting an '@' or '>', saw a '%c'\n",
-                        *f->c);
-                exit(1);
-            }
-        }
+                f->state = STATE_ID2;
+                break;
 
-        /* read sequence */
-        else if (f->state == STATE_SEQ) {
-            fastq_get_line(f, &seq->seq);
-            if (f->state == STATE_EOF) return 0;
 
-            f->state = STATE_ID2;
-        }
+            case STATE_ID2:
+                if (*f->c == '+') {
+                    f->c++;
+                    fastq_get_line(f, &seq->id2);
+                    if (f->state == STATE_EOF) return 0;
 
-        /* read id2 */
-        else if (f->state == STATE_ID2) {
-            if (*f->c == '+') {
-                f->c++;
-                fastq_get_line(f, &seq->id2);
-                if (f->state == STATE_EOF) return 0;
+                    f->state = STATE_QUAL;
+                }
+                else {
+                    /* fasta style entry */
+                    seq->id2.s[0]  = '\0';
+                    seq->qual.s[0] = '\0';
 
-                f->state = STATE_QUAL;
-            }
-            else {
-                /* fasta style entry */
-                seq->id2.s[0]  = '\0';
-                seq->qual.s[0] = '\0';
+                    f->state = STATE_ID1;
+                    return 1;
+                }
+                break;
+
+
+            case STATE_QUAL:
+                fastq_get_line(f, &seq->qual);
+
+                /* subtract the first printable ascii character to get quality
+                 * scores starting at 0 */
+                for (i = 0; i < seq->qual.n; ++i) seq->qual.s[i] -= qual_first;
+
+                if (f->state == STATE_EOF) return 1;
 
                 f->state = STATE_ID1;
-                break;
-            }
-        }
-
-        /* read quality string */
-        else if (f->state == STATE_QUAL) {
-            fastq_get_line(f, &seq->qual);
-
-            /* subtract the first printable ascii character to get quality
-             * scores starting at 0 */
-            for (i = 0; i < seq->qual.n; ++i) seq->qual.s[i] -= qual_first;
-
-
-            if (f->state == STATE_EOF) return 1;
-
-            f->state = STATE_ID1;
-            break;
-        }
-
-        else {
-            fputs("Inexplicable error in fastq parser.\n", stderr);
-            exit(1);
+                return 1;
         }
 
         f->c++;

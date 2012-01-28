@@ -112,7 +112,7 @@ static void qual_buf_writer(void* param, const uint8_t* data, size_t size)
 
     if (C->qualbuf_size < C->qualbuf_len + size) {
         while (C->qualbuf_size < C->qualbuf_len + size) {
-            C->qualbuf_size *= 2;
+            C->qualbuf_size += 1000000;
         }
 
         C->qualbuf = realloc_or_die(C->qualbuf, C->qualbuf_size * sizeof(uint8_t));
@@ -129,7 +129,7 @@ static void id_buf_writer(void* param, const uint8_t* data, size_t size)
 
     if (C->idbuf_size < C->idbuf_len + size) {
         while (C->idbuf_size < C->idbuf_len + size) {
-            C->idbuf_size *= 2;
+            C->idbuf_size += 1000000;
         }
 
         C->idbuf = realloc_or_die(C->idbuf, C->idbuf_size * sizeof(uint8_t));
@@ -146,7 +146,7 @@ static void seq_writer(void* param, const uint8_t* data, size_t size)
 
     if (C->seqbuf_size < C->seqbuf_len + size) {
         while (C->seqbuf_size < C->seqbuf_len + size) {
-            C->seqbuf_size *= 2;
+            C->seqbuf_size += 1000000;
         }
 
         C->seqbuf = realloc_or_die(C->seqbuf, C->seqbuf_size * sizeof(uint8_t));
@@ -164,15 +164,15 @@ quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool
     C->writer = writer;
     C->writer_data = writer_data;
 
-    C->qualbuf_size = 1024;
+    C->qualbuf_size = 1000000;
     C->qualbuf_len = 0;
     C->qualbuf = malloc_or_die(C->qualbuf_size * sizeof(uint8_t));
 
-    C->idbuf_size = 1024;
+    C->idbuf_size = 1000000;
     C->idbuf_len = 0;
     C->idbuf = malloc_or_die(C->idbuf_size * sizeof(uint8_t));
 
-    C->seqbuf_size = 1024;
+    C->seqbuf_size = 1000000;
     C->seqbuf_len = 0;
     C->seqbuf = malloc_or_die(C->seqbuf_size * sizeof(uint8_t));
 

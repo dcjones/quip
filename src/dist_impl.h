@@ -22,7 +22,7 @@ typedef struct dfun(t_)
     struct {
         uint16_t count;
         uint16_t freq;
-    } xs[DISTSIZE];
+    } xs[DISTSIZE + 1];
 
     /* decoder table */
     uint16_t* dec;
@@ -64,8 +64,15 @@ void cdfun(init) (cond_dist_t*, size_t n, bool decode);
 void cdfun(free) (cond_dist_t*);
 void cdfun(reorder) (cond_dist_t*);
 
-/* encode a symbol given the distribution and arithmetic coder */
-void   cdfun(encode)(ac_t*, cond_dist_t*, uint32_t y, symb_t x);
-symb_t cdfun(decode)(ac_t*, cond_dist_t*, uint32_t y);
 
+inline void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x)
+{
+    dfun(encode)(ac, D->xss + y, x);
+}
+
+
+inline symb_t cdfun(decode)(ac_t* ac, cond_dist_t* D, uint32_t y)
+{
+    return dfun(decode)(ac, D->xss + y);
+}
 

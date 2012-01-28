@@ -56,6 +56,7 @@ void dfun(update)(dist_t* D)
         D->xs[i].freq = (uint16_t) ((scale * c) >> shift);
         c += D->xs[i].count;
     }
+    D->xs[DISTSIZE].freq = (uint16_t) (0x80000000U >> shift);
 
 
     /* update decoder table */
@@ -77,25 +78,17 @@ void dfun(update)(dist_t* D)
 void dfun(encode)(ac_t* ac, dist_t* D, symb_t x)
 {
     uint32_t b0 = ac->b;
-    uint32_t u;
 
-    if (x == DISTSIZE - 1) {
-        u = (uint32_t) D->xs[x].freq * (ac->l >> dist_length_shift);
-        ac->b += u;
-        ac->l -= u;
-    }
-    else {
-        u = (uint32_t) D->xs[x].freq * (ac->l >>= dist_length_shift);
-        ac->b += u;
-        ac->l = (uint32_t) D->xs[x + 1].freq * ac->l - u;
-    }
+    uint32_t u = (uint32_t) D->xs[x].freq * (ac->l >>= dist_length_shift);
+    ac->b += u;
+    ac->l = (uint32_t) D->xs[x + 1].freq * ac->l - u;
 
     if (b0 > ac->b)         ac_propogate_carry(ac);
     if (ac->l < min_length) ac_renormalize_encoder(ac);
 
     D->xs[x].count++;
 
-    if(--D->update_delay == 0) dfun(update)(D);
+    if(!--D->update_delay) dfun(update)(D);
 }
 
 
@@ -136,7 +129,7 @@ symb_t dfun(decode)(ac_t* ac, dist_t* D)
         }
 
         x = D->xs[s].freq * ac->l;
-        if (s != DISTSIZE - 1) y = D->xs[s + 1].freq * ac->l;
+        y = D->xs[s + 1].freq * ac->l;
     }
     else {
         x = s = 0;
@@ -213,17 +206,4 @@ void cdfun(free) (cond_dist_t* D)
     free(D->xss[0].dec);
     free(D->xss);
 }
-
-
-void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x)
-{
-    dfun(encode)(ac, D->xss + y, x);
-}
-
-
-symb_t cdfun(decode)(ac_t* ac, cond_dist_t* D, uint32_t y)
-{
-    return dfun(decode)(ac, D->xss + y);
-}
-
 
