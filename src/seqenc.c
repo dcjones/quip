@@ -241,14 +241,20 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
             break;
 
         case 1:
-            // TODO
-
+            u = cond_dist125_decode(E->ac, &E->cs, 0) / 25;
+            x->seq.s[0] = rev_nuc_map[u];
+            ctx = (u & 0x3) << 4;
             i = 1;
             break;
 
         case 2:
-            // TODO
-
+            uvw = cond_dist125_decode(E->ac, &E->cs, 0);
+            u = uvw / 25;
+            uvw %= 25;
+            v = uvw / 5;
+            x->seq.s[0] = rev_nuc_map[v];
+            x->seq.s[1] = rev_nuc_map[u];
+            ctx = ((u & 0x3) << 4) | ((v & 0x3) << 2);
             i = 2;
             break;
     }

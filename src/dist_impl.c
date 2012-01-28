@@ -15,6 +15,9 @@ void dfun(init)(dist_t* D, bool decode)
     }
 
     D->update_delay = DISTSIZE * update_delay_factor;
+    /* we want the initial update delay to be somewhat small */
+    if (D->update_delay > 100) D->update_delay = 8;
+
 
     /* initialize to pseudocounts of 1 */
     size_t i;
