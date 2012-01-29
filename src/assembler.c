@@ -125,8 +125,7 @@ assembler_t* assembler_alloc(
         A->N = 0;
 
         // TODO: set n and m in some principled way
-        /*A->B = bloom_alloc(8388608, 8);*/
-        A->B = bloom_alloc(4194304, 8);
+        A->B = bloom_alloc(8388608, 8);
 
         A->x = twobit_alloc();
 
@@ -519,9 +518,9 @@ static void align_to_contigs(assembler_t* A,
     const char* ebseq;
     for (i = 0; i < A->N; ++i) {
         if (alns[A->ord[i]].aln_score < INT_MAX) {
-            /*seqenc_encode_alignment(A->seqenc,*/
-                    /*alns[A->ord[i]].contig_idx, alns[A->ord[i]].strand,*/
-                    /*&alns[A->ord[i]].a, xs[A->ord[i]].seq.tb);*/
+            seqenc_encode_alignment(A->seqenc,
+                    alns[A->ord[i]].contig_idx, alns[A->ord[i]].strand,
+                    &alns[A->ord[i]].a, xs[A->ord[i]].seq.tb);
             /*seqenc_encode_twobit_seq(A->seqenc, xs[A->ord[i]].seq.tb);*/
             ++aln_count;
         }
