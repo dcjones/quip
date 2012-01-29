@@ -6,6 +6,7 @@
 #include "idenc.h"
 #include <stdint.h>
 #include <string.h>
+#include <xmmintrin.h>
 
 const uint8_t quip_header_magic[6] = 
     {0xff, 'Q', 'U', 'I', 'P', 0x00};
@@ -290,6 +291,10 @@ void quip_comp_addseq(quip_compressor_t* C, seq_t* seq)
     if (C->buffered_bases > block_size) {
         quip_comp_flush_block(C);
     }
+
+    _mm_prefetch(seq->id1.s, _MM_HINT_T0);
+    _mm_prefetch(seq->seq.s, _MM_HINT_T0);
+    _mm_prefetch(seq->qual.s, _MM_HINT_T0);
 
     qualenc_encode(C->qualenc, seq);
     idenc_encode(C->idenc, seq);
