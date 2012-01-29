@@ -65,14 +65,6 @@ void cdfun(free) (cond_dist_t*);
 void cdfun(reorder) (cond_dist_t*);
 
 
-inline void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x)
-{
-    dfun(encode)(ac, D->xss + y, x);
-}
-
-
-inline symb_t cdfun(decode)(ac_t* ac, cond_dist_t* D, uint32_t y)
-{
-    return dfun(decode)(ac, D->xss + y);
-}
+void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x);
+symb_t cdfun(decode)(ac_t* ac, cond_dist_t* D, uint32_t y);
 
