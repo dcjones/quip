@@ -12,13 +12,7 @@
 static const char   qual_first = 33;
 static const char   qual_last  = 104;
 static const size_t qual_size  = 72;
-
-static const size_t qual_size_sq = 72 * 72;
-
-/* Dependence on position within a read is modeled by using a fixed number of
- * bins. */
-static const size_t read_pos_bins = 10;
-
+static const size_t pos_bins   = 8;
 
 struct qualenc_t_
 {
@@ -29,7 +23,7 @@ struct qualenc_t_
 
 static void qualenc_init(qualenc_t* E, bool decode)
 {
-    cond_dist72_init(&E->cs, read_pos_bins * qual_size * qual_size, decode);
+    cond_dist72_init(&E->cs, pos_bins * qual_size * qual_size, decode);
 }
 
 
@@ -63,34 +57,6 @@ void qualenc_free(qualenc_t* E)
 }
 
 
-static inline void qualenc_encode_pos(qualenc_t* E,
-                              uint32_t      i,
-                              unsigned char q2,
-                              unsigned char q1,
-                              unsigned char q)
-{
-    uint32_t idx = i  * qual_size_sq +
-                   q1 * qual_size +
-                   q2;
-
-    cond_dist72_encode(E->ac, &E->cs, idx, q);
-}
-
-
-static inline unsigned char qualenc_decode_pos(
-                qualenc_t* E,
-                uint32_t      i,
-                unsigned char q2,
-                unsigned char q1)
-{
-    uint32_t idx = i  * qual_size_sq +
-                   q1 * qual_size +
-                   q2;
-
-    return cond_dist72_decode(E->ac, &E->cs, idx);
-}
-
-
 static inline char charmax2(char a, char b)
 {
     return a > b ? a : b;
@@ -112,9 +78,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     char* qs = x->qual.s;
     size_t n = x->qual.n;
 
-    uint32_t bin_size = (n / read_pos_bins) + 1;
-    uint32_t i;
-
+    size_t i;
 
     /* I am using the previous 4 positions to predict the next quality score.
      * These special cases here for positions 0 <= i <= 3 are a bit ugly but
@@ -123,32 +87,31 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
     /* case: i = 0 */
     if (n >= 1) {
-        qualenc_encode_pos(E, 0 / bin_size,
-                0, 0, qs[0]);
+        cond_dist72_encode(E->ac, &E->cs,
+                71 * qual_size + 71, qs[0]);
     }
 
     /* case: i = 1 */
     if (n >= 2) {
-        qualenc_encode_pos(E, 1 / bin_size,
-                0, qs[0], qs[1]);
+        cond_dist72_encode(E->ac, &E->cs,
+                71 * qual_size + qs[0], qs[1]);
     }
 
     /* case: i = 2 */
     if (n >= 3) {
-        qualenc_encode_pos(E, 2 / bin_size,
-                qs[0], qs[1], qs[2]);
+        cond_dist72_encode(E->ac, &E->cs,
+                qs[0] * qual_size + qs[1], qs[2]);
     }
 
     /* case: i = 3 */
     if (n >= 4) {
-        qualenc_encode_pos(E, 3 / bin_size,
-                charmax2(qs[0], qs[1]),
-                qs[2], qs[3]);
+        cond_dist72_encode(E->ac, &E->cs,
+                charmax2(qs[0], qs[1]) * qual_size + qs[2], qs[3]);
     }
 
     /* case: i >= 4 */
+    q2 = 0;
     for (i = 4; i < n; ++i) {
-
         q  = qs[i];
         q1 = qs[i - 1];
         q2 = charmax3(
@@ -156,7 +119,8 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
                 qs[i - 3],
                 qs[i - 4]);
 
-        qualenc_encode_pos(E, i / bin_size, q2, q1, q);
+        cond_dist72_encode(E->ac, &E->cs,
+                (i * pos_bins) / (n + 1) * qual_size * qual_size + q2 * qual_size + q1, q);
     }
 }
 
@@ -172,36 +136,43 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     str_t* qual = &seq->qual;
     while (n >= qual->size) fastq_expand_str(qual);
     qual->n = 0;
+    char* qs = seq->qual.s;
 
     unsigned char q1;  /* preceding quality score */
     unsigned char q2;  /* maximum of three quality scores preceding q1 */
 
-    size_t bin_size = (n / read_pos_bins) + 1;
+    size_t i;
 
     /* case: i = 0 */
     if (n >= 1) {
-        qual->s[qual->n++] = qualenc_decode_pos(E, 0 / bin_size, 0, 0);
+        qs[qual->n++] =
+            cond_dist72_decode(E->ac, &E->cs,
+                    71 * qual_size + 71);
     }
 
     /* case: i = 1 */
     if (n >= 2) {
-        qual->s[qual->n++] = qualenc_decode_pos(
-                E, 1 / bin_size, 0, qual->s[0]);
+        qs[qual->n++] =
+            cond_dist72_decode(E->ac, &E->cs,
+                    71 * qual_size + qs[0]);
     }
 
     /* case: i = 2 */
     if (n >= 3) {
-        qual->s[qual->n++] = qualenc_decode_pos(
-                E, 2 / bin_size, qual->s[0], qual->s[1]);
+        qs[qual->n++] =
+            cond_dist72_decode(E->ac, &E->cs,
+                    qs[0] * qual_size + qs[1]);
     }
 
     /* case: i = 3 */
     if (n >= 4) {
-        qual->s[qual->n++] = qualenc_decode_pos(
-                E, 3 / bin_size, charmax2(qual->s[0], qual->s[1]), qual->s[2]);
+        qs[qual->n++] =
+            cond_dist72_decode(E->ac, &E->cs,
+                    charmax2(qs[0], qs[1]) * qual_size + qs[2]);
     }
 
 
+    i = 4;
     while (qual->n < n) {
         q1 = qual->s[qual->n - 1];
         q2 = charmax3(
@@ -209,8 +180,10 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
                 qual->s[qual->n - 3],
                 qual->s[qual->n - 4]);
 
-        qual->s[qual->n] = qualenc_decode_pos(E, qual->n / bin_size, q2, q1);
-        ++qual->n;
+        qs[qual->n++] =
+            cond_dist72_decode(E->ac, &E->cs,
+                    (i * pos_bins) / (n + 1) * qual_size * qual_size + q2 * qual_size + q1);
+        ++i;
     }
 
     qual->s[qual->n] = '\0';
