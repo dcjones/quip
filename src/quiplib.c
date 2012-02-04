@@ -588,8 +588,8 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
         D->readlen_idx++;
     }
 
-    disassembler_read(D->disassembler, seq, n);
     qualenc_decode(D->qualenc, seq, n);
+    disassembler_read(D->disassembler, seq, n);
     idenc_decode(D->idenc, seq);
 
     D->pending_reads--;
