@@ -273,8 +273,7 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
 
         /* groups match completely */
         if (i == u && j == v) {
-            dist4_encode   (E->ac, &E->ts[group], ID_GROUP_MATCH);
-            dist100_encode (E->ac, &E->ms[group], matches);
+            dist4_encode (E->ac, &E->ts[group], ID_GROUP_MATCH);
             i = u;
             j = v;
             continue;
@@ -366,6 +365,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
 
     size_t i; /* position within the current id */
     size_t j; /* position within the last id */
+    size_t j0;
 
     size_t u;
 
@@ -387,7 +387,26 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             idenc_add_group(E);
         }
 
-        t       = dist4_decode   (E->ac, &E->ts[group]);
+        t = dist4_decode(E->ac, &E->ts[group]);
+
+        if (t == ID_GROUP_MATCH) {
+            j0 = j;
+
+            if (E->lastid[j] == '\0') ++j;
+            else {
+                while (issep[(uint8_t) E->lastid[j]] && j < E->lastid_len) ++j;
+                while (!issep[(uint8_t) E->lastid[j]] && j < E->lastid_len) ++j;
+            }
+            matches = j - j0;
+
+            while (i + matches >= id->size) fastq_expand_str(id);
+            memcpy(id->s + i, E->lastid + j0, matches);
+
+            i += matches;
+
+            goto decode_loop_end;
+        }
+
         matches = dist100_decode (E->ac, &E->ms[group]);
         assert(j + matches <= E->lastid_len);
 
@@ -397,10 +416,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
         i += matches;
         j += matches;
 
-        if (t == ID_GROUP_MATCH) {
-            /* do nothing more */
-        }
-        else if (t == ID_GROUP_OFF) {
+        if (t == ID_GROUP_OFF) {
             off = dist100_decode(E->ac, &E->ns[group]);
 
             assert(off < max_offset);
@@ -449,6 +465,8 @@ void idenc_decode(idenc_t* E, seq_t* seq)
 
             if (j + 1 < E->lastid_len) ++j;
         }
+
+decode_loop_end:
 
         ++group;
 
