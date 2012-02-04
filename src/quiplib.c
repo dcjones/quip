@@ -291,8 +291,12 @@ void quip_comp_addseq(quip_compressor_t* C, seq_t* seq)
         quip_comp_flush_block(C);
     }
 
-    qualenc_encode(C->qualenc, seq);
-    idenc_encode(C->idenc, seq);
+    uint32_t tile_x, tile_y;
+
+    idenc_encode(C->idenc, seq, &tile_x, &tile_y);
+    /*fprintf(stdout, "%d\t%d\n", tile_x, tile_y);*/
+
+    qualenc_encode(C->qualenc, seq, tile_x, tile_y);
     assembler_add_seq(C->assembler, seq->seq.s, seq->seq.n);
 
     C->buffered_reads++;
@@ -588,9 +592,11 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
         D->readlen_idx++;
     }
 
-    qualenc_decode(D->qualenc, seq, n);
+    uint32_t tile_x, tile_y;
+
+    idenc_decode(D->idenc, seq, &tile_x, &tile_y);
+    qualenc_decode(D->qualenc, seq, n, tile_x, tile_y);
     disassembler_read(D->disassembler, seq, n);
-    idenc_decode(D->idenc, seq);
 
     D->pending_reads--;
 

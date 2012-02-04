@@ -64,6 +64,8 @@ struct idenc_t_
     char* lastid;
     size_t lastid_len, lastid_size;
 
+    uint32_t last_tile_x, last_tile_y;
+
     bool decoder;
 };
 
@@ -83,6 +85,9 @@ static void idenc_init(idenc_t* E)
     E->lastid = NULL;
     E->lastid_len = 0;
     E->lastid_size = 0;
+
+    E->last_tile_x = 0;
+    E->last_tile_y = 0;
 }
 
 
@@ -167,9 +172,12 @@ static void idenc_add_group(idenc_t* E)
 
 
 
-void idenc_encode(idenc_t* E, const seq_t* seq)
+void idenc_encode(idenc_t* E, const seq_t* seq, uint32_t* tile_x, uint32_t* tile_y)
 {
     const str_t* id = &seq->id1; /* for convenience */
+
+    *tile_x = 0;
+    *tile_y = 0;
 
     size_t i; /* position within the current id */
     size_t j; /* position within the last id */
@@ -286,6 +294,11 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
             x = strtoull(id->s + i0, NULL, 10);
             y = strtoull(E->lastid + j0, NULL, 10);
 
+            /* This is (sequencing) platform specific. Illumina encodes tile
+             * position in groups 5 and 6. */
+            if      (group == 5) E->last_tile_x = *tile_x = x;
+            else if (group == 6) E->last_tile_y = *tile_y = x;
+
             if (x > y && x - y < max_offset) {
                 dist4_encode   (E->ac, &E->ts[group], ID_GROUP_OFF);
                 dist100_encode (E->ac, &E->ms[group], i0 - i_last);
@@ -348,6 +361,9 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
     }
     memcpy(E->lastid, id->s, (id->n + 1) * sizeof(char));
     E->lastid_len = id->n + 1;
+
+    if (*tile_x == 0) *tile_x = E->last_tile_x;
+    if (*tile_y == 0) *tile_y = E->last_tile_y;
 }
 
 
@@ -357,7 +373,7 @@ void idenc_flush(idenc_t* E)
 }
 
 
-void idenc_decode(idenc_t* E, seq_t* seq)
+void idenc_decode(idenc_t* E, seq_t* seq, uint32_t* tile_x, uint32_t* tile_y)
 {
     str_t* id = &seq->id1; /* for convenience */
 
