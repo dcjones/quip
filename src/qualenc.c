@@ -63,7 +63,7 @@ static inline char charmax2(char a, char b)
 
 
 
-void qualenc_encode(qualenc_t* E, const seq_t* x, uint32_t tile_x, uint32_t tile_y)
+void qualenc_encode(qualenc_t* E, const seq_t* x)
 {
     unsigned char q;   /* quality score */
     unsigned char q1;  /* preceding quality score */
@@ -98,19 +98,16 @@ void qualenc_encode(qualenc_t* E, const seq_t* x, uint32_t tile_x, uint32_t tile
     }
 
     /* case: i >= 4 */
-    size_t edge = 0;
+    q2 = 0;
     for (i = 3; i < n; ++i) {
         q  = qs[i];
         q1 = qs[i - 1];
-
         q2 = charmax2(
                 qs[i - 2],
                 qs[i - 3]);
 
         cond_dist41_encode(E->ac, &E->cs,
-                edge * pos_bins * qual_size * qual_size +
-                (i * pos_bins) / (n + 1) * qual_size * qual_size +
-                q2 * qual_size + q1, q);
+                (i * pos_bins) / (n + 1) * qual_size * qual_size + q2 * qual_size + q1, q);
     }
 }
 
@@ -121,7 +118,7 @@ void qualenc_flush(qualenc_t* E)
 }
 
 
-void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n, uint32_t tile_x, uint32_t tile_y)
+void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
 {
     str_t* qual = &seq->qual;
     while (n >= qual->size) fastq_expand_str(qual);
