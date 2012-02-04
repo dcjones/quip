@@ -55,11 +55,11 @@ typedef uint32_t symb_t;
 #include "dist_template_off.h"
 
 
-#define DISTSIZE 72
-#define dist_t dist72_t
-#define cond_dist_t cond_dist72_t
-#define dec_size  36
-#define dec_shift 10
+#define DISTSIZE 41 
+#define dist_t dist41_t
+#define cond_dist_t cond_dist41_t
+#define dec_size  20
+#define dec_shift 11
 
 #include "dist_template_on.h"
 #include "dist_impl.h"

@@ -9,21 +9,20 @@
 
 
 /* Every quality encoding scheme uses ASCII charocters in [33, 104] */
-static const char   qual_first = 33;
-static const char   qual_last  = 104;
-static const size_t qual_size  = 72;
+static const char   qual_last  = 40;
+static const size_t qual_size  = 41;
 static const size_t pos_bins   = 8;
 
 struct qualenc_t_
 {
     ac_t* ac;
-    cond_dist72_t cs;
+    cond_dist41_t cs;
 };
 
 
 static void qualenc_init(qualenc_t* E, bool decode)
 {
-    cond_dist72_init(&E->cs, pos_bins * qual_size * qual_size, decode);
+    cond_dist41_init(&E->cs, pos_bins * qual_size * qual_size, decode);
 }
 
 
@@ -51,7 +50,7 @@ qualenc_t* qualenc_alloc_decoder(quip_reader_t reader, void* reader_data)
 
 void qualenc_free(qualenc_t* E)
 {
-    cond_dist72_free(&E->cs);
+    cond_dist41_free(&E->cs);
     ac_free(E->ac);
     free(E);
 }
@@ -82,19 +81,19 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
     /* case: i = 0 */
     if (n >= 1) {
-        cond_dist72_encode(E->ac, &E->cs,
-                71 * qual_size + 71, qs[0]);
+        cond_dist41_encode(E->ac, &E->cs,
+                qual_last * qual_size + qual_last, qs[0]);
     }
 
     /* case: i = 1 */
     if (n >= 2) {
-        cond_dist72_encode(E->ac, &E->cs,
-                71 * qual_size + qs[0], qs[1]);
+        cond_dist41_encode(E->ac, &E->cs,
+                qual_last * qual_size + qs[0], qs[1]);
     }
 
     /* case: i = 2 */
     if (n >= 3) {
-        cond_dist72_encode(E->ac, &E->cs,
+        cond_dist41_encode(E->ac, &E->cs,
                 qs[0] * qual_size + qs[1], qs[2]);
     }
 
@@ -107,7 +106,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
                 qs[i - 2],
                 qs[i - 3]);
 
-        cond_dist72_encode(E->ac, &E->cs,
+        cond_dist41_encode(E->ac, &E->cs,
                 (i * pos_bins) / (n + 1) * qual_size * qual_size + q2 * qual_size + q1, q);
     }
 }
@@ -134,21 +133,21 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     /* case: i = 0 */
     if (n >= 1) {
         qs[qual->n++] =
-            cond_dist72_decode(E->ac, &E->cs,
-                    71 * qual_size + 71);
+            cond_dist41_decode(E->ac, &E->cs,
+                    qual_last * qual_size + qual_last);
     }
 
     /* case: i = 1 */
     if (n >= 2) {
         qs[qual->n++] =
-            cond_dist72_decode(E->ac, &E->cs,
-                    71 * qual_size + qs[0]);
+            cond_dist41_decode(E->ac, &E->cs,
+                    qual_last * qual_size + qs[0]);
     }
 
     /* case: i = 2 */
     if (n >= 3) {
         qs[qual->n++] =
-            cond_dist72_decode(E->ac, &E->cs,
+            cond_dist41_decode(E->ac, &E->cs,
                     qs[0] * qual_size + qs[1]);
     }
 
@@ -161,7 +160,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
                 qual->s[qual->n - 3]);
 
         qs[qual->n++] =
-            cond_dist72_decode(E->ac, &E->cs,
+            cond_dist41_decode(E->ac, &E->cs,
                     (i * pos_bins) / (n + 1) * qual_size * qual_size + q2 * qual_size + q1);
         ++i;
     }
