@@ -32,7 +32,11 @@ void seqenc_encode_alignment(seqenc_t* E,
         const sw_alignment_t* aln, const twobit_t* query);
 void seqenc_flush(seqenc_t* E);
 
-void seqenc_decode(seqenc_t* E, seq_t* seq, size_t n);
+/* This is called optionally when we are expecting some number of 
+ * of contig sequences. */
+void seqenc_prepare_decoder(seqenc_t*, size_t contig_count);
+
+bool seqenc_decode(seqenc_t* E, seq_t* seq, size_t n);
 void seqenc_reset_decoder(seqenc_t* E);
 
 

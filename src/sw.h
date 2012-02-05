@@ -32,7 +32,7 @@ typedef struct sw_alignment_t_
 {
     size_t len;  /* length of the stored alignment */
     size_t size; /* space allocated in ops */
-    int spos; /* position within the subject that the alignment begins */
+    int spos;    /* position within the subject that the alignment begins */
     edit_op_t* ops;
 } sw_alignment_t;
 

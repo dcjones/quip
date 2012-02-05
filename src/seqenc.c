@@ -20,6 +20,8 @@ static const uint8_t nuc_map[256] =
 
 static const uint8_t rev_nuc_map[5] = { 'A', 'C', 'G', 'T', 'N' };
 
+static const size_t insert_nuc_k = 4;
+
 
 struct seqenc_t_
 {
@@ -42,10 +44,24 @@ struct seqenc_t_
     dist2_t ss;
 
     /* distribution over contig number */
-    // TODO
+    dist4_t        d_contig_idx_bytes;
+    cond_dist256_t d_contig_idx;
+
+    /* distribution over the offset into the contig */
+    dist4_t        d_contig_off_bytes;
+    cond_dist256_t d_contig_off;
+
+    /* distribution over inserted nucleotides */
+    cond_dist4_t d_ins_nuc;
+    uint32_t ins_ctx_mask;
 
     /* distribution of edit operations, given the previous operation */
     cond_dist4_t es;
+
+    /* store contigs, for decoding */
+    twobit_t** contigs;
+    size_t contig_count;
+    size_t remaining_contigs;
 };
 
 
@@ -64,7 +80,26 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
     cond_dist16_init(&E->cs, N, decoder);
     dist2_init(&E->ms, decoder);
     dist2_init(&E->ss, decoder);
+
+    dist4_init(&E->d_contig_idx_bytes, decoder);
+    cond_dist256_init(&E->d_contig_idx, 4, decoder);
+
+    dist4_init(&E->d_contig_off_bytes, decoder);
+    cond_dist256_init(&E->d_contig_off, 4, decoder);
+
+    N = 1;
+    E->ctx_mask = 0;
+    for (i = 0; i < insert_nuc_k; ++i) {
+        E->ins_ctx_mask = (E->ins_ctx_mask << 2) | 0x3;
+        N *= 4;
+    }
+    cond_dist4_init(&E->d_ins_nuc, N, decoder);
+
     cond_dist4_init(&E->es, 16, decoder);
+
+    E->contigs = NULL;
+    E->contig_count = 0;
+    E->remaining_contigs = 0;
 }
 
 
@@ -92,6 +127,20 @@ seqenc_t* seqenc_alloc_decoder(size_t k, quip_reader_t reader, void* reader_data
 }
 
 
+void seqenc_prepare_decoder(seqenc_t* E, size_t contig_count)
+{
+    size_t i;
+    for (i = 0; i < E->contig_count; ++i) {
+        twobit_free(E->contigs[i]);
+    }
+    free(E->contigs);
+
+    E->contig_count = 0;
+    E->remaining_contigs = contig_count;
+    E->contigs = malloc_or_die(E->remaining_contigs * sizeof(twobit_t*));
+}
+
+
 void seqenc_free(seqenc_t* E)
 {
     if (E == NULL) return;
@@ -100,7 +149,24 @@ void seqenc_free(seqenc_t* E)
     cond_dist16_free(&E->cs);
     dist2_free(&E->ms);
     dist2_free(&E->ss);
+
+    dist4_free(&E->d_contig_idx_bytes);
+    cond_dist256_free(&E->d_contig_idx);
+
+    dist4_free(&E->d_contig_off_bytes);
+    cond_dist256_free(&E->d_contig_off);
+
+    cond_dist4_free(&E->d_ins_nuc);
+
     cond_dist4_free(&E->es);
+
+    size_t i;
+    for (i = 0; i < E->contig_count; ++i) {
+        twobit_free(E->contigs[i]);
+    }
+    free(E->contigs);
+
+
     free(E);
 }
 
@@ -179,7 +245,6 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
             cond_dist16_encode(E->ac, &E->cs, ctx, uv);
         }
     }
-
 }
 
 
@@ -189,11 +254,48 @@ void seqenc_encode_alignment(seqenc_t* E,
         const sw_alignment_t* aln, const twobit_t* query)
 {
     dist2_encode(E->ac, &E->ms, 1);
+
+    uint32_t bytes;
+    uint32_t z;
+
+
+    /* encode contig index */
+    bytes = 0;
+    z = contig_idx;
+    while (z > 0) {
+        z >>= 8;
+        ++bytes;
+    }
+    dist4_encode(E->ac, &E->d_contig_idx_bytes, bytes);
+
+    z = contig_idx;
+    while (z > 0) {
+        cond_dist256_encode(E->ac, &E->d_contig_idx, bytes - 1, z & 0xff);
+        z >>= 8;
+    }
+
+
+    /* encode strand */
     dist2_encode(E->ac, &E->ss, strand);
 
-    // TODO: output contig number
-    // TODO: output contig offset
 
+    /* encode contig offset */
+    bytes = 0;
+    z = aln->spos;
+    while (z > 0) {
+        z >>= 8;
+        ++bytes;
+    }
+    dist4_encode(E->ac, &E->d_contig_idx_bytes, bytes);
+
+    z = aln->spos;
+    while (z > 0) {
+        cond_dist256_encode(E->ac, &E->d_contig_idx, bytes - 1, z & 0xff);
+        z >>= 8;
+    }
+
+
+    /* encode edit operations */
     kmer_t u = twobit_get(query, 0);
     uint32_t last_op = EDIT_MATCH;
     uint32_t ctx = 0;
@@ -211,7 +313,7 @@ void seqenc_encode_alignment(seqenc_t* E,
 
             case EDIT_MISMATCH:
                 cond_dist4_encode(E->ac, &E->es, last_op, EDIT_MISMATCH);
-                /*cond_dist5_encode(E->ac, &E->cs, ctx, u);*/ // TODO
+                cond_dist4_encode(E->ac, &E->d_ins_nuc, ctx, u);
 
                 ++j;
                 ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
@@ -224,7 +326,7 @@ void seqenc_encode_alignment(seqenc_t* E,
 
             case EDIT_S_GAP:
                 cond_dist4_encode(E->ac, &E->es, last_op, EDIT_S_GAP);
-                /*cond_dist5_encode(E->ac, &E->cs, ctx, u);*/ // TODO
+                cond_dist4_encode(E->ac, &E->d_ins_nuc, ctx, u);
 
                 ++j;
                 ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
@@ -294,16 +396,85 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 }
 
 
-void seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
+static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
+{
+    uint32_t contig_idx, spos;
+    uint32_t bytes;
+    uint32_t b;
+    uint32_t z;
+
+    /* decode contig index */
+    bytes = dist4_decode(E->ac, &E->d_contig_idx_bytes);
+    z = 0;
+    for (b = 0; b < bytes; ++b) {
+        z |= cond_dist256_decode(E->ac, &E->d_contig_idx, bytes - b - 1) << (8 * b);
+    }
+    contig_idx = z;
+
+
+    /* decode strand */
+    uint8_t strand = dist2_decode(E->ac, &E->ss);
+
+
+    /* decode offset */
+    bytes = dist4_decode(E->ac, &E->d_contig_off_bytes);
+    z = 0;
+    for (b = 0; b < bytes; ++b) {
+        z |= cond_dist256_decode(E->ac, &E->d_contig_idx, bytes - b - 1) << (8 * b);
+    }
+    spos = z;
+
+
+    /* decode edit operations */
+    edit_op_t op, last_op = EDIT_MATCH;
+    uint32_t ctx;
+
+    size_t i = 0;
+    while (i < n) {
+        op = cond_dist4_decode(E->ac, &E->es, last_op);
+
+        switch (op) {
+            case EDIT_MATCH:
+                // TODO
+                break;
+
+            case EDIT_MISMATCH:
+                // TODO
+                break;
+
+            case EDIT_Q_GAP:
+                // TODO
+                break;
+
+            case EDIT_S_GAP:
+                // TODO
+                break;
+        }
+
+        last_op = ((last_op * 4) + op) % 16;
+    }
+}
+
+
+
+bool seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
 {
     while (n > x->seq.size) fastq_expand_str(&x->seq);
 
     symb_t t = dist2_decode(E->ac, &E->ms);
 
     if (t == 0) seqenc_decode_seq(E, x, n);
+    else        seqenc_decode_alignment(E, x, n);
 
-    /* TODO: decoding alignments */
-    assert(t == 0);
+    if (E->remaining_contigs > 0) {
+        E->contigs[E->contig_count] = twobit_alloc_n(x->seq.n);
+        twobit_copy_n(E->contigs[E->contig_count], x->seq.s, x->seq.n);
+        E->contig_count++;
+        E->remaining_contigs--;
+        return false;
+    }
+
+    return true;
 }
 
 
@@ -315,6 +486,15 @@ void seqenc_flush(seqenc_t* E)
 
 void seqenc_reset_decoder(seqenc_t* E)
 {
+    size_t i;
+    for (i = 0; i < E->contig_count; ++i) {
+        twobit_free(E->contigs[i]);
+    }
+    E->contig_count = 0;
+    E->remaining_contigs = 0;
+    free(E->contigs);
+    E->contigs = NULL;
+
     ac_reset_decoder(E->ac);
 }
 

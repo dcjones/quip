@@ -672,14 +672,12 @@ void disassembler_read(disassembler_t* D, seq_t* x, size_t n)
 {
     if (D->init_state) {
         D->contig_count = read_uint32(D->reader, D->reader_data);
-        
-        /* TODO: decompressing alignemnts */
-        assert(D->contig_count == 0);
-
+        seqenc_prepare_decoder(D->seqenc, D->contig_count);
         D->init_state = false;
     }
 
-    seqenc_decode(D->seqenc, x, n);
+    /* read until we encounter a non-contig */
+    while (!seqenc_decode(D->seqenc, x, n));
 }
 
 
