@@ -125,7 +125,7 @@ assembler_t* assembler_alloc(
         A->N = 0;
 
         // TODO: set n and m in some principled way
-        A->B = bloom_alloc(8388608, 8);
+        A->B = bloom_alloc(4194304, 8);
 
         A->x = twobit_alloc();
 

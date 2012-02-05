@@ -88,7 +88,7 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
     cond_dist256_init(&E->d_contig_off, 4, decoder);
 
     N = 1;
-    E->ctx_mask = 0;
+    E->ins_ctx_mask = 0;
     for (i = 0; i < insert_nuc_k; ++i) {
         E->ins_ctx_mask = (E->ins_ctx_mask << 2) | 0x3;
         N *= 4;
