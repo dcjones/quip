@@ -17,12 +17,14 @@ struct qualenc_t_
 {
     ac_t* ac;
     cond_dist41_t cs;
+    dist2_t ts;
 };
 
 
 static void qualenc_init(qualenc_t* E, bool decode)
 {
     cond_dist41_init(&E->cs, pos_bins * qual_size * qual_size, decode);
+    dist2_init(&E->ts, decode);
 }
 
 
@@ -51,6 +53,7 @@ qualenc_t* qualenc_alloc_decoder(quip_reader_t reader, void* reader_data)
 void qualenc_free(qualenc_t* E)
 {
     cond_dist41_free(&E->cs);
+    dist2_free(&E->ts);
     ac_free(E->ac);
     free(E);
 }
@@ -72,7 +75,21 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     char* qs = x->qual.s;
     size_t n = x->qual.n;
 
-    size_t i;
+    size_t i, j;
+    size_t k = n;
+
+    /* find the first '#' */
+    for (i = 0; i < n && qs[i] != 2; ++i);
+    if (i < n) {
+        for (j = i + 1; j < n && qs[j] == 2; ++j);
+        if (j == n) {
+            dist2_encode(E->ac, &E->ts, 1);
+            k = i + 1;
+        }
+        else dist2_encode(E->ac, &E->ts, 0);
+    }
+    else dist2_encode(E->ac, &E->ts, 1); 
+
 
     /* I am using the previous 4 positions to predict the next quality score.
      * These special cases here for positions 0 <= i <= 3 are a bit ugly but
@@ -80,26 +97,26 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
      */
 
     /* case: i = 0 */
-    if (n >= 1) {
+    if (k >= 1) {
         cond_dist41_encode(E->ac, &E->cs,
                 qual_last * qual_size + qual_last, qs[0]);
     }
 
     /* case: i = 1 */
-    if (n >= 2) {
+    if (k >= 2) {
         cond_dist41_encode(E->ac, &E->cs,
                 qual_last * qual_size + qs[0], qs[1]);
     }
 
     /* case: i = 2 */
-    if (n >= 3) {
+    if (k >= 3) {
         cond_dist41_encode(E->ac, &E->cs,
                 qs[0] * qual_size + qs[1], qs[2]);
     }
 
     /* case: i >= 4 */
     q2 = 0;
-    for (i = 3; i < n; ++i) {
+    for (i = 3; i < k; ++i) {
         q  = qs[i];
         q1 = qs[i - 1];
         q2 = charmax2(
@@ -125,6 +142,8 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     qual->n = 0;
     char* qs = seq->qual.s;
 
+    uint32_t t = dist2_decode(E->ac, &E->ts);
+
     unsigned char q1;  /* preceding quality score */
     unsigned char q2;  /* maximum of three quality scores preceding q1 */
 
@@ -138,14 +157,14 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     }
 
     /* case: i = 1 */
-    if (n >= 2) {
+    if (n >= 2 && (!t || qual->s[qual->n - 1] != 2)) {
         qs[qual->n++] =
             cond_dist41_decode(E->ac, &E->cs,
                     qual_last * qual_size + qs[0]);
     }
 
     /* case: i = 2 */
-    if (n >= 3) {
+    if (n >= 3 && (!t || qual->s[qual->n - 1] != 2)) {
         qs[qual->n++] =
             cond_dist41_decode(E->ac, &E->cs,
                     qs[0] * qual_size + qs[1]);
@@ -153,7 +172,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
 
 
     i = 3;
-    while (qual->n < n) {
+    while (qual->n < n && (!t || qual->s[qual->n - 1] != 2)) {
         q1 = qual->s[qual->n - 1];
         q2 = charmax2(
                 qual->s[qual->n - 2],
@@ -162,7 +181,12 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
         qs[qual->n++] =
             cond_dist41_decode(E->ac, &E->cs,
                     (i * pos_bins) / (n + 1) * qual_size * qual_size + q2 * qual_size + q1);
+
         ++i;
+    }
+
+    if (t && qs[qual->n - 1] == 2) {
+        while (qual->n < n) qs[qual->n++] = 2;
     }
 
     qual->s[qual->n] = '\0';
