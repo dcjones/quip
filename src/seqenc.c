@@ -78,6 +78,14 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
     }
 
     cond_dist16_init(&E->cs, N, decoder);
+
+    /* choose an initial distribution that is slightly more informed than
+     * uniform */
+    /*uint16_t cs_init[16] =*/
+        /*{ 5, 2, 3, 4, 4, 3, 1, 3, 3, 2, 3, 2, 3, 3, 4, 5 };*/
+    /*cond_dist16_setall(&E->cs, cs_init);*/
+
+
     dist2_init(&E->ms, decoder);
     dist2_init(&E->ss, decoder);
 

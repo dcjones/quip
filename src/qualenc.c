@@ -13,6 +13,7 @@ static const char   qual_last  = 40;
 static const size_t qual_size  = 41;
 static const size_t pos_bins   = 8;
 
+
 struct qualenc_t_
 {
     ac_t* ac;

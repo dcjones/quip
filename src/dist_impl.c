@@ -31,6 +31,18 @@ void dfun(free)(dist_t* D)
 }
 
 
+
+void dfun(set)(dist_t* D, const uint16_t* cs)
+{
+    size_t i;
+    for (i = 0; i < DISTSIZE; ++i) {
+        D->xs[i].count = cs[i];
+    }
+
+    dfun(update)(D);
+}
+
+
 void dfun(update)(dist_t* D)
 {
     size_t i;
@@ -56,7 +68,6 @@ void dfun(update)(dist_t* D)
         D->xs[i].freq = (uint16_t) ((scale * c) >> shift);
         c += D->xs[i].count;
     }
-    D->xs[DISTSIZE].freq = (uint16_t) (0x80000000U >> shift);
 
 
     /* update decoder table */
@@ -213,6 +224,35 @@ void cdfun(free) (cond_dist_t* D)
 
     free(D->xss[0].dec);
     free(D->xss);
+}
+
+
+void cdfun(setall) (cond_dist_t* D, const uint16_t* cs)
+{
+    size_t i;
+    for (i = 0; i < DISTSIZE; ++i) {
+        D->xss[0].xs[i].count = cs[i];
+    }
+
+    dfun(update)(D->xss);
+
+    for (i = 1; i < D->n; ++i) {
+        memcpy(D->xss + i, D->xss, sizeof(dist_t));
+        if (D->xss[0].dec) {
+            memcpy(D->xss[i].dec, D->xss[i - 1].dec, (dec_size + 6) * sizeof(uint16_t));
+        }
+    }
+}
+
+
+void cdfun(setone) (cond_dist_t* D, const uint16_t* cs, size_t i)
+{
+    size_t j;
+    for (j = 0; j < DISTSIZE; ++j) {
+        D->xss[i].xs[j].count = cs[j];
+    }
+
+    dfun(update)(D->xss + i);
 }
 
 

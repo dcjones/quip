@@ -22,7 +22,7 @@ typedef struct dfun(t_)
     struct {
         uint16_t count;
         uint16_t freq;
-    } xs[DISTSIZE + 1];
+    } xs[DISTSIZE];
 
     /* decoder table */
     uint16_t* dec;
@@ -35,6 +35,9 @@ typedef struct dfun(t_)
  * */
 void dfun(init) (dist_t*, bool decode);
 void dfun(free) (dist_t*);
+
+/* explicitly set the distiribution */
+void dfun(set) (dist_t*, const uint16_t* cs);
 
 /* update distribution to reflect calls new observations */
 void dfun(update)(dist_t* D);
@@ -62,8 +65,9 @@ typedef struct cdfun(t_)
 
 void cdfun(init) (cond_dist_t*, size_t n, bool decode);
 void cdfun(free) (cond_dist_t*);
-void cdfun(reorder) (cond_dist_t*);
 
+void cdfun(setall) (cond_dist_t*, const uint16_t* cs);
+void cdfun(setone) (cond_dist_t*, const uint16_t* cs, size_t i);
 
 void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x);
 symb_t cdfun(decode)(ac_t* ac, cond_dist_t* D, uint32_t y);
