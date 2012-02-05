@@ -68,6 +68,7 @@ void cdfun(free) (cond_dist_t*);
 
 void cdfun(setall) (cond_dist_t*, const uint16_t* cs);
 void cdfun(setone) (cond_dist_t*, const uint16_t* cs, size_t i);
+void cdfun(setprior) (cond_dist_t*, const uint8_t* cs);
 
 void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x);
 symb_t cdfun(decode)(ac_t* ac, cond_dist_t* D, uint32_t y);
