@@ -6,24 +6,28 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <math.h>
 
 
 /* Every quality encoding scheme uses ASCII charocters in [33, 104] */
 static const char   qual_last  = 40;
 static const size_t qual_size  = 41;
 static const size_t pos_bins   = 8;
+static const size_t mu_bins    = 16;
 
 
 struct qualenc_t_
 {
     ac_t* ac;
     cond_dist41_t cs;
+    dist41_t ms;
 };
 
 
 static void qualenc_init(qualenc_t* E, bool decode)
 {
-    cond_dist41_init(&E->cs, pos_bins * qual_size * qual_size, decode);
+    cond_dist41_init(&E->cs, pos_bins * mu_bins * qual_size * qual_size, decode);
+    dist41_init(&E->ms, decode);
 }
 
 
@@ -52,6 +56,7 @@ qualenc_t* qualenc_alloc_decoder(quip_reader_t reader, void* reader_data)
 void qualenc_free(qualenc_t* E)
 {
     cond_dist41_free(&E->cs);
+    dist41_free(&E->ms);
     ac_free(E->ac);
     free(E);
 }
@@ -75,6 +80,15 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
     size_t i;
 
+    uint32_t mu = 0;
+    for (i = 0; i < n; ++i) mu += qs[i];
+
+    mu = round((float) mu / (float) n);
+    mu = (mu * mu_bins) / (qual_size + 1);
+
+    dist41_encode(E->ac, &E->ms, mu);
+
+
     /* I am using the previous 4 positions to predict the next quality score.
      * These special cases here for positions 0 <= i <= 3 are a bit ugly but
      * speed the loop up considerably.
@@ -83,32 +97,34 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     /* case: i = 0 */
     if (n >= 1) {
         cond_dist41_encode(E->ac, &E->cs,
+                mu * qual_size * qual_size +
                 qual_last * qual_size + qual_last, qs[0]);
     }
 
     /* case: i = 1 */
     if (n >= 2) {
         cond_dist41_encode(E->ac, &E->cs,
+                mu * qual_size * qual_size +
                 qual_last * qual_size + qs[0], qs[1]);
     }
 
     /* case: i = 2 */
     if (n >= 3) {
         cond_dist41_encode(E->ac, &E->cs,
+                mu * qual_size * qual_size +
                 qs[0] * qual_size + qs[1], qs[2]);
     }
 
     /* case: i >= 4 */
-    q2 = 0;
     for (i = 3; i < n; ++i) {
         q  = qs[i];
         q1 = qs[i - 1];
-        q2 = charmax2(
-                qs[i - 2],
-                qs[i - 3]);
+        q2 = charmax2(qs[i - 2], qs[i - 3]);
 
         cond_dist41_encode(E->ac, &E->cs,
-                (i * pos_bins) / (n + 1) * qual_size * qual_size + q2 * qual_size + q1, q);
+                (i * pos_bins) / (n + 1) * mu_bins * qual_size * qual_size +
+                mu * qual_size * qual_size +
+                q2 * qual_size + q1, q);
     }
 }
 
@@ -129,12 +145,15 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     unsigned char q1;  /* preceding quality score */
     unsigned char q2;  /* maximum of three quality scores preceding q1 */
 
+    uint32_t mu = dist41_decode(E->ac, &E->ms);
+
     size_t i;
 
     /* case: i = 0 */
     if (n >= 1) {
         qs[qual->n++] =
             cond_dist41_decode(E->ac, &E->cs,
+                    mu * qual_size * qual_size +
                     qual_last * qual_size + qual_last);
     }
 
@@ -142,6 +161,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     if (n >= 2) {
         qs[qual->n++] =
             cond_dist41_decode(E->ac, &E->cs,
+                    mu * qual_size * qual_size +
                     qual_last * qual_size + qs[0]);
     }
 
@@ -149,6 +169,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     if (n >= 3) {
         qs[qual->n++] =
             cond_dist41_decode(E->ac, &E->cs,
+                    mu * qual_size * qual_size +
                     qs[0] * qual_size + qs[1]);
     }
 
@@ -162,7 +183,9 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
 
         qs[qual->n++] =
             cond_dist41_decode(E->ac, &E->cs,
-                    (i * pos_bins) / (n + 1) * qual_size * qual_size + q2 * qual_size + q1);
+                    (i * pos_bins) / (n + 1) * mu_bins * qual_size * qual_size +
+                    mu * qual_size * qual_size +
+                    q2 * qual_size + q1);
         ++i;
     }
 
