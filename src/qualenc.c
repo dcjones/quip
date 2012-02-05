@@ -1,6 +1,5 @@
 
 #include "qualenc.h"
-#include "qual_prior.h"
 #include "ac.h"
 #include "dist.h"
 #include "misc.h"
@@ -25,8 +24,6 @@ struct qualenc_t_
 static void qualenc_init(qualenc_t* E, bool decode)
 {
     cond_dist41_init(&E->cs, pos_bins * qual_size * qual_size, decode);
-
-    /*cond_dist41_setprior(&E->cs, qual_prior);*/
 }
 
 

@@ -256,18 +256,6 @@ void cdfun(setone) (cond_dist_t* D, const uint16_t* cs, size_t i)
 }
 
 
-void cdfun(setprior) (cond_dist_t* D, const uint8_t* cs)
-{
-    size_t i, j;
-    for (i = 0; i < D->n; ++i) {
-        for (j = 0; j < DISTSIZE; ++j) {
-            D->xss[i].xs[j].count = cs[i * DISTSIZE + j];
-        }
-        dfun(update)(D->xss + i);
-    }
-}
-
-
 void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x)
 {
     dfun(encode)(ac, D->xss + y, x);
