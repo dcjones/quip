@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <math.h>
 
 
 /* Every quality encoding scheme uses ASCII charocters in [33, 104] */
@@ -83,7 +82,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     uint32_t mu = 0;
     for (i = 0; i < n; ++i) mu += qs[i];
 
-    mu = round((float) mu / (float) n);
+    mu = (uint32_t) ((float) mu / (float) n);
     mu = (mu * mu_bins) / (qual_size + 1);
 
     dist41_encode(E->ac, &E->ms, mu);

@@ -13,7 +13,7 @@
 #include <string.h>
 
 
-static const size_t seqenc_order = 11;
+static const size_t seqenc_order = 10;
 
 
 static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
@@ -30,6 +30,16 @@ static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
            ((uint32_t) bytes[1] << 16) |
            ((uint32_t) bytes[2] << 8) |
            ((uint32_t) bytes[3]);
+}
+
+
+static void write_uint32(quip_writer_t writer, void* writer_data, uint32_t x)
+{
+    uint8_t bytes[4] = { (uint8_t) (x >> 24),
+                         (uint8_t) (x >> 16),
+                         (uint8_t) (x >> 8),
+                         (uint8_t) x };
+    writer(writer_data, bytes, 4);
 }
 
 
@@ -80,6 +90,15 @@ struct assembler_t_
 
     /* nucleotide sequence encoder */
     seqenc_t* seqenc;
+
+    /* assembled contigs */
+    twobit_t** contigs;
+
+    /* allocated size of the contigs array */
+    size_t contigs_size;
+
+    /* number of contigs stored in the contigs arary */
+    size_t contigs_len;
 
     /* nothing has been written yet */
     bool initial_state;
@@ -132,6 +151,10 @@ assembler_t* assembler_alloc(
         A->H = kmerhash_alloc();
 
         A->count_cutoff = 2;
+
+        A->contigs_size = 512;
+        A->contigs_len = 0;;
+        A->contigs = malloc_or_die(A->contigs_size * sizeof(twobit_t*));
     }
     else {
         A->initial_state = true;
@@ -160,7 +183,24 @@ void assembler_free(assembler_t* A)
     kmerhash_free(A->H);
     twobit_free(A->x);
     seqenc_free(A->seqenc);
+
+    size_t i;
+    for (i = 0; i < A->contigs_len; ++i) {
+        twobit_free(A->contigs[i]);
+    }
+    free(A->contigs);
+
     free(A);
+}
+
+
+void assembler_clear_contigs(assembler_t* A)
+{
+    size_t i;
+    for (i = 0; i < A->contigs_len; ++i) {
+        twobit_free(A->contigs[i]);
+    }
+    A->contigs_len = 0;
 }
 
 
@@ -170,9 +210,7 @@ void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
     if (A->quick) {
         if (A->initial_state) {
             /* output the number of contigs (i.e., 0) */
-            uint8_t bytes[4] = {0, 0, 0, 0};
-            A->writer(A->writer_data, bytes, 4);
-
+            write_uint32(A->writer, A->writer_data, 0);
             A->initial_state = false;
         }
 
@@ -307,7 +345,7 @@ static int seqset_value_idx_cmp(const void* a_, const void* b_)
 }
 
 
-static void index_contigs(assembler_t* A, twobit_t** contigs, size_t n)
+static void index_contigs(assembler_t* A)
 {
     fprintf(stderr, "indexing contigs ... ");
     size_t i;
@@ -315,8 +353,8 @@ static void index_contigs(assembler_t* A, twobit_t** contigs, size_t n)
     size_t pos;
     kmer_t x, y;
     twobit_t* contig;
-    for (i = 0; i < n; ++i) {
-        contig = contigs[i];
+    for (i = 0; i < A->contigs_len; ++i) {
+        contig = A->contigs[i];
         len = twobit_len(contig);
         x = 0;
         for (pos = 0; pos < len; ++pos) {
@@ -336,7 +374,6 @@ static void index_contigs(assembler_t* A, twobit_t** contigs, size_t n)
 
 
 static void align_to_contigs(assembler_t* A,
-                             twobit_t** contigs, size_t contigs_len,
                              seqset_value_t* xs, size_t xs_len)
 {
     if (verbose) fprintf(stderr, "aligning reads to contigs ...\n");
@@ -363,8 +400,8 @@ static void align_to_contigs(assembler_t* A,
     } cand_t;
 
     cand_t* cand;
-    cand_t** cands = malloc_or_die(contigs_len * sizeof(cand_t*));
-    memset(cands, 0, contigs_len * sizeof(cand_t*));
+    cand_t** cands = malloc_or_die(A->contigs_len * sizeof(cand_t*));
+    memset(cands, 0, A->contigs_len * sizeof(cand_t*));
 
     /* We only consider the first few position a k-mer hashes to */
     const size_t max_kmer_pos = 5;
@@ -400,13 +437,13 @@ static void align_to_contigs(assembler_t* A,
                     cand->strand = 0;
                 }
                 else {
-                    cand->spos = (int) twobit_len(contigs[pos->contig_idx]) - pos->contig_pos - A->align_k;
+                    cand->spos = (int) twobit_len(A->contigs[pos->contig_idx]) - pos->contig_pos - A->align_k;
                     cand->strand = 1;
                 }
             }
             else {
                 if (x == y) {
-                    cand->spos = (int) twobit_len(contigs[pos->contig_idx]) + pos->contig_pos - (A->align_k - 1);
+                    cand->spos = (int) twobit_len(A->contigs[pos->contig_idx]) + pos->contig_pos - (A->align_k - 1);
                     cand->strand = 1;
                 }
                 else {
@@ -426,10 +463,6 @@ static void align_to_contigs(assembler_t* A,
 
     /* Second pass: one contig at a time, perform local alignment. */
 
-
-    /* TODO: prune contigs to which no reads possibly align */
-
-
     if (verbose) fprintf(stderr, "\tlocal alignment ... ");
 
     typedef struct align_t_
@@ -447,11 +480,14 @@ static void align_to_contigs(assembler_t* A,
     }
 
 
-    /* write the number of contigs that will be used */
-    // TODO
+    /* write the number of contigs and their lengths  */
+
+    write_uint32(A->writer, A->writer_data, A->contigs_len);
+    for (i = 0; i < A->contigs_len; ++i) {
+        write_uint32(A->writer, A->writer_data, twobit_len(A->contigs[i]));
+    }
 
 
-    uint32_t* contig_reindex = malloc_or_die(contigs_len * sizeof(uint32_t));
     size_t j;
 
     sw_t* sw;
@@ -460,16 +496,15 @@ static void align_to_contigs(assembler_t* A,
 
     int aln_score;
 
-    for (i = 0, j = 0; i < contigs_len; ++i) {
+    for (i = 0, j = 0; i < A->contigs_len; ++i) {
 
         if (!cands[i]) continue;
 
-        seqenc_encode_twobit_seq(A->seqenc, contigs[i]);
-        contig_reindex[i] = j++;
+        seqenc_encode_twobit_seq(A->seqenc, A->contigs[i]);
         
-        sw = sw_alloc(contigs[i]);
+        sw = sw_alloc(A->contigs[i]);
 
-        twobit_revcomp(contig_rc, contigs[i]);
+        twobit_revcomp(contig_rc, A->contigs[i]);
         sw_rc = sw_alloc(contig_rc);
 
         while (cands[i]) {
@@ -546,7 +581,6 @@ static void align_to_contigs(assembler_t* A,
         free(alns[i].a.ops);
     }
     free(alns);
-    free(contig_reindex);
 
     twobit_free(contig_rc);
     if (verbose) fprintf(stderr, "done.\n");
@@ -596,10 +630,6 @@ void assembler_assemble(assembler_t* A)
 
     if (verbose) fprintf(stderr, "assembling contigs ... ");
 
-    size_t contigs_size = 512;
-    size_t contigs_len  = 0;
-    twobit_t** contigs = malloc_or_die(contigs_size * sizeof(twobit_t*));
-
     twobit_t* contig = twobit_alloc();
 
     for (i = 0; i < n && xs[i].cnt >= A->count_cutoff; ++i) {
@@ -611,23 +641,20 @@ void assembler_assemble(assembler_t* A)
         /* TODO: when we discard a contig, it would be nice if we could return
          * its k-mers to the bloom filter */
 
-        if (contigs_len == contigs_size) {
-            contigs_size *= 2;
-            contigs = realloc_or_die(contigs, contigs_size * sizeof(twobit_t*));
+        if (A->contigs_len == A->contigs_size) {
+            A->contigs_size *= 2;
+            A->contigs = realloc_or_die(A->contigs, A->contigs_size * sizeof(twobit_t*));
         }
 
-        contigs[contigs_len++] = twobit_dup(contig);
+        A->contigs[A->contigs_len++] = twobit_dup(contig);
     }
 
     twobit_free(contig);
 
-    if (verbose) fprintf(stderr, "done. (%zu contigs)\n", contigs_len);
+    if (verbose) fprintf(stderr, "done. (%zu contigs)\n", A->contigs_len);
 
-    index_contigs(A, contigs, contigs_len);
-    align_to_contigs(A, contigs, contigs_len, xs, n);
-
-    for (i = 0; i < contigs_len; ++i) twobit_free(contigs[i]);
-    free(contigs);
+    index_contigs(A);
+    align_to_contigs(A, xs, n);
 
     seqenc_flush(A->seqenc);
 

@@ -81,9 +81,9 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
 
     /* choose an initial distribution that is slightly more informed than
      * uniform */
-    /*uint16_t cs_init[16] =*/
-        /*{ 5, 2, 3, 4, 4, 3, 1, 3, 3, 2, 3, 2, 3, 3, 4, 5 };*/
-    /*cond_dist16_setall(&E->cs, cs_init);*/
+    uint16_t cs_init[16] =
+        { 5, 2, 3, 4, 4, 3, 1, 3, 3, 2, 3, 2, 3, 3, 4, 5 };
+    cond_dist16_setall(&E->cs, cs_init);
 
 
     dist2_init(&E->ms, decoder);
@@ -314,9 +314,8 @@ void seqenc_encode_alignment(seqenc_t* E,
                 cond_dist4_encode(E->ac, &E->es, last_op, EDIT_MATCH);
 
                 ++j;
-                u = u == 0 ? 1 : u - 1;
-                ctx = (ctx << 2 | u) & E->ctx_mask;
-                u = twobit_get(query, j) + 1;
+                ctx = (ctx << 2 | u) & E->ins_ctx_mask;
+                u = twobit_get(query, j);
                 break;
 
             case EDIT_MISMATCH:
@@ -324,7 +323,7 @@ void seqenc_encode_alignment(seqenc_t* E,
                 cond_dist4_encode(E->ac, &E->d_ins_nuc, ctx, u);
 
                 ++j;
-                ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
+                ctx = (ctx << 2 | (u & 0x3)) & E->ins_ctx_mask;
                 u = twobit_get(query, j);
                 break;
 
@@ -337,7 +336,7 @@ void seqenc_encode_alignment(seqenc_t* E,
                 cond_dist4_encode(E->ac, &E->d_ins_nuc, ctx, u);
 
                 ++j;
-                ctx = (ctx << 2 | (u & 0x3)) & E->ctx_mask;
+                ctx = (ctx << 2 | (u & 0x3)) & E->ins_ctx_mask;
                 u = twobit_get(query, j);
                 break;
         }

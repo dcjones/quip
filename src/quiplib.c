@@ -16,8 +16,7 @@ const size_t assembler_k = 25;
 const size_t aligner_k = 15;
 
 /* approximate number of bases per block */
-/*const size_t block_size = 100000000;*/
-const size_t block_size = 50000000;
+const size_t block_size = 100000000;
 
 bool verbose = true;
 
@@ -242,6 +241,7 @@ void quip_comp_flush_block(quip_compressor_t* C)
     /* finish coding */
     idenc_flush(C->idenc);
     assembler_assemble(C->assembler);
+    assembler_clear_contigs(C->assembler);
     qualenc_flush(C->qualenc);
 
     /* write the size of each chunk about to be written */
@@ -266,6 +266,7 @@ void quip_comp_flush_block(quip_compressor_t* C)
                 100.0 * (double) C->seqbuf_len / (double) C->seq_bytes);
     }
     C->seqbuf_len = 0;
+
 
     /* write compressed qualities */
     C->writer(C->writer_data, C->qualbuf, C->qualbuf_len);

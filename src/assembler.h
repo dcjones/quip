@@ -29,6 +29,8 @@ assembler_t* assembler_alloc(
         size_t assemble_k, size_t align_k, bool quick);
 void         assembler_free(assembler_t*);
 
+void assembler_clear_contigs(assembler_t*);
+
 void assembler_add_seq(assembler_t*, const char* seq, size_t seqlen);
 void assembler_assemble(assembler_t* A);
 
