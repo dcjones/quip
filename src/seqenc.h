@@ -32,11 +32,16 @@ void seqenc_encode_alignment(seqenc_t* E,
         const sw_alignment_t* aln, const twobit_t* query);
 void seqenc_flush(seqenc_t* E);
 
-/* This is called optionally when we are expecting some number of 
- * of contig sequences. */
-void seqenc_prepare_decoder(seqenc_t*, size_t contig_count);
+/* Optionally called to inform the decoder that the next n sequences should be
+ * considered contigs. */
+void seqenc_prepare_decoder(seqenc_t* E, uint32_t n, const uint32_t* lens);
 
-bool seqenc_decode(seqenc_t* E, seq_t* seq, size_t n);
+
+void seqenc_decode(seqenc_t* E, seq_t* seq, size_t n);
+
+//void seqenc_decode_seq(seqenc_t* E, seq_t* seq, size_t n);
+//void seqenc_decode_alignment(seqenc_t* E, const twobit_t* contig, seq_t* seq, size_t n);
+
 void seqenc_reset_decoder(seqenc_t* E);
 
 

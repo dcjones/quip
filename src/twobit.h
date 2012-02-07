@@ -43,6 +43,7 @@ void   twobit_set(twobit_t*, size_t i, kmer_t);
 kmer_t twobit_get(const twobit_t*, size_t i);
 kmer_t twobit_get_kmer(const twobit_t*, size_t i, size_t k);
 void   twobit_print(const twobit_t*, FILE*);
+void   twobit_print_stdout(const twobit_t*);
 int    twobit_cmp(const twobit_t*, const twobit_t*);
 void   twobit_revcomp(twobit_t* dest, const twobit_t* src);
 

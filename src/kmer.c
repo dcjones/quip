@@ -116,6 +116,12 @@ kmer_t kmer_comp(kmer_t x, size_t k)
 }
 
 
+kmer_t kmer_comp1(kmer_t x)
+{
+    return complement1[x & 0x3];
+}
+
+
 kmer_t kmer_revcomp(kmer_t x, size_t k)
 {
     kmer_t y =

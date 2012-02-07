@@ -36,6 +36,9 @@ kmer_t kmer_get_nt(kmer_t* x, size_t i);
 /* complement */
 kmer_t kmer_comp(kmer_t, size_t k);
 
+/* complement a single nucleotide (a bit faster than kmer_comp(x, 1)) */
+kmer_t kmer_comp1(kmer_t);
+
 /* reverse complement */
 kmer_t kmer_revcomp(kmer_t, size_t k);
 

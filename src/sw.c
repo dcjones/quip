@@ -320,6 +320,8 @@ void sw_trace(sw_t* sw, sw_alignment_t* aln)
         j = j_next;
     }
 
+    aln->spos = i;
+
     /* reverse the order of edit operations */
     i = 0;
     j = aln->len - 1;
@@ -330,8 +332,6 @@ void sw_trace(sw_t* sw, sw_alignment_t* aln)
         ++i;
         --j;
     }
-
-    aln->spos = i;
 }
 
 

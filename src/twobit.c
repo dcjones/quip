@@ -238,6 +238,13 @@ void twobit_print(const twobit_t* s, FILE* fout)
     }
 }
 
+void twobit_print_stdout(const twobit_t* s)
+{
+    twobit_print(s, stdout);
+    fputc('\n', stdout);
+    fflush(stdout);
+}
+
 
 
 int twobit_cmp(const twobit_t* a, const twobit_t* b)

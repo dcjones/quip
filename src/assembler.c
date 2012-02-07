@@ -480,13 +480,6 @@ static void align_to_contigs(assembler_t* A,
     }
 
 
-    /* write the number of contigs and their lengths  */
-
-    write_uint32(A->writer, A->writer_data, A->contigs_len);
-    for (i = 0; i < A->contigs_len; ++i) {
-        write_uint32(A->writer, A->writer_data, twobit_len(A->contigs[i]));
-    }
-
 
     size_t j;
 
@@ -500,8 +493,6 @@ static void align_to_contigs(assembler_t* A,
 
         if (!cands[i]) continue;
 
-        seqenc_encode_twobit_seq(A->seqenc, A->contigs[i]);
-        
         sw = sw_alloc(A->contigs[i]);
 
         twobit_revcomp(contig_rc, A->contigs[i]);
@@ -545,6 +536,7 @@ static void align_to_contigs(assembler_t* A,
 
 
     if (verbose) fprintf(stderr, "done.\n");
+
 
 
 
@@ -653,6 +645,21 @@ void assembler_assemble(assembler_t* A)
 
     if (verbose) fprintf(stderr, "done. (%zu contigs)\n", A->contigs_len);
 
+
+    /* write the number of contigs and their lengths  */
+
+    write_uint32(A->writer, A->writer_data, A->contigs_len);
+    for (i = 0; i < A->contigs_len; ++i) {
+        write_uint32(A->writer, A->writer_data, twobit_len(A->contigs[i]));
+    }
+
+
+    /* write the contigs */
+
+    for (i = 0; i < A->contigs_len; ++i) {
+        seqenc_encode_twobit_seq(A->seqenc, A->contigs[i]);
+    }
+        
     index_contigs(A);
     align_to_contigs(A, xs, n);
 
@@ -665,7 +672,6 @@ void assembler_assemble(assembler_t* A)
 struct disassembler_t_
 {
     seqenc_t* seqenc;
-    uint32_t contig_count;
 
     quip_reader_t reader;
     void* reader_data;
@@ -698,13 +704,23 @@ void disassembler_free(disassembler_t* D)
 void disassembler_read(disassembler_t* D, seq_t* x, size_t n)
 {
     if (D->init_state) {
-        D->contig_count = read_uint32(D->reader, D->reader_data);
-        seqenc_prepare_decoder(D->seqenc, D->contig_count);
+        uint32_t contig_count = read_uint32(D->reader, D->reader_data);
+        uint32_t* contig_lens = malloc_or_die(contig_count * sizeof(uint32_t));
+        uint32_t i;
+        for (i = 0; i < contig_count; ++i) {
+            contig_lens[i] = read_uint32(D->reader, D->reader_data);
+        }
+
+        if (contig_count > 0) {
+            seqenc_prepare_decoder(D->seqenc, contig_count, contig_lens);
+        }
+
+        free(contig_lens);
+
         D->init_state = false;
     }
 
-    /* read until we encounter a non-contig */
-    while (!seqenc_decode(D->seqenc, x, n));
+    seqenc_decode(D->seqenc, x, n);
 }
 
 

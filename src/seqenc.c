@@ -58,10 +58,18 @@ struct seqenc_t_
     /* distribution of edit operations, given the previous operation */
     cond_dist4_t es;
 
-    /* store contigs, for decoding */
+    /* contig set, used in calls to seqenc_decode_alignment */
     twobit_t** contigs;
-    size_t contig_count;
-    size_t remaining_contigs;
+
+    /* number of contigs read so far */
+    uint32_t contig_count;
+
+    /* how many of the leading sequences are contigs */
+    uint32_t expected_contigs;
+
+    /* lengths of the expected contigs */
+    uint32_t* contig_lens;
+
 };
 
 
@@ -105,9 +113,10 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
 
     cond_dist4_init(&E->es, 16, decoder);
 
-    E->contigs = NULL;
-    E->contig_count = 0;
-    E->remaining_contigs = 0;
+    E->contigs          = NULL;
+    E->contig_lens      = NULL;
+    E->contig_count     = 0;
+    E->expected_contigs = 0;
 }
 
 
@@ -135,20 +144,6 @@ seqenc_t* seqenc_alloc_decoder(size_t k, quip_reader_t reader, void* reader_data
 }
 
 
-void seqenc_prepare_decoder(seqenc_t* E, size_t contig_count)
-{
-    size_t i;
-    for (i = 0; i < E->contig_count; ++i) {
-        twobit_free(E->contigs[i]);
-    }
-    free(E->contigs);
-
-    E->contig_count = 0;
-    E->remaining_contigs = contig_count;
-    E->contigs = malloc_or_die(E->remaining_contigs * sizeof(twobit_t*));
-}
-
-
 void seqenc_free(seqenc_t* E)
 {
     if (E == NULL) return;
@@ -173,7 +168,7 @@ void seqenc_free(seqenc_t* E)
         twobit_free(E->contigs[i]);
     }
     free(E->contigs);
-
+    free(E->contig_lens);
 
     free(E);
 }
@@ -261,6 +256,9 @@ void seqenc_encode_alignment(seqenc_t* E,
         size_t contig_idx, uint8_t strand,
         const sw_alignment_t* aln, const twobit_t* query)
 {
+    static size_t N = 0;
+    ++N;
+
     dist2_encode(E->ac, &E->ms, 1);
 
     uint32_t bytes;
@@ -274,11 +272,13 @@ void seqenc_encode_alignment(seqenc_t* E,
         z >>= 8;
         ++bytes;
     }
-    dist4_encode(E->ac, &E->d_contig_idx_bytes, bytes);
+    if (bytes == 0) bytes = 1;
+
+    dist4_encode(E->ac, &E->d_contig_idx_bytes, bytes - 1);
 
     z = contig_idx;
-    while (z > 0) {
-        cond_dist256_encode(E->ac, &E->d_contig_idx, bytes - 1, z & 0xff);
+    while (bytes--) {
+        cond_dist256_encode(E->ac, &E->d_contig_idx, bytes, z & 0xff);
         z >>= 8;
     }
 
@@ -294,11 +294,13 @@ void seqenc_encode_alignment(seqenc_t* E,
         z >>= 8;
         ++bytes;
     }
-    dist4_encode(E->ac, &E->d_contig_idx_bytes, bytes);
+    if (bytes == 0) bytes = 1;
+
+    dist4_encode(E->ac, &E->d_contig_off_bytes, bytes - 1);
 
     z = aln->spos;
-    while (z > 0) {
-        cond_dist256_encode(E->ac, &E->d_contig_idx, bytes - 1, z & 0xff);
+    while (bytes--) {
+        cond_dist256_encode(E->ac, &E->d_contig_off, bytes, z & 0xff);
         z >>= 8;
     }
 
@@ -306,7 +308,7 @@ void seqenc_encode_alignment(seqenc_t* E,
     /* encode edit operations */
     kmer_t u = twobit_get(query, 0);
     uint32_t last_op = EDIT_MATCH;
-    uint32_t ctx = 0;
+    kmer_t ctx = 0;
     size_t i, j;
     for (i = 0, j = 0; i < aln->len; ++i) {
         switch (aln->ops[i]) {
@@ -314,7 +316,7 @@ void seqenc_encode_alignment(seqenc_t* E,
                 cond_dist4_encode(E->ac, &E->es, last_op, EDIT_MATCH);
 
                 ++j;
-                ctx = (ctx << 2 | u) & E->ins_ctx_mask;
+                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
                 u = twobit_get(query, j);
                 break;
 
@@ -323,7 +325,7 @@ void seqenc_encode_alignment(seqenc_t* E,
                 cond_dist4_encode(E->ac, &E->d_ins_nuc, ctx, u);
 
                 ++j;
-                ctx = (ctx << 2 | (u & 0x3)) & E->ins_ctx_mask;
+                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
                 u = twobit_get(query, j);
                 break;
 
@@ -336,30 +338,59 @@ void seqenc_encode_alignment(seqenc_t* E,
                 cond_dist4_encode(E->ac, &E->d_ins_nuc, ctx, u);
 
                 ++j;
-                ctx = (ctx << 2 | (u & 0x3)) & E->ins_ctx_mask;
+                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
                 u = twobit_get(query, j);
                 break;
         }
 
         last_op = ((last_op * 4) + aln->ops[i]) % 16;
     }
+
+    assert(j == twobit_len(query));
 }
+
+
+void seqenc_prepare_decoder(seqenc_t* E, uint32_t n, const uint32_t* lens)
+{
+    size_t i;
+    for (i = 0; i < E->contig_count; ++i) {
+        twobit_free(E->contigs[i]);
+    }
+    free(E->contigs);
+    E->contigs = NULL;
+
+    free(E->contig_lens);
+    E->contig_lens = NULL;
+
+    E->contig_count = 0;
+    E->expected_contigs = n;
+
+    E->contigs     = malloc_or_die(n * sizeof(twobit_t*));
+    memset(E->contigs, 0, n * sizeof(twobit_t*));
+
+    E->contig_lens = malloc_or_die(n * sizeof(uint32_t));
+
+    for (i = 0; i < n; ++i) E->contig_lens[i] = lens[i];
+}
+
 
 
 static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 {
+    while (n >= x->seq.size) fastq_expand_str(&x->seq);
+
     kmer_t uv, u, v;
     uint32_t ctx = 0;
     size_t i, j;
 
     const char* qs = x->qual.s;
 
-    for (i = 0; i < n; ++i) {
+    for (i = 0; i < x->qual.n; ++i) {
         if (qs[i] == 0) break;
     }
 
     /* sequence contains Ns */
-    if (i < n) {
+    if (i < n && x->qual.n > 0) {
 
         memset(x->seq.s, 'N', n * sizeof(char));
 
@@ -383,12 +414,6 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 
             i = j + 1;
         }
-
-        if (i < n && qs[i] != 0) {
-            uv = cond_dist16_decode(E->ac, &E->cs, ctx);
-            v = uv & 0x3;
-            x->seq.s[i] = rev_nuc_map[v];
-        }
     }
     else {
         for (i = 0; i < n - 1;) {
@@ -400,23 +425,42 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
             ctx = ((ctx << 4) | uv) & E->ctx_mask;
         }
     }
+
+    if (i < n && (x->qual.n == 0 || qs[i] != 0)) {
+        uv = cond_dist16_decode(E->ac, &E->cs, ctx);
+        v = uv & 0x3;
+        x->seq.s[i] = rev_nuc_map[v];
+    }
+
+    x->seq.s[n] = '\0';
 }
 
 
 static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
 {
+    static size_t N = 0;
+    ++N;
+
+    while (n >= x->seq.size) fastq_expand_str(&x->seq);
+
+
     uint32_t contig_idx, spos;
     uint32_t bytes;
     uint32_t b;
     uint32_t z;
 
     /* decode contig index */
-    bytes = dist4_decode(E->ac, &E->d_contig_idx_bytes);
+    bytes = 1 + dist4_decode(E->ac, &E->d_contig_idx_bytes);
     z = 0;
     for (b = 0; b < bytes; ++b) {
         z |= cond_dist256_decode(E->ac, &E->d_contig_idx, bytes - b - 1) << (8 * b);
     }
     contig_idx = z;
+
+    assert(contig_idx < E->contig_count);
+
+    const twobit_t* contig = E->contigs[contig_idx];
+    size_t contig_len = twobit_len(contig);
 
 
     /* decode strand */
@@ -424,65 +468,104 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
 
 
     /* decode offset */
-    bytes = dist4_decode(E->ac, &E->d_contig_off_bytes);
+    bytes = 1 + dist4_decode(E->ac, &E->d_contig_off_bytes);
     z = 0;
     for (b = 0; b < bytes; ++b) {
-        z |= cond_dist256_decode(E->ac, &E->d_contig_idx, bytes - b - 1) << (8 * b);
+        z |= cond_dist256_decode(E->ac, &E->d_contig_off, bytes - b - 1) << (8 * b);
     }
     spos = z;
 
 
-    /* decode edit operations */
+    /* decoded edit operations */
     edit_op_t op, last_op = EDIT_MATCH;
-    uint32_t ctx;
 
-    size_t i = 0;
-    while (i < n) {
+    kmer_t u, ctx = 0; /* nucleotide context */
+
+    size_t i; /* position within the read */
+    size_t j; /* position within the contig */
+
+    for (i = 0, j = spos; i < n;) {
         op = cond_dist4_decode(E->ac, &E->es, last_op);
 
         switch (op) {
             case EDIT_MATCH:
-                // TODO
+                if (strand) u = kmer_comp1(twobit_get(contig, contig_len - j - 1));
+                else        u = twobit_get(contig, j);
+                x->seq.s[i] = kmertochar(u);
+
+                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
+                ++i;
+                ++j;
                 break;
 
             case EDIT_MISMATCH:
-                // TODO
+                u = cond_dist4_decode(E->ac, &E->d_ins_nuc, ctx);
+                x->seq.s[i] = kmertochar(u);
+
+                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
+                ++i;
+                ++j;
                 break;
 
             case EDIT_Q_GAP:
-                // TODO
+                ++j;
                 break;
 
             case EDIT_S_GAP:
-                // TODO
+                u = cond_dist4_decode(E->ac, &E->d_ins_nuc, ctx);
+                x->seq.s[i] = kmertochar(u);
+
+                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
+                ++i;
                 break;
         }
 
         last_op = ((last_op * 4) + op) % 16;
     }
+
+    x->seq.s[n] = '\0';
 }
 
 
-
-bool seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
+static void seqenc_decode_contigs(seqenc_t* E)
 {
-    while (n > x->seq.size) fastq_expand_str(&x->seq);
+    seq_t* seq = fastq_alloc_seq();
 
-    symb_t t = dist2_decode(E->ac, &E->ms);
+    uint32_t type;
+    size_t len;
 
-    if (t == 0) seqenc_decode_seq(E, x, n);
-    else        seqenc_decode_alignment(E, x, n);
+    while (E->contig_count < E->expected_contigs) {
+        type = dist2_decode(E->ac, &E->ms);
 
-    if (E->remaining_contigs > 0) {
-        E->contigs[E->contig_count] = twobit_alloc_n(x->seq.n);
-        twobit_copy_n(E->contigs[E->contig_count], x->seq.s, x->seq.n);
+        /* contigs aligned to prior contigs is not currently supported. */
+        assert(type == 0);
+
+        len = E->contig_lens[E->contig_count];
+
+        seqenc_decode_seq(E, seq, len);
+        E->contigs[E->contig_count] = twobit_alloc_n(len);
+        twobit_copy_n(E->contigs[E->contig_count], seq->seq.s, len);
+
         E->contig_count++;
-        E->remaining_contigs--;
-        return false;
     }
 
-    return true;
+    fastq_free_seq(seq);
 }
+
+
+
+void seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
+{
+    if (E->contig_count < E->expected_contigs) {
+        seqenc_decode_contigs(E);
+    }
+
+    uint32_t type = dist2_decode(E->ac, &E->ms);
+
+    if (type == 0) seqenc_decode_seq(E, x, n);
+    else           seqenc_decode_alignment(E, x, n);
+}
+
 
 
 void seqenc_flush(seqenc_t* E)
@@ -493,15 +576,6 @@ void seqenc_flush(seqenc_t* E)
 
 void seqenc_reset_decoder(seqenc_t* E)
 {
-    size_t i;
-    for (i = 0; i < E->contig_count; ++i) {
-        twobit_free(E->contigs[i]);
-    }
-    E->contig_count = 0;
-    E->remaining_contigs = 0;
-    free(E->contigs);
-    E->contigs = NULL;
-
     ac_reset_decoder(E->ac);
 }
 
