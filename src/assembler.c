@@ -281,7 +281,7 @@ void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
 
 
 
-static void assembler_make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
+static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
 {
     twobit_clear(contig);
 
@@ -418,11 +418,14 @@ static aln_seed_t** seed_alignments(assembler_t* A,
      * should be in an approximately random order. */
     const size_t max_seeds = 5;
 
-    size_t seqlen;
-    size_t poslen;
+    size_t poslen, skipped;
     kmer_pos_t* pos;
     kmer_t x, y;
-    size_t i;
+    size_t i, j;
+
+    int spos, qpos;
+    int slen, qlen;
+    uint8_t strand;
 
 
     for (i = 0; i < xs_len; ++i) {
@@ -432,8 +435,8 @@ static aln_seed_t** seed_alignments(assembler_t* A,
         if (!xs[i].is_twobit) continue;
 
         /* Don't try to align any reads that are shorer than the seed length */
-        seqlen = twobit_len(xs[i].seq.tb);
-        if (seqlen < A->align_k) continue;
+        qlen = twobit_len(xs[i].seq.tb);
+        if ((size_t) qlen < A->align_k) continue;
 
         /* TODO: look at more than one seed */
 
@@ -441,7 +444,7 @@ static aln_seed_t** seed_alignments(assembler_t* A,
                 xs[i].seq.tb,
                 /* We choose the seed from the middle of the read as that
                  * minimizes the cost of local alignment. */
-                (seqlen - A->align_k) / 2,
+                (qlen - A->align_k) / 2,
                 A->align_k);
         y = kmer_canonical(x, A->align_k);
 
@@ -450,36 +453,44 @@ static aln_seed_t** seed_alignments(assembler_t* A,
 
 
         /* Adjust positions according to strand and record hits.  */
-        while (poslen--) {
-            seed = malloc_or_die(sizeof(aln_seed_t));
-            seed->seq_idx = i;
+        for (j = 0, skipped = 0; j < poslen && j - skipped < max_seeds; ++j, ++pos) {
+            slen = twobit_len(A->contigs[pos->contig_idx]);
 
             if (pos->contig_pos >= 0) {
                 if (x == y) {
-                    seed->spos = pos->contig_pos;
-                    seed->strand = 0;
+                    spos = pos->contig_pos;
+                    strand = 0;
                 }
                 else {
-                    seed->spos =
-                        (int) twobit_len(A->contigs[pos->contig_idx]) -
-                        pos->contig_pos - A->align_k;
-                    seed->strand = 1;
+                    spos = slen - pos->contig_pos - A->align_k;
+                    strand = 1;
                 }
             }
             else {
                 if (x == y) {
-                    seed->spos =
-                        (int) twobit_len(A->contigs[pos->contig_idx]) +
-                        pos->contig_pos - (A->align_k - 1);
-                    seed->strand = 1;
+                    spos = slen + pos->contig_pos - A->align_k + 1;
+                    strand = 1;
                 }
                 else {
-                    seed->spos = -pos->contig_pos - 1;
-                    seed->strand = 0;
+                    spos = -pos->contig_pos - 1;
+                    strand = 0;
                 }
             }
 
-            seed->next = seeds[pos->contig_idx];
+            /* Is a full alignment possible with this seed? */
+            qpos = (qlen - A->align_k) / 2;
+            if ((strand == 0 && (spos < qpos || slen - spos < qlen - qpos)) ||
+                (strand == 1 && (spos < qlen - qpos || slen - spos < qpos))) {
+                ++skipped;
+                continue;
+            }
+
+
+            seed = malloc_or_die(sizeof(aln_seed_t));
+            seed->spos    = spos;
+            seed->strand  = strand;
+            seed->seq_idx = i;
+            seed->next    = seeds[pos->contig_idx];
             seeds[pos->contig_idx] = seed;
         }
     }
@@ -627,7 +638,7 @@ static void align_to_contigs(assembler_t* A,
 
 /* Count the number of occurences of each k-mer in the array of reads xs, of
  * length n. */
-static void assembler_count_kmers(assembler_t* A, seqset_value_t* xs, size_t n)
+static void count_kmers(assembler_t* A, seqset_value_t* xs, size_t n)
 {
     if (verbose) fprintf(stderr, "counting k-mers ... ");
 
@@ -653,7 +664,7 @@ static void assembler_count_kmers(assembler_t* A, seqset_value_t* xs, size_t n)
 
 
 /* Heuristically build contigs from k-mers counts and a set of reads */
-static void assembler_make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
+static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 {
     if (verbose) fprintf(stderr, "assembling contigs ... ");
 
@@ -663,7 +674,7 @@ static void assembler_make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
     for (i = 0; i < n && xs[i].cnt >= A->count_cutoff; ++i) {
         if (!xs[i].is_twobit) continue;
 
-        assembler_make_contig(A, xs[i].seq.tb, contig);
+        make_contig(A, xs[i].seq.tb, contig);
         if (twobit_len(contig) < 3 * A->assemble_k) continue;
 
         /* TODO: when we discard a contig, it would be nice if we could return
@@ -698,8 +709,8 @@ void assembler_assemble(assembler_t* A)
 
     size_t n = seqset_size(A->S);
 
-    assembler_count_kmers(A, xs, n);
-    assembler_make_contigs(A, xs, n);
+    count_kmers(A, xs, n);
+    make_contigs(A, xs, n);
 
 
     /* write the number of contigs and their lengths  */
@@ -720,7 +731,7 @@ void assembler_assemble(assembler_t* A)
     index_contigs(A);
     align_to_contigs(A, xs, n);
 
-    /* TODO: free xs ? */
+    free(xs);
 
     seqenc_flush(A->seqenc);
 

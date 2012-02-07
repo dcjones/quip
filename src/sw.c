@@ -29,6 +29,9 @@ struct sw_t_
     int qlen;
     int last_spos;
 
+    /* start within the subject sequence of the alignment */
+    int spos;
+
     /* minimum cost alignment matricies */
 
     /* alignments ending in some number of matches */
@@ -173,9 +176,18 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
 
     sw_ensure_query_len(sw, qlen);
 
-    for (i = 0; i <= qlen; ++i) {
+    for (i = 0; i < qlen; ++i) {
         sw->query[i] = twobit_get(query, i);
     }
+
+    sw->spos = spos;
+
+    /* I could be much smarter about this, only setting certain cells to
+     * ifinitity. */
+    memset(sw->M, 0xff, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
+    memset(sw->S, 0xff, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
+    memset(sw->Q, 0xff, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
+    memset(sw->F, 0xff, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
 
 
     /* Align up to the seed.
@@ -221,12 +233,6 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
         idx = (spos + i) * (sw->m + 1) + (qpos + i);
         idx2 = (spos + 1 + i) * (sw->m + 1) + (qpos + 1 + i);
         sw->M[idx2] = sw->F[idx2] = sw->F[idx] + score_match_ext;
-
-        idx2 = (spos + 1 + i + 1) * (sw->m + 1) + (qpos + 1 + i);
-        sw->F[idx2] = score_inf;
-
-        idx2 = (spos + 1 + i) * (sw->m + 1) + (qpos + 1 + i + 1);
-        sw->F[idx2] = score_inf;
     }
 
     idx = (spos + i) * (sw->m + 1) + (qpos + i);
@@ -296,7 +302,7 @@ void sw_trace(sw_t* sw, sw_alignment_t* aln)
         j_next = j - 1;
         op = EDIT_S_GAP;
 
-        if (i > 0) {
+        if (i > sw->spos) {
             if (sw->F[(i - 1) * (sw->m + 1) + j] <= s) {
                 s = sw->F[(i - 1) * (sw->m + 1) + j];
                 i_next = i - 1;
