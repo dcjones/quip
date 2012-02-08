@@ -241,7 +241,6 @@ void quip_comp_flush_block(quip_compressor_t* C)
     /* finish coding */
     idenc_flush(C->idenc);
     assembler_assemble(C->assembler);
-    assembler_clear_contigs(C->assembler);
     qualenc_flush(C->qualenc);
 
     /* write the size of each chunk about to be written */

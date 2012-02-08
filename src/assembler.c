@@ -137,6 +137,10 @@ struct assembler_t_
     /* number of contigs stored in the contigs arary */
     size_t contigs_len;
 
+    /* should we try attempt to assemble contigs with the current batch of reads
+     * */
+    bool assemble_batch;
+
     /* nothing has been written yet */
     bool initial_state;
 };
@@ -169,6 +173,8 @@ assembler_t* assembler_alloc(
     }
 
     A->seqenc = seqenc_alloc_encoder(seqenc_order, writer, writer_data);
+
+    A->assemble_batch = true;
 
     /* If we are not assembling, we do not need any of the data structure
      * initialized below. */
@@ -208,7 +214,6 @@ static void assembler_reset(assembler_t* A)
     A->N = 0;
 
     bloom_clear(A->B);
-    kmerhash_clear(A->H);
 }
 
 
@@ -709,26 +714,37 @@ void assembler_assemble(assembler_t* A)
 
     size_t n = seqset_size(A->S);
 
-    count_kmers(A, xs, n);
-    make_contigs(A, xs, n);
+    if (A->assemble_batch) {
+
+        count_kmers(A, xs, n);
+        make_contigs(A, xs, n);
 
 
-    /* write the number of contigs and their lengths  */
+        /* write the number of contigs and their lengths  */
 
-    size_t i;
-    write_uint32(A->writer, A->writer_data, A->contigs_len);
-    for (i = 0; i < A->contigs_len; ++i) {
-        write_uint32(A->writer, A->writer_data, twobit_len(A->contigs[i]));
+        size_t i;
+        write_uint32(A->writer, A->writer_data, A->contigs_len);
+        for (i = 0; i < A->contigs_len; ++i) {
+            write_uint32(A->writer, A->writer_data, twobit_len(A->contigs[i]));
+        }
+
+
+        /* write the contigs */
+
+        for (i = 0; i < A->contigs_len; ++i) {
+            seqenc_encode_twobit_seq(A->seqenc, A->contigs[i]);
+        }
+            
+        index_contigs(A);
+
+        /* Only assemble the first batch. */
+        A->assemble_batch = false;
+    }
+    else {
+        /* indicate that no new contigs will be used */
+        write_uint32(A->writer, A->writer_data, 0); 
     }
 
-
-    /* write the contigs */
-
-    for (i = 0; i < A->contigs_len; ++i) {
-        seqenc_encode_twobit_seq(A->seqenc, A->contigs[i]);
-    }
-        
-    index_contigs(A);
     align_to_contigs(A, xs, n);
 
     free(xs);
