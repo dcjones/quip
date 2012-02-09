@@ -15,6 +15,22 @@
 #include <limits.h>
 
 
+void print_alignment(FILE* fout, const sw_alignment_t* aln)
+{
+    size_t i;
+    for (i = 0; i < aln->len; ++i) {
+        switch (aln->ops[i]) {
+            case EDIT_MATCH:    fputc('M', fout); break;
+            case EDIT_MISMATCH: fputc('N', fout); break;
+            case EDIT_Q_GAP:    fputc('Q', fout); break;
+            case EDIT_S_GAP:    fputc('S', fout); break;
+        }
+    }
+    fputc('\n', fout);
+}
+
+
+
 typedef uint16_t score_t;
 
 
@@ -60,10 +76,10 @@ struct sw_t_
  */
 
 static const score_t score_inf        = UINT16_MAX / 2;
-static const score_t score_q_gap_open = 1;
-static const score_t score_q_gap_ext  = 1;
-static const score_t score_s_gap_open = 2;
-static const score_t score_s_gap_ext  = 2;
+static const score_t score_q_gap_open = 3;
+static const score_t score_q_gap_ext  = 2;
+static const score_t score_s_gap_open = 4;
+static const score_t score_s_gap_ext  = 3;
 static const score_t score_match_open = 1;
 static const score_t score_match_ext  = 1;
 static const score_t score_mismatch   = 2;
@@ -302,7 +318,7 @@ void sw_trace(sw_t* sw, sw_alignment_t* aln)
         j_next = j - 1;
         op = EDIT_S_GAP;
 
-        if (i > sw->spos) {
+        if (i > 0) {
             if (sw->F[(i - 1) * (sw->m + 1) + j] <= s) {
                 s = sw->F[(i - 1) * (sw->m + 1) + j];
                 i_next = i - 1;

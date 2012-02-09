@@ -22,6 +22,11 @@ static const uint8_t rev_nuc_map[5] = { 'A', 'C', 'G', 'T', 'N' };
 
 static const size_t insert_nuc_k = 4;
 
+/* order of the markov-chain assigning probabilities to edit operations in
+ * encoded alignment.s
+ */
+static const size_t edit_op_k = 6;
+
 
 struct seqenc_t_
 {
@@ -57,6 +62,7 @@ struct seqenc_t_
 
     /* distribution of edit operations, given the previous operation */
     cond_dist4_t es;
+    uint32_t edit_op_mask;
 
     /* contig set, used in calls to seqenc_decode_alignment */
     twobit_t** contigs;
@@ -111,7 +117,15 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
     }
     cond_dist4_init(&E->d_ins_nuc, N, decoder);
 
-    cond_dist4_init(&E->es, 16, decoder);
+
+    N = 1;
+    E->edit_op_mask = 0;
+    for (i = 0; i < edit_op_k; ++i) {
+        E->edit_op_mask = (E->edit_op_mask << 2) | 0x3;
+        N *= 4;
+    }
+
+    cond_dist4_init(&E->es, N, decoder);
 
     E->contigs          = NULL;
     E->contig_lens      = NULL;
@@ -256,9 +270,6 @@ void seqenc_encode_alignment(seqenc_t* E,
         size_t contig_idx, uint8_t strand,
         const sw_alignment_t* aln, const twobit_t* query)
 {
-    static size_t N = 0;
-    ++N;
-
     dist2_encode(E->ac, &E->ms, 1);
 
     uint32_t bytes;
@@ -343,7 +354,7 @@ void seqenc_encode_alignment(seqenc_t* E,
                 break;
         }
 
-        last_op = ((last_op * 4) + aln->ops[i]) % 16;
+        last_op = ((last_op << 2) | aln->ops[i]) & E->edit_op_mask;
     }
 
     assert(j == twobit_len(query));
@@ -520,7 +531,7 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
                 break;
         }
 
-        last_op = ((last_op * 4) + op) % 16;
+        last_op = ((last_op << 2) | op) & E->edit_op_mask;
     }
 
     x->seq.s[n] = '\0';

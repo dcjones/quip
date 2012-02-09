@@ -36,6 +36,8 @@ typedef struct sw_alignment_t_
     edit_op_t* ops;
 } sw_alignment_t;
 
+void print_alignment(FILE*, const sw_alignment_t*);
+
 sw_t* sw_alloc(const twobit_t* subject);
 void  sw_free(sw_t*);
 
