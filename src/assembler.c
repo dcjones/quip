@@ -20,6 +20,7 @@ static const size_t seqenc_order = 10;
 typedef struct aln_seed_t_
 {
     uint32_t seq_idx;
+    int      qpos;
     int      spos;
     uint8_t  strand;
     struct aln_seed_t_* next;
@@ -426,7 +427,7 @@ static aln_seed_t** seed_alignments(assembler_t* A,
     size_t poslen, skipped;
     kmer_pos_t* pos;
     kmer_t x, y;
-    size_t i, j;
+    size_t i, j, k;
 
     int spos, qpos;
     int slen, qlen;
@@ -445,58 +446,62 @@ static aln_seed_t** seed_alignments(assembler_t* A,
 
         /* TODO: look at more than one seed */
 
-        x = twobit_get_kmer(
-                xs[i].seq.tb,
-                /* We choose the seed from the middle of the read as that
-                 * minimizes the cost of local alignment. */
-                (qlen - A->align_k) / 2,
-                A->align_k);
-        y = kmer_canonical(x, A->align_k);
+        /* loop over seed positions */
+        for (k = 0; k < 3; ++k) {
+            if      (k == 0) qpos = 0;
+            else if (k == 1) qpos = (qlen - A->align_k) / 2;
+            else if (k == 2) qpos = qlen - A->align_k - 1;
 
-        poslen = kmerhash_get(A->H, y, &pos);
-        poslen = poslen > max_seeds ? max_seeds : poslen;
+            x = twobit_get_kmer(
+                    xs[i].seq.tb,
+                    qpos,
+                    A->align_k);
+            y = kmer_canonical(x, A->align_k);
+
+            poslen = kmerhash_get(A->H, y, &pos);
+            poslen = poslen > max_seeds ? max_seeds : poslen;
 
 
-        /* Adjust positions according to strand and record hits.  */
-        for (j = 0, skipped = 0; j < poslen && j - skipped < max_seeds; ++j, ++pos) {
-            slen = twobit_len(A->contigs[pos->contig_idx]);
+            /* Adjust positions according to strand and record hits.  */
+            for (j = 0, skipped = 0; j < poslen && j - skipped < max_seeds; ++j, ++pos) {
+                slen = twobit_len(A->contigs[pos->contig_idx]);
 
-            if (pos->contig_pos >= 0) {
-                if (x == y) {
-                    spos = pos->contig_pos;
-                    strand = 0;
+                if (pos->contig_pos >= 0) {
+                    if (x == y) {
+                        spos = pos->contig_pos;
+                        strand = 0;
+                    }
+                    else {
+                        spos = slen - pos->contig_pos - A->align_k;
+                        strand = 1;
+                    }
                 }
                 else {
-                    spos = slen - pos->contig_pos - A->align_k;
-                    strand = 1;
+                    if (x == y) {
+                        spos = slen + pos->contig_pos - A->align_k + 1;
+                        strand = 1;
+                    }
+                    else {
+                        spos = -pos->contig_pos - 1;
+                        strand = 0;
+                    }
                 }
-            }
-            else {
-                if (x == y) {
-                    spos = slen + pos->contig_pos - A->align_k + 1;
-                    strand = 1;
+
+                /* Is a full alignment possible with this seed? */
+                if ((strand == 0 && (spos < qpos || slen - spos < qlen - qpos)) ||
+                    (strand == 1 && (spos < qlen - qpos || slen - spos < qpos))) {
+                    ++skipped;
+                    continue;
                 }
-                else {
-                    spos = -pos->contig_pos - 1;
-                    strand = 0;
-                }
+
+                seed = malloc_or_die(sizeof(aln_seed_t));
+                seed->spos    = spos;
+                seed->qpos    = qpos;
+                seed->strand  = strand;
+                seed->seq_idx = i;
+                seed->next    = seeds[pos->contig_idx];
+                seeds[pos->contig_idx] = seed;
             }
-
-            /* Is a full alignment possible with this seed? */
-            qpos = (qlen - A->align_k) / 2;
-            if ((strand == 0 && (spos < qpos || slen - spos < qlen - qpos)) ||
-                (strand == 1 && (spos < qlen - qpos || slen - spos < qpos))) {
-                ++skipped;
-                continue;
-            }
-
-
-            seed = malloc_or_die(sizeof(aln_seed_t));
-            seed->spos    = spos;
-            seed->strand  = strand;
-            seed->seq_idx = i;
-            seed->next    = seeds[pos->contig_idx];
-            seeds[pos->contig_idx] = seed;
         }
     }
 
@@ -548,17 +553,13 @@ static align_t* extend_seeds(assembler_t* A,
                             seed->strand == 0 ? sw : sw_rc,
                             xs[seed->seq_idx].seq.tb,
                             seed->spos,
-                            (seqlen - A->align_k) / 2,
+                            seed->qpos,
                             A->align_k);
 
 
             /* better than the current alignment ? */
-            /* Note: 'aln_score < seqlen / 2' is the simplistic heuristic I am
-             * using the decide when outputing the alignment would be cheaper
-             * than outputing the sequence.
-             */
             if (aln_score >= 0 &&
-                aln_score < (int) seqlen + (int) seqlen &&
+                aln_score < 13 * (int) seqlen / 10 && /* crude cutoff for what an acceptable alignment is */
                 aln_score < alns[seed->seq_idx].aln_score)
             {
                 alns[seed->seq_idx].contig_idx = i;

@@ -25,7 +25,7 @@ static const size_t insert_nuc_k = 4;
 /* order of the markov-chain assigning probabilities to edit operations in
  * encoded alignment.s
  */
-static const size_t edit_op_k = 6;
+static const size_t edit_op_k = 8;
 
 
 struct seqenc_t_
@@ -60,8 +60,9 @@ struct seqenc_t_
     cond_dist4_t d_ins_nuc;
     uint32_t ins_ctx_mask;
 
-    /* distribution of edit operations, given the previous operation */
-    cond_dist4_t es;
+    /* distribution of edit operations, given the previous operation and
+     * position within the read */
+    cond_dist4_t d_edit_op;
     uint32_t edit_op_mask;
 
     /* contig set, used in calls to seqenc_decode_alignment */
@@ -76,20 +77,18 @@ struct seqenc_t_
     /* lengths of the expected contigs */
     uint32_t* contig_lens;
 
+    /* are we decoding */
+    bool decoder;
+
 };
+
 
 
 static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
 {
     E->k = k;
-    size_t N = 1;
-
-    size_t i;
-    E->ctx_mask = 0;
-    for (i = 0; i < k; ++i) {
-        E->ctx_mask = (E->ctx_mask << 2) | 0x3;
-        N *= 4;
-    }
+    size_t N = 1 << (2 * k);
+    E->ctx_mask = N - 1;
 
     cond_dist16_init(&E->cs, N, decoder);
 
@@ -109,28 +108,24 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
     dist4_init(&E->d_contig_off_bytes, decoder);
     cond_dist256_init(&E->d_contig_off, 4, decoder);
 
-    N = 1;
-    E->ins_ctx_mask = 0;
-    for (i = 0; i < insert_nuc_k; ++i) {
-        E->ins_ctx_mask = (E->ins_ctx_mask << 2) | 0x3;
-        N *= 4;
-    }
+
+    N = 1 << (2 * insert_nuc_k);
+    E->ins_ctx_mask = N -1;
+
     cond_dist4_init(&E->d_ins_nuc, N, decoder);
 
 
-    N = 1;
-    E->edit_op_mask = 0;
-    for (i = 0; i < edit_op_k; ++i) {
-        E->edit_op_mask = (E->edit_op_mask << 2) | 0x3;
-        N *= 4;
-    }
+    N = 1 << (2 * edit_op_k);
+    E->edit_op_mask = N - 1;
 
-    cond_dist4_init(&E->es, N, decoder);
+    cond_dist4_init(&E->d_edit_op, N, decoder);
 
     E->contigs          = NULL;
     E->contig_lens      = NULL;
     E->contig_count     = 0;
     E->expected_contigs = 0;
+
+    E->decoder = decoder;
 }
 
 
@@ -174,8 +169,7 @@ void seqenc_free(seqenc_t* E)
     cond_dist256_free(&E->d_contig_off);
 
     cond_dist4_free(&E->d_ins_nuc);
-
-    cond_dist4_free(&E->es);
+    cond_dist4_free(&E->d_edit_op);
 
     size_t i;
     for (i = 0; i < E->contig_count; ++i) {
@@ -186,6 +180,7 @@ void seqenc_free(seqenc_t* E)
 
     free(E);
 }
+
 
 
 void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
@@ -270,6 +265,8 @@ void seqenc_encode_alignment(seqenc_t* E,
         size_t contig_idx, uint8_t strand,
         const sw_alignment_t* aln, const twobit_t* query)
 {
+    /*print_alignment(stderr, aln);*/
+
     dist2_encode(E->ac, &E->ms, 1);
 
     uint32_t bytes;
@@ -320,11 +317,12 @@ void seqenc_encode_alignment(seqenc_t* E,
     kmer_t u = twobit_get(query, 0);
     uint32_t last_op = EDIT_MATCH;
     kmer_t ctx = 0;
-    size_t i, j;
+    size_t i; /* position within the alignment */
+    size_t j; /* position within the read sequence */
     for (i = 0, j = 0; i < aln->len; ++i) {
         switch (aln->ops[i]) {
             case EDIT_MATCH:
-                cond_dist4_encode(E->ac, &E->es, last_op, EDIT_MATCH);
+                cond_dist4_encode(E->ac, &E->d_edit_op, last_op, EDIT_MATCH);
 
                 ++j;
                 ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
@@ -332,7 +330,7 @@ void seqenc_encode_alignment(seqenc_t* E,
                 break;
 
             case EDIT_MISMATCH:
-                cond_dist4_encode(E->ac, &E->es, last_op, EDIT_MISMATCH);
+                cond_dist4_encode(E->ac, &E->d_edit_op, last_op, EDIT_MISMATCH);
                 cond_dist4_encode(E->ac, &E->d_ins_nuc, ctx, u);
 
                 ++j;
@@ -341,11 +339,11 @@ void seqenc_encode_alignment(seqenc_t* E,
                 break;
 
             case EDIT_Q_GAP:
-                cond_dist4_encode(E->ac, &E->es, last_op, EDIT_Q_GAP);
+                cond_dist4_encode(E->ac, &E->d_edit_op, last_op, EDIT_Q_GAP);
                 break;
 
             case EDIT_S_GAP:
-                cond_dist4_encode(E->ac, &E->es, last_op, EDIT_S_GAP);
+                cond_dist4_encode(E->ac, &E->d_edit_op, last_op, EDIT_S_GAP);
                 cond_dist4_encode(E->ac, &E->d_ins_nuc, ctx, u);
 
                 ++j;
@@ -496,7 +494,7 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
     size_t j; /* position within the contig */
 
     for (i = 0, j = spos; i < n;) {
-        op = cond_dist4_decode(E->ac, &E->es, last_op);
+        op = cond_dist4_decode(E->ac, &E->d_edit_op, last_op);
 
         switch (op) {
             case EDIT_MATCH:

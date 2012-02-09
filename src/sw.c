@@ -76,13 +76,13 @@ struct sw_t_
  */
 
 static const score_t score_inf        = UINT16_MAX / 2;
-static const score_t score_q_gap_open = 3;
+static const score_t score_q_gap_open = 2;
 static const score_t score_q_gap_ext  = 2;
 static const score_t score_s_gap_open = 4;
 static const score_t score_s_gap_ext  = 3;
 static const score_t score_match_open = 1;
 static const score_t score_match_ext  = 1;
-static const score_t score_mismatch   = 2;
+static const score_t score_mismatch   = 3;
 
 
 
@@ -212,10 +212,10 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
 
     /* We limit of the amount of subject sequence consumed in the alignment,
      * to make the run time O(m^2), rather than O(mn) */
-    int s0 = spos - 2 * qpos;
+    int s0 = spos - 3 * qpos / 2;
     if (s0 < 0) s0 = 0;
 
-    int s1 = spos + seedlen + 2 * (qlen - qpos - seedlen + 1);
+    int s1 = spos + seedlen + 3 * (qlen - qpos - seedlen + 1) / 2;
     if (s1 >= sw->n) s1 = sw->n - 1;
 
 
