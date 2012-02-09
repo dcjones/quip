@@ -13,7 +13,7 @@
 #include <string.h>
 
 
-static const size_t seqenc_order = 10;
+static const size_t seqenc_order = 11;
 
 
 /* alignments seeds */
@@ -545,8 +545,18 @@ static align_t* extend_seeds(assembler_t* A,
         sw_rc = sw_alloc(contig_rc);
 
         while (seeds[i]) {
+
             seed = seeds[i];
             seqlen = twobit_len(xs[seed->seq_idx].seq.tb);
+
+            /* if we already have a good alignment for this read, skip over it
+             * */
+            if (alns[seed->seq_idx].aln_score < 12 * (int) seqlen / 10) {
+                seeds[i] = seed->next;
+                free(seed);
+                continue;
+            }
+
 
             /* local alignment */
             aln_score = sw_seeded_align(
@@ -675,16 +685,35 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
     if (verbose) fprintf(stderr, "assembling contigs ... ");
 
     twobit_t* contig = twobit_alloc();
+    kmer_t x, y;
+    size_t len;
 
-    size_t i;
+    size_t i, j;
     for (i = 0; i < n && xs[i].cnt >= A->count_cutoff; ++i) {
         if (!xs[i].is_twobit) continue;
 
         make_contig(A, xs[i].seq.tb, contig);
-        if (twobit_len(contig) < 3 * A->assemble_k) continue;
 
-        /* TODO: when we discard a contig, it would be nice if we could return
-         * its k-mers to the bloom filter */
+        /* skip overy terribly short contigs */
+        len = twobit_len(contig);
+        if (len < 3 * A->assemble_k) {
+            
+            /* reclaim k-mers from the failed contig */
+            x = 0;
+            for (j = 0; j < len; ++j) {
+                x = ((x << 2) | twobit_get(contig, j)) & A->assemble_kmer_mask;
+
+                if (j + 1 >= A->assemble_k) {
+                    y = kmer_canonical(x, A->assemble_k);
+                    /* ideally we would add the k-mer back with its original
+                     * count, but that information is lost. */
+                    bloom_add(A->B, y, 1);
+                }
+            }
+
+            continue;
+        }
+
 
         if (A->contigs_len == A->contigs_size) {
             A->contigs_size *= 2;
