@@ -48,7 +48,5 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
 /* Store the alignment found in the last call to sw_seeded_align. */
 void sw_trace(sw_t* sw, sw_alignment_t* aln);
 
-/* TODO: a function to align not-twobit sequences */
-
 #endif
 

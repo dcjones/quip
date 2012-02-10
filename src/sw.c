@@ -43,55 +43,26 @@ struct sw_t_
     int m; /* query length */
 
     int qlen;
+    int spos;
+
     int last_spos;
 
     /* start within the subject sequence of the alignment */
-    int spos;
-
-    /* minimum cost alignment matricies */
-
-    /* alignments ending in some number of subject gaps */
-    score_t* S;
-
-    /* alignments ending in some number of query gaps */
-    score_t* Q;
 
     /* overall minimum cost alignment */
     score_t* F;
 };
 
 
-/* The alignment algorithm we use has a very add scoring system.  We assign
- * scores that correspond to the number of bits needed to represent the query
- * sequence, assuming the subject sequence is known.
- *
- * This way, the alignment reported is the alignment that minimizes
- * representation space, rather than simularity, ro edit-distance.
- *
- * Below are estimates of the number of bits needed, assuming a simple run
- * length encoding scheme is used.
- */
+/* Scoring scheme */
+static const score_t score_inf      = UINT16_MAX / 2;
+static const score_t score_q_gap    = 2;
+static const score_t score_s_gap    = 4;
+static const score_t score_match    = 1;
+static const score_t score_mismatch = 3;
 
-static const score_t score_inf        = UINT16_MAX / 2;
-static const score_t score_q_gap_open = 2;
-static const score_t score_q_gap_ext  = 2;
-static const score_t score_s_gap_open = 4;
-static const score_t score_s_gap_ext  = 3;
-static const score_t score_match      = 1;
-static const score_t score_mismatch   = 3;
+static const int band_width = 2;
 
-
-
-
-static inline score_t score_min(score_t a, score_t b)
-{
-    return a < b ? a : b;
-}
-
-static inline score_t score_min4(score_t a, score_t b, score_t c, score_t d)
-{
-    return score_min(score_min(a,b), score_min(c,d));
-}
 
 
 sw_t* sw_alloc(const twobit_t* subject)
@@ -100,17 +71,18 @@ sw_t* sw_alloc(const twobit_t* subject)
 
     sw->n = (int) twobit_len(subject);
 
-    sw->subject = malloc_or_die(sw->n * sizeof(uint8_t));
+    sw->subject = malloc_or_die((sw->n + band_width) * sizeof(uint8_t));
 
     int i;
-    for (i = 0; i < sw->n; ++i) sw->subject[i] = twobit_get(subject, i);
+    /* the lead of the subject sequence is padded to slightly simplify the
+     * alignment */
+    for (i = 0; i < band_width; ++i) sw->subject[i] = 5; /* '5' to ensure mismatches */
+    for (i = 0; i < sw->n; ++i) sw->subject[band_width + i] = twobit_get(subject, i);
 
     /* We don't know the query length in advance, so these are all allocated
      * and/or expanded when needed. */
     sw->m = 0;
     sw->query = NULL;
-    sw->S = NULL;
-    sw->Q = NULL;
     sw->F = NULL;
 
     return sw;
@@ -121,41 +93,59 @@ void sw_free(sw_t* sw)
 {
     free(sw->subject);
     free(sw->query);
-    free(sw->S);
-    free(sw->Q);
     free(sw->F);
     free(sw);
 }
 
 
-
-
-static void sw_align_sub(sw_t* sw, int su, int sv, int qu, int qv)
+static inline score_t min_score(score_t a, score_t b)
 {
-    /* for convenience */
-    const int k = sw->m + 1;
+    return a < b ? a : b;
+}
 
-    int i, j, idx;
-    for (i = su + 1; i <= sv + 1; ++i) {
-        idx = i * k + qu + 1;
 
-        for (j = qu + 1; j <= qv + 1; ++j, ++idx) {
-            if (sw->subject[i - 1] == sw->query[j - 1]) {
-                sw->F[idx] = sw->F[(i - 1) * k + (j - 1)] + score_match;
-            }
-            else {
-                sw->F[idx] = sw->F[(i - 1) * k + (j - 1)] + score_mismatch;
-            }
+/* Align the query block between qu and qv, inclusively. */ 
+static void sw_align_sub(sw_t* sw, int qu, int qv)
+{
+    const int colsize = 1 + 2 * band_width;
+    int colstart, colend;
+    int i, j, k;
 
-            sw->Q[idx] = score_min(sw->Q[(i - 1) * k + j] + score_q_gap_ext,
-                                   sw->F[(i - 1) * k + j] + score_q_gap_open);
+    for (i = qu; i <= qv; ++i) {
+        j = colstart = (i + 1) * colsize;
+        colend = colstart + colsize;
 
-            sw->S[idx] = score_min(sw->S[i * k + (j - 1)] + score_s_gap_ext,
-                                   sw->F[i * k + (j - 1)] + score_s_gap_open);
+        /* special case for the first entry in the column */
 
-            if (sw->Q[idx] < sw->F[idx]) sw->F[idx] = sw->Q[idx];
-            if (sw->S[idx] < sw->F[idx]) sw->F[idx] = sw->S[idx];
+        sw->F[j] = sw->F[j - colsize] +
+            (sw->subject[sw->spos + i] == sw->query[i] ?
+             score_match : score_mismatch);
+
+        sw->F[j] = min_score(sw->F[j], sw->F[j - colsize + 1] + score_s_gap);
+
+        ++j;
+
+
+        /* middle cells */
+
+        for (k = 1; j < colend - 1; ++j, ++k) {
+            sw->F[j] = sw->F[j - colsize] +
+                (sw->subject[sw->spos + i + k] == sw->query[i] ?
+                 score_match : score_mismatch);
+
+            sw->F[j] = min_score(sw->F[j], sw->F[j - colsize + 1] + score_s_gap);
+
+            sw->F[j] = min_score(sw->F[j], sw->F[j - 1] + score_q_gap);
         }
+
+
+        /* special case for the last entry in the column */
+
+        sw->F[j] = sw->F[j - colsize] +
+            (sw->subject[sw->spos + i + k] == sw->query[i] ?
+             score_match : score_mismatch);
+
+        sw->F[j] = min_score(sw->F[j], sw->F[j - 1] + score_q_gap);
     }
 }
 
@@ -165,9 +155,10 @@ static void sw_ensure_query_len(sw_t* sw, int m)
     if (sw->m < m)  {
         sw->m = m;
         sw->query = realloc_or_die(sw->query, sw->m * sizeof(uint8_t));
-        sw->S = realloc_or_die(sw->S, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
-        sw->Q = realloc_or_die(sw->Q, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
-        sw->F = realloc_or_die(sw->F, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
+
+        const int colsize = 1 + 2 * band_width;
+        free(sw->F);
+        sw->F = malloc_or_die((m + 1) * colsize * sizeof(score_t));
     }
 }
 
@@ -177,104 +168,50 @@ static void sw_ensure_query_len(sw_t* sw, int m)
 int sw_seeded_align(sw_t* sw, const twobit_t* query,
                     int spos, int qpos, int seedlen)
 {
-    int i, qlen = (int) twobit_len(query);
-    sw->qlen = qlen;
-
-    if (spos + seedlen + (qlen - qpos - seedlen + 1) >= sw->n) return -1;
-
+    int qlen = sw->qlen = (int) twobit_len(query);
     sw_ensure_query_len(sw, qlen);
+    sw->spos = spos - qpos;
+    int i, j;
 
-    for (i = 0; i < qlen; ++i) {
-        sw->query[i] = twobit_get(query, i);
-    }
-
-    sw->spos = spos;
-
-    /* I could be much smarter about this, only setting certain cells to
-     * ifinitity. */
-    memset(sw->S, 0xff, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
-    memset(sw->Q, 0xff, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
-    memset(sw->F, 0xff, (sw->n + 1) * (sw->m + 1) * sizeof(score_t));
+    for (i = 0; i < qlen; ++i) sw->query[i] = twobit_get(query, i);
 
 
-    /* Align up to the seed.
-     * =====================
-     * */
+    const int colsize = 1 + 2 * band_width;
 
-    /* We limit of the amount of subject sequence consumed in the alignment,
-     * to make the run time O(m^2), rather than O(mn) */
-    int s0 = spos - 3 * qpos / 2;
-    if (s0 < 0) s0 = 0;
-
-    int s1 = spos + seedlen + 3 * (qlen - qpos - seedlen + 1) / 2;
-    if (s1 >= sw->n) s1 = sw->n - 1;
+    /* align up to the seed */
+    memset(sw->F, 0, colsize * sizeof(score_t));
+    sw_align_sub(sw, 0, qpos);
 
 
-    /* initialize column 0 */
-    int idx;
-    for (i = s0; i <= spos + 1; ++i) {
-        idx = i * (sw->m + 1);
-        sw->S[idx] = score_inf;
-        sw->Q[idx] = score_inf;
-        sw->F[idx] = 0;
-    }
-
-    /* initialize row 0 */
-    for (i = 1; i < qpos + 1; ++i) {
-        idx = s0 * (sw->m + 1) + i;
-        sw->S[idx] = score_inf;
-        sw->Q[idx] = score_q_gap_open + (i - 1) * score_q_gap_ext;
-        sw->F[idx] = sw->Q[idx];
-    }
-
-    sw_align_sub(sw, s0, spos, 0, qpos);
-
-
-    /* Set the score matrix around the seed */
-    int idx2;
-    for (i = 0; i < seedlen; ++i) {
-        assert(sw->query[qpos + i] == sw->subject[spos + i]);
-
-        idx = (spos + i) * (sw->m + 1) + (qpos + i);
-        idx2 = (spos + 1 + i) * (sw->m + 1) + (qpos + 1 + i);
-        sw->F[idx2] = sw->F[idx] + score_match;
-    }
-
-    idx = (spos + i) * (sw->m + 1) + (qpos + i);
-    idx2 = (spos + 1 + i) * (sw->m + 1) + (qpos + 1 + i);
-    sw->F[idx2] = sw->F[idx] + score_match;
-    assert(sw->F[idx2] < score_inf);
-
-
-    /* Align from the seed.
-     * ====================
-     */
-
-    /* initialize column 0 */
-    for (i = spos + seedlen + 1; i <= s1 + 1; ++i) {
-        idx = i * (sw->m + 1) + qpos + seedlen;
-        sw->S[idx] = score_inf;
-        sw->Q[idx] = sw->F[idx2] + score_q_gap_open + (i - (spos + seedlen)) * score_q_gap_ext;
-        sw->F[idx] = sw->Q[idx];
-    }
-
-    /* initialize row 0 */
-    for (i = qpos + seedlen + 1; i < qlen + 1; ++i) {
-        idx = (spos + seedlen) * (sw->m + 1) + i;
-        sw->S[idx] = sw->F[idx2] + score_s_gap_open + (i - (qpos + seedlen + 1)) * score_s_gap_ext;
-        sw->Q[idx] = score_inf;
-        sw->F[idx] = sw->S[idx];
-    }
-
-    sw_align_sub(sw, spos + seedlen, s1, qpos + seedlen, qlen - 1);
-
-    score_t s = score_inf;
-    for (i = spos + seedlen; i <= s1; ++i) {
-        if (sw->F[i * (sw->m + 1) + qlen] < s) {
-            s = sw->F[i * (sw->m + 1) + qlen];
-            sw->last_spos = i;
+    /* initialize the score matrix around the seed */
+    int j_end;
+    for (i = qpos; i < qpos + seedlen; ++i) {
+        j_end = (i + 2) * colsize;
+        for (j = (i + 1) * colsize; j < j_end; ++j) {
+            sw->F[j] = score_inf;
         }
-        s = score_min(s, sw->F[i * (sw->m + 1) + qlen]);
+
+        assert(sw->query[i] == sw->subject[sw->spos + i + band_width]);
+
+        j = (i + 1) * colsize + band_width;
+        sw->F[j] = sw->F[j - colsize] + score_match;
+    }
+
+
+    /* align from the seed */
+    sw_align_sub(sw, qpos + seedlen, qlen - 1);
+
+
+    /* return the maximum score */
+    sw->last_spos = 0;
+    score_t s = score_inf;
+    j_end = (qlen + 1) * colsize;
+    for (j = qlen * colsize; j < j_end; ++j) {
+        if (sw->F[j] < s) {
+            /* TODO: check this shit */
+            sw->last_spos = j - qlen * colsize;;
+            s = sw->F[j];
+        }
     }
 
     return s;
@@ -283,53 +220,57 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
 
 void sw_trace(sw_t* sw, sw_alignment_t* aln)
 {
-    aln->len = 0;
-    int i, j;
-    int i_next, j_next;
+    const int colsize = 1 + 2 * band_width;
+
     edit_op_t op;
+    int i, j, i_next, j_next;
+    score_t s;
 
-    i = sw->last_spos;
-    j = sw->qlen;
+    aln->len = 0;
 
-    score_t s = sw->F[i * (sw->m + 1) + j];
+    for (i = sw->qlen, j = sw->last_spos; i > 0; i = i_next, j = j_next) {
+        /* match / mismatch */
+        i_next = i - 1;
+        j_next = j;
+        s  = sw->F[(i - 1) * colsize + j];
+        if (sw->subject[sw->spos + (i - 1) + j] == sw->query[i - 1]) {
+            op = EDIT_MATCH;
+        }
+        else {
+            op = EDIT_MISMATCH;
+        }
 
-    while (j > 0) {
+        /* s-gap */
+        if (j < colsize - 1 &&
+            sw->F[(i - 1) * colsize + j + 1] < s)
+        {
+            op = EDIT_S_GAP;
+            s = sw->F[(i - 1) * colsize + j + 1];
+            i_next = i - 1;
+            j_next = j + 1;
+        }
+
+        /* q-gap */
+        if (j > 0 &&
+            sw->F[i * colsize + j - 1] < s)
+        {
+            op = EDIT_Q_GAP;
+            s = sw->F[i * colsize + j - 1];
+            i_next = i;
+            j_next = j - 1;
+        }
+
+
+        /* make space for the alignment when needed */
         if (aln->size < aln->len + 1) {
             if (aln->size == 0) aln->size = 16;
             else aln->size *= 2;
             aln->ops = realloc_or_die(aln->ops, aln->size * sizeof(edit_op_t));
         }
 
-        s = sw->F[i * (sw->m + 1) + j - 1];
-        i_next = i;
-        j_next = j - 1;
-        op = EDIT_S_GAP;
-
-        if (i > 0) {
-            if (sw->F[(i - 1) * (sw->m + 1) + j] <= s) {
-                s = sw->F[(i - 1) * (sw->m + 1) + j];
-                i_next = i - 1;
-                j_next = j;
-                op = EDIT_Q_GAP;
-            }
-
-            if (sw->F[(i - 1) * (sw->m + 1) + (j - 1)] <= s) {
-                s = sw->F[(i - 1) * (sw->m + 1) + (j - 1)];
-                i_next = i - 1;
-                j_next = j - 1;
-
-                /* match or mismatch */
-                op = sw->subject[i - 1] == sw->query[j - 1] ? EDIT_MATCH : EDIT_MISMATCH;
-            }
-        }
-
         aln->ops[aln->len++] = op;
-
-        i = i_next;
-        j = j_next;
     }
 
-    aln->spos = i;
 
     /* reverse the order of edit operations */
     i = 0;
