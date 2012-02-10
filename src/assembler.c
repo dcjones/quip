@@ -173,7 +173,10 @@ assembler_t* assembler_alloc(
         A->align_kmer_mask = (A->align_kmer_mask << 2) | 0x3;
     }
 
-    A->seqenc = seqenc_alloc_encoder(seqenc_order, writer, writer_data);
+    /* We delay allocation of the sequence encoder. To keep memory usage under
+     * control we first finish assembling and free the bloom filter before
+     * allocating seqenc. */
+    A->seqenc = NULL;
 
     A->assemble_batch = true;
 
@@ -201,6 +204,7 @@ assembler_t* assembler_alloc(
         A->contigs = malloc_or_die(A->contigs_size * sizeof(twobit_t*));
     }
     else {
+        A->seqenc = seqenc_alloc_encoder(seqenc_order, writer, writer_data);
         A->initial_state = true;
     }
 
@@ -214,7 +218,7 @@ static void assembler_reset(assembler_t* A)
     memset(A->ord, 0, A->ord_size * sizeof(uint32_t));
     A->N = 0;
 
-    bloom_clear(A->B);
+    if (A->B) bloom_clear(A->B);
 }
 
 
@@ -443,8 +447,6 @@ static aln_seed_t** seed_alignments(assembler_t* A,
         /* Don't try to align any reads that are shorer than the seed length */
         qlen = twobit_len(xs[i].seq.tb);
         if ((size_t) qlen < A->align_k) continue;
-
-        /* TODO: look at more than one seed */
 
         /* loop over seed positions */
         for (k = 0; k < 3; ++k) {
@@ -749,31 +751,41 @@ void assembler_assemble(assembler_t* A)
         count_kmers(A, xs, n);
         make_contigs(A, xs, n);
 
+        /* Only assemble the first batch. */
+        A->assemble_batch = false;
+
+        /* And free up memory we won't need any more */
+        bloom_free(A->B);
+        A->B = NULL;
+
+        /* Now that we have some memory to spare, bring the sequence encoder
+         * online. */
+        A->seqenc = seqenc_alloc_encoder(seqenc_order, A->writer, A->writer_data);
 
         /* write the number of contigs and their lengths  */
-
         size_t i;
         write_uint32(A->writer, A->writer_data, A->contigs_len);
         for (i = 0; i < A->contigs_len; ++i) {
             write_uint32(A->writer, A->writer_data, twobit_len(A->contigs[i]));
         }
 
-
         /* write the contigs */
-
         for (i = 0; i < A->contigs_len; ++i) {
             seqenc_encode_twobit_seq(A->seqenc, A->contigs[i]);
         }
             
         index_contigs(A);
 
-        /* Only assemble the first batch. */
-        A->assemble_batch = false;
     }
     else {
         /* indicate that no new contigs will be used */
         write_uint32(A->writer, A->writer_data, 0); 
     }
+
+    if (!A->seqenc) {
+        A->seqenc = seqenc_alloc_encoder(seqenc_order, A->writer, A->writer_data);
+    }
+
 
     align_to_contigs(A, xs, n);
 
