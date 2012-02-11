@@ -29,7 +29,7 @@
  * observations. */
 static const size_t update_delay_factor = 1;
 const size_t dist_length_shift = 16;
-static const size_t max_count = (1 << 16) - 1;
+static const size_t max_count = 1 << 16;
 
 /* Code for computing dec_size and dec_shift:
  *
