@@ -60,8 +60,8 @@ void dfun(update)(dist_t* D)
 
 
     /* update frequencies */
-    const uint32_t scale = 0x80000000U / z;
-    const uint32_t shift = 31 - dist_length_shift;
+    const uint32_t scale = (0x80000000U / z) << 1;
+    const uint32_t shift = 32 - dist_length_shift;
     uint32_t j, w, c = 0;
 
     for (i = 0; i < DISTSIZE; ++i) {

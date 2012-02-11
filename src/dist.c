@@ -28,8 +28,8 @@
 /* The distribution is updated every "initial_update_factor * n" new
  * observations. */
 static const size_t update_delay_factor = 1;
-const size_t dist_length_shift = 15;
-static const size_t max_count = 1 << 15;
+const size_t dist_length_shift = 16;
+static const size_t max_count = 1 << 16;
 
 /* Code for computing dec_size and dec_shift:
  *
@@ -44,7 +44,7 @@ static const size_t max_count = 1 << 15;
 #define dist_t dist2_t
 #define cond_dist_t cond_dist2_t
 #define dec_size  12
-#define dec_shift 12
+#define dec_shift 13
 
 #include "dist_template_on.h"
 #include "dist_impl.c"
@@ -55,7 +55,7 @@ static const size_t max_count = 1 << 15;
 #define dist_t dist4_t
 #define cond_dist_t cond_dist4_t
 #define dec_size  12
-#define dec_shift 12
+#define dec_shift 13
 
 #include "dist_template_on.h"
 #include "dist_impl.c"
@@ -66,7 +66,7 @@ static const size_t max_count = 1 << 15;
 #define dist_t dist8_t
 #define cond_dist_t cond_dist8_t
 #define dec_size  12
-#define dec_shift 12
+#define dec_shift 13
 
 #include "dist_template_on.h"
 #include "dist_impl.c"
@@ -77,7 +77,7 @@ static const size_t max_count = 1 << 15;
 #define dist_t dist16_t
 #define cond_dist_t cond_dist16_t
 #define dec_size  12
-#define dec_shift 12
+#define dec_shift 13
 
 #include "dist_template_on.h"
 #include "dist_impl.c"
@@ -88,7 +88,7 @@ static const size_t max_count = 1 << 15;
 #define dist_t dist41_t
 #define cond_dist_t cond_dist41_t
 #define dec_size  20
-#define dec_shift 11
+#define dec_shift 12
 
 #include "dist_template_on.h"
 #include "dist_impl.c"
@@ -99,7 +99,7 @@ static const size_t max_count = 1 << 15;
 #define dist_t dist100_t
 #define cond_dist_t cond_dist100_t
 #define dec_size  36
-#define dec_shift 10
+#define dec_shift 11
 
 #include "dist_template_on.h"
 #include "dist_impl.c"
@@ -110,7 +110,7 @@ static const size_t max_count = 1 << 15;
 #define dist_t dist128_t
 #define cond_dist_t cond_dist128_t
 #define dec_size  36
-#define dec_shift 10
+#define dec_shift 11
 
 #include "dist_template_on.h"
 #include "dist_impl.c"
@@ -121,7 +121,7 @@ static const size_t max_count = 1 << 15;
 #define dist_t dist256_t
 #define cond_dist_t cond_dist256_t
 #define dec_size  68
-#define dec_shift 9
+#define dec_shift 10 
 
 #include "dist_template_on.h"
 #include "dist_impl.c"
