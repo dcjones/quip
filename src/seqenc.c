@@ -1,5 +1,6 @@
 
 #include "seqenc.h"
+#include "seqenc_prior.h"
 #include "misc.h"
 #include "ac.h"
 #include "dist.h"
@@ -94,9 +95,10 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
 
     /* choose an initial distribution that is slightly more informed than
      * uniform */
-    uint16_t cs_init[16] =
-        { 5, 2, 3, 4, 4, 3, 1, 3, 3, 2, 3, 2, 3, 3, 4, 5 };
-    cond_dist16_setall(&E->cs, cs_init);
+    /*uint16_t cs_init[16] =*/
+        /*{ 5, 2, 3, 4, 4, 3, 1, 3, 3, 2, 3, 2, 3, 3, 4, 5 };*/
+    /*cond_dist16_setall(&E->cs, cs_init);*/
+    seqenc_setprior(E);
 
 
     dist2_init(&E->ms, decoder);
@@ -179,6 +181,26 @@ void seqenc_free(seqenc_t* E)
     free(E->contig_lens);
 
     free(E);
+}
+
+
+void seqenc_setprior(seqenc_t* E)
+{
+    uint32_t prior_mask = 0;
+    size_t i;
+    for (i = 0; i < seqenc_prior_k; ++i) {
+        prior_mask = (prior_mask << 2) | 0x3;
+    }
+
+    uint32_t N = 1 << (2 * E->k);
+    uint32_t x;
+    for (x = 0; x < N; ++x) {
+        for (i = 0; i < 16; ++i) {
+            E->cs.xss[x].xs[i].count =
+                seqenc_prior[((x & prior_mask) << 4) + i];
+        }
+        dist16_update(&E->cs.xss[x]);
+    }
 }
 
 

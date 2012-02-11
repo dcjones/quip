@@ -24,6 +24,7 @@ typedef struct seqenc_t_ seqenc_t;
 seqenc_t* seqenc_alloc_encoder(size_t k, quip_writer_t writer, void* writer_data);
 seqenc_t* seqenc_alloc_decoder(size_t k, quip_reader_t writer, void* reader_data);
 void      seqenc_free(seqenc_t*);
+void      seqenc_setprior(seqenc_t*);
 
 void seqenc_encode_char_seq(seqenc_t*, const char*, size_t len);
 void seqenc_encode_twobit_seq(seqenc_t*, const twobit_t*);
@@ -36,12 +37,7 @@ void seqenc_flush(seqenc_t* E);
  * considered contigs. */
 void seqenc_prepare_decoder(seqenc_t* E, uint32_t n, const uint32_t* lens);
 
-
 void seqenc_decode(seqenc_t* E, seq_t* seq, size_t n);
-
-//void seqenc_decode_seq(seqenc_t* E, seq_t* seq, size_t n);
-//void seqenc_decode_alignment(seqenc_t* E, const twobit_t* contig, seq_t* seq, size_t n);
-
 void seqenc_reset_decoder(seqenc_t* E);
 
 
