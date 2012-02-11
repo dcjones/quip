@@ -50,10 +50,10 @@ void dfun(update)(dist_t* D)
     /* rescale when we have exceeded the maximum count */
     uint32_t z = 0;
     for (i = 0; i < DISTSIZE; ++i) z += D->xs[i].count;
-    if (z > max_count) {
+    if (z + DISTSIZE * update_delay_factor > max_count) {
         z = 0;
         for (i = 0; i < DISTSIZE; ++i) {
-            D->xs[i].count = D->xs[i].count / 2 + 1;
+            D->xs[i].count = 3 * D->xs[i].count / 4 + 1;
             z += D->xs[i].count;
         }
     }
@@ -95,17 +95,20 @@ void dfun(encode)(ac_t* ac, dist_t* D, symb_t x)
         u = (uint32_t) D->xs[x].freq * (ac->l >> dist_length_shift);
         ac->b += u;
         ac->l -= u;
+        assert(ac->l > 0);
     }
     else {
         u = (uint32_t) D->xs[x].freq * (ac->l >>= dist_length_shift);
         ac->b += u;
         ac->l = (uint32_t) D->xs[x + 1].freq * ac->l - u;
+        assert(ac->l > 0);
     }
 
     if (b0 > ac->b)         ac_propogate_carry(ac);
     if (ac->l < min_length) ac_renormalize_encoder(ac);
 
     D->xs[x].count++;
+    assert(D->xs[x].count > 0);
 
     if(!--D->update_delay) dfun(update)(D);
 }
