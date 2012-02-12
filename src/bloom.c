@@ -119,6 +119,47 @@ unsigned int bloom_get(bloom_t* B, kmer_t x)
 }
 
 
+void bloom_dec(bloom_t* B, kmer_t x)
+{
+    const size_t bytes_per_bucket = B->m * cell_bytes;
+
+    /* fingerprint */
+    uint64_t h, h1, h0 = kmer_hash(x);
+    uint32_t fp = h0 & (uint64_t) fingerprint_mask;
+    uint32_t cnt;
+
+    uint8_t* c;
+    uint8_t* c_end;
+    size_t i;
+    h1 = h0;
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
+        h1 = kmer_hash_mix(h0, h1);
+        h = h1 % B->n;
+
+        /* get bucket offset */
+        c = B->subtable[i] + h * bytes_per_bucket;
+        c_end = c + bytes_per_bucket;
+
+        /* scan through cells */
+        while (c < c_end) {
+            if (((*(uint32_t*) c) & fingerprint_mask) == fp) {
+                cnt = get_cell_count(c);
+
+                if (cnt <= 1) {
+                    (*(uint32_t*) c) &= ~(fingerprint_mask | counter_mask);
+                }
+                else {
+                    set_cell_count(c, --cnt);
+                }
+                return;
+            }
+
+            c += cell_bytes;
+        }
+    }
+}
+
+
 void bloom_del(bloom_t* B, kmer_t x)
 {
     const size_t bytes_per_bucket = B->m * cell_bytes;
