@@ -26,8 +26,8 @@ static const uint8_t rev_nuc_map[5] = { 'A', 'C', 'G', 'T', 'N' };
 static const size_t k = 11;
 
 
-/* Maximum order of markov chains for the initial k nucleotides */
-static const size_t max_k0 = 8;
+/* Use a seperate model for the first few bases */
+static const size_t prefix_len = 4;
 
 /* Order of the markov chain assigning probabilities to inserted nucleotides in
  * alignments. */
@@ -110,15 +110,13 @@ static void seqenc_init(seqenc_t* E, bool decoder)
     cond_dist16_setall(&E->cs, cs_init);
 
 
-    E->cs0 = malloc_or_die((k/2 + k%2) * sizeof(cond_dist4_t));
+    E->cs0 = malloc_or_die(prefix_len * sizeof(cond_dist4_t));
 
     size_t i;
     size_t N0 = 1;
-    size_t max_N0 = 1 << (2 * max_k0);
-    for (i = 0; i < (k/2 + k%2); ++i, N0 <<= 4) {
-        cond_dist16_init(&E->cs0[i], N0 < max_N0 ? N0 : max_N0, decoder);
+    for (i = 0; i < prefix_len; ++i, N0 <<= 4) {
+        cond_dist16_init(&E->cs0[i], N0, decoder);
     }
-    E->ctx0_mask = (1 << (2 * max_k0)) - 1;
 
 
     dist2_init(&E->ms, decoder);
@@ -183,7 +181,7 @@ void seqenc_free(seqenc_t* E)
     cond_dist16_free(&E->cs);
 
     size_t i;
-    for (i = 0; i < (k/2 + k%2); ++i) {
+    for (i = 0; i < prefix_len; ++i) {
         cond_dist16_free(&E->cs0[i]);
     }
     free(E->cs0);
@@ -294,10 +292,10 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
     }
     /* no Ns, use a slightly more efficent loop */
     else {
-        for (i = 0; i < k; i += 2) {
+        for (i = 0; i < prefix_len; i += 2) {
             uv = (nuc_map[(uint8_t) x[i]] << 2) | nuc_map[(uint8_t) x[i + 1]];
             cond_dist16_encode(E->ac, &E->cs0[i/2], ctx, uv);
-            ctx = ((ctx << 4) | uv) & E->ctx0_mask;
+            ctx = (ctx << 4) | uv;
         }
 
         for (; i < len - 1; i += 2) {
