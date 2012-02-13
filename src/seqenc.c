@@ -238,6 +238,13 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
     size_t n = twobit_len(x);
     size_t i;
     uint32_t ctx = 0;
+
+    for (i = 0; i < prefix_len; i += 2) {
+        uv = (twobit_get(x, i) << 2) | twobit_get(x, i + 1);
+        cond_dist16_encode(E->ac, &E->cs0[i/2], ctx, uv);
+        ctx = (ctx << 4) | uv;
+    }
+
     for (i = 0; i < n - 1; i += 2) {
         uv = (twobit_get(x, i) << 2) | twobit_get(x, i + 1);
         cond_dist16_encode(E->ac, &E->cs, ctx, uv);
@@ -478,7 +485,16 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
         }
     }
     else {
-        for (i = 0; i < n - 1;) {
+        for (i = 0; i < prefix_len;) {
+            uv = cond_dist16_decode(E->ac, &E->cs0[i/2], ctx);
+            u = uv >> 2;
+            v = uv & 0x3;
+            x->seq.s[i++] = rev_nuc_map[u];
+            x->seq.s[i++] = rev_nuc_map[v];
+            ctx = (ctx << 4) | uv;
+        }
+
+        for (; i < n - 1;) {
             uv = cond_dist16_decode(E->ac, &E->cs, ctx);
             u = uv >> 2;
             v = uv & 0x3;
