@@ -1,7 +1,8 @@
-#!/usr/bin/env pypy
+#!/usr/bin/env python
 
 import argparse
-import numpypy as np
+import numpy as np
+import Bio.SeqIO as SeqIO
 from sys import stdout, stderr
 
 
@@ -11,32 +12,28 @@ ap.add_argument('genome_fn', metavar = 'genome.fa')
 args = ap.parse_args()
 
 
-max_cnt = 100
+max_cnt = 16000
 
 nucnum = {'A' : 0, 'C' : 1, 'G' : 2, 'T' : 3}
 
 
-# a k-mer generator, given a fasta file
-def kmers(k, f):
-    mask = (4 ** k) - 1
-    x = 0
-    for line in f:
-        line = line.strip()
-        if len(line) == 0: continue
-        if line[0] == '>':
-            stderr.write('{0}\n'.format(line))
-            continue
-
-        for u in (nucnum[u] for u in line.upper() if u != 'N'):
-            x = ((x << 2) | u) & mask
-            yield x
-
-
-
 fs = np.zeros(4 ** (args.k + 2), dtype = int)
+mask = (4 ** (args.k + 2)) - 1
 
-for x in kmers(args.k + 2, open(args.genome_fn)):
-    fs[x] += 1
+
+def countkmers(xs):
+    xs = (nucnum[u] for u in xs.upper() if u != 'N')
+    x = 0
+    for u in xs:
+        x = ((x << 2) | u) & mask
+        fs[x] += 1
+
+
+for seqrec in SeqIO.parse(open(args.genome_fn), 'fasta'):
+    print(seqrec.name)
+    countkmers(seqrec.seq.reverse_complement().tostring())
+    countkmers(seqrec.seq.tostring())
+
 
 
 for x in xrange(4 ** args.k):

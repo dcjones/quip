@@ -13,8 +13,6 @@
 #include <string.h>
 
 
-static const size_t seqenc_order = 11;
-
 
 /* alignments seeds */
 typedef struct aln_seed_t_
@@ -204,7 +202,7 @@ assembler_t* assembler_alloc(
         A->contigs = malloc_or_die(A->contigs_size * sizeof(twobit_t*));
     }
     else {
-        A->seqenc = seqenc_alloc_encoder(seqenc_order, writer, writer_data);
+        A->seqenc = seqenc_alloc_encoder(writer, writer_data);
         A->initial_state = true;
     }
 
@@ -760,7 +758,7 @@ void assembler_assemble(assembler_t* A)
 
         /* Now that we have some memory to spare, bring the sequence encoder
          * online. */
-        A->seqenc = seqenc_alloc_encoder(seqenc_order, A->writer, A->writer_data);
+        A->seqenc = seqenc_alloc_encoder(A->writer, A->writer_data);
 
         /* write the number of contigs and their lengths  */
         size_t i;
@@ -783,7 +781,7 @@ void assembler_assemble(assembler_t* A)
     }
 
     if (!A->seqenc) {
-        A->seqenc = seqenc_alloc_encoder(seqenc_order, A->writer, A->writer_data);
+        A->seqenc = seqenc_alloc_encoder(A->writer, A->writer_data);
     }
 
 
@@ -812,7 +810,7 @@ disassembler_t* disassembler_alloc(quip_reader_t reader, void* reader_data)
 {
     disassembler_t* D = malloc_or_die(sizeof(disassembler_t));
 
-    D->seqenc = seqenc_alloc_decoder(seqenc_order, reader, reader_data);
+    D->seqenc = seqenc_alloc_decoder(reader, reader_data);
     D->reader = reader;
     D->reader_data = reader_data;
     D->init_state = true;

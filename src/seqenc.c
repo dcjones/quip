@@ -21,6 +21,16 @@ static const uint8_t nuc_map[256] =
 
 static const uint8_t rev_nuc_map[5] = { 'A', 'C', 'G', 'T', 'N' };
 
+
+/* Order of the markov chain assigning probabilities to dinucleotides. */
+static const size_t k = 11;
+
+
+/* Maximum order of markov chains for the initial k nucleotides */
+static const size_t max_k0 = 8;
+
+/* Order of the markov chain assigning probabilities to inserted nucleotides in
+ * alignments. */
 static const size_t insert_nuc_k = 4;
 
 /* order of the markov-chain assigning probabilities to edit operations in
@@ -34,14 +44,15 @@ struct seqenc_t_
     /* coder */
     ac_t* ac;
 
-    /* order of markev chain model of nucleotide probabilities */
-    size_t k;
-
     /* bitmask for two bit encoded context */
     uint32_t ctx_mask;
+    uint32_t ctx0_mask;
 
     /* nucelotide probability given the last k nucleotides */
     cond_dist16_t cs;
+
+    /* nucleotide probabilities of the first k positions */
+    cond_dist16_t* cs0;
 
     /* binary distribution of unique (0) / match (1) */
     dist2_t ms;
@@ -85,9 +96,8 @@ struct seqenc_t_
 
 
 
-static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
+static void seqenc_init(seqenc_t* E, bool decoder)
 {
-    E->k = k;
     size_t N = 1 << (2 * k);
     E->ctx_mask = N - 1;
 
@@ -95,10 +105,20 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
 
     /* choose an initial distribution that is slightly more informed than
      * uniform */
-    /*uint16_t cs_init[16] =*/
-        /*{ 5, 2, 3, 4, 4, 3, 1, 3, 3, 2, 3, 2, 3, 3, 4, 5 };*/
-    /*cond_dist16_setall(&E->cs, cs_init);*/
-    seqenc_setprior(E);
+    uint16_t cs_init[16] =
+        { 5, 2, 3, 4, 4, 3, 1, 3, 3, 2, 3, 2, 3, 3, 4, 5 };
+    cond_dist16_setall(&E->cs, cs_init);
+
+
+    E->cs0 = malloc_or_die((k/2 + k%2) * sizeof(cond_dist4_t));
+
+    size_t i;
+    size_t N0 = 1;
+    size_t max_N0 = 1 << (2 * max_k0);
+    for (i = 0; i < (k/2 + k%2); ++i, N0 <<= 4) {
+        cond_dist16_init(&E->cs0[i], N0 < max_N0 ? N0 : max_N0, decoder);
+    }
+    E->ctx0_mask = (1 << (2 * max_k0)) - 1;
 
 
     dist2_init(&E->ms, decoder);
@@ -131,25 +151,25 @@ static void seqenc_init(seqenc_t* E, size_t k, bool decoder)
 }
 
 
-seqenc_t* seqenc_alloc_encoder(size_t k, quip_writer_t writer, void* writer_data)
+seqenc_t* seqenc_alloc_encoder(quip_writer_t writer, void* writer_data)
 {
     seqenc_t* E = malloc_or_die(sizeof(seqenc_t));
 
     E->ac = ac_alloc_encoder(writer, writer_data);
 
-    seqenc_init(E, k, false);
+    seqenc_init(E, false);
 
     return E;
 }
 
 
-seqenc_t* seqenc_alloc_decoder(size_t k, quip_reader_t reader, void* reader_data)
+seqenc_t* seqenc_alloc_decoder(quip_reader_t reader, void* reader_data)
 {
     seqenc_t* E = malloc_or_die(sizeof(seqenc_t));
 
     E->ac = ac_alloc_decoder(reader, reader_data);
 
-    seqenc_init(E, k, true);
+    seqenc_init(E, true);
 
     return E;
 }
@@ -161,6 +181,14 @@ void seqenc_free(seqenc_t* E)
 
     ac_free(E->ac);
     cond_dist16_free(&E->cs);
+
+    size_t i;
+    for (i = 0; i < (k/2 + k%2); ++i) {
+        cond_dist16_free(&E->cs0[i]);
+    }
+    free(E->cs0);
+
+
     dist2_free(&E->ms);
     dist2_free(&E->ss);
 
@@ -173,7 +201,6 @@ void seqenc_free(seqenc_t* E)
     cond_dist4_free(&E->d_ins_nuc);
     cond_dist4_free(&E->d_edit_op);
 
-    size_t i;
     for (i = 0; i < E->contig_count; ++i) {
         twobit_free(E->contigs[i]);
     }
@@ -192,7 +219,7 @@ void seqenc_setprior(seqenc_t* E)
         prior_mask = (prior_mask << 2) | 0x3;
     }
 
-    uint32_t N = 1 << (2 * E->k);
+    uint32_t N = 1 << (2 * k);
     uint32_t x;
     for (x = 0; x < N; ++x) {
         for (i = 0; i < 16; ++i) {
@@ -267,7 +294,13 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
     }
     /* no Ns, use a slightly more efficent loop */
     else {
-        for (i = 0; i < len - 1; i += 2) {
+        for (i = 0; i < k; i += 2) {
+            uv = (nuc_map[(uint8_t) x[i]] << 2) | nuc_map[(uint8_t) x[i + 1]];
+            cond_dist16_encode(E->ac, &E->cs0[i/2], ctx, uv);
+            ctx = ((ctx << 4) | uv) & E->ctx0_mask;
+        }
+
+        for (; i < len - 1; i += 2) {
             uv = (nuc_map[(uint8_t) x[i]] << 2) | nuc_map[(uint8_t) x[i + 1]];
             cond_dist16_encode(E->ac, &E->cs, ctx, uv);
             ctx = ((ctx << 4) | uv) & E->ctx_mask;
