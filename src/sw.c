@@ -169,6 +169,10 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
                     int spos, int qpos, int seedlen)
 {
     int qlen = sw->qlen = (int) twobit_len(query);
+
+    if (qpos > spos || (qlen - qpos) > (sw->n - spos)) return score_inf;
+
+
     sw_ensure_query_len(sw, qlen);
     sw->spos = spos - qpos;
     int i, j;
@@ -180,6 +184,13 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
 
     /* align up to the seed */
     memset(sw->F, 0, colsize * sizeof(score_t));
+
+    /* account for the case in which we are aligning right at the start of the
+     * contig */
+    if (sw->spos < band_width) {
+        for (i = 0; i < band_width - sw->spos; ++i) sw->F[i] = score_inf;
+    }
+
     sw_align_sub(sw, 0, qpos);
 
 
@@ -206,6 +217,11 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
     sw->last_spos = 0;
     score_t s = score_inf;
     j_end = (qlen + 1) * colsize;
+
+    if (spos + (qlen - qpos) + band_width >= sw->n) {
+        j_end -= (spos + (qlen - qpos) + band_width) - sw->n;
+    }
+
     for (j = qlen * colsize; j < j_end; ++j) {
         if (sw->F[j] < s) {
             /* TODO: check this shit */
@@ -271,6 +287,7 @@ void sw_trace(sw_t* sw, sw_alignment_t* aln)
         aln->ops[aln->len++] = op;
     }
 
+    aln->spos = sw->spos + j - band_width;
 
     /* reverse the order of edit operations */
     i = 0;

@@ -245,7 +245,7 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
         ctx = (ctx << 4) | uv;
     }
 
-    for (i = 0; i < n - 1; i += 2) {
+    for (; i < n - 1; i += 2) {
         uv = (twobit_get(x, i) << 2) | twobit_get(x, i + 1);
         cond_dist16_encode(E->ac, &E->cs, ctx, uv);
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
