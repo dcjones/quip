@@ -119,7 +119,7 @@ unsigned int bloom_get(bloom_t* B, kmer_t x)
 }
 
 
-void bloom_dec(bloom_t* B, kmer_t x)
+void bloom_ldec(bloom_t* B, kmer_t x)
 {
     const size_t bytes_per_bucket = B->m * cell_bytes;
 
@@ -149,7 +149,7 @@ void bloom_dec(bloom_t* B, kmer_t x)
                     (*(uint32_t*) c) &= ~(fingerprint_mask | counter_mask);
                 }
                 else {
-                    set_cell_count(c, --cnt);
+                    set_cell_count(c, cnt / 2);
                 }
                 return;
             }

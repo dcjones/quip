@@ -298,7 +298,7 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
     kmer_t x = twobit_get_kmer(seed, 0, A->assemble_k);
     size_t i;
     for (i = A->assemble_k; i < twobit_len(seed); ++i) {
-        bloom_dec(A->B, kmer_canonical((x << 2) | twobit_get(seed, i), A->assemble_k));
+        bloom_ldec(A->B, kmer_canonical((x << 2) | twobit_get(seed, i), A->assemble_k));
     }
 
 
@@ -310,7 +310,7 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
 
     x = twobit_get_kmer(seed, 0, A->assemble_k);
     while (true) {
-        bloom_dec(A->B, kmer_canonical(x, A->assemble_k));
+        bloom_ldec(A->B, kmer_canonical(x, A->assemble_k));
 
         x = (x >> 2) & A->assemble_kmer_mask;
         cnt_best = 0;
@@ -338,7 +338,7 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
 
     x = twobit_get_kmer(seed, twobit_len(seed) - A->assemble_k, A->assemble_k);
     while (true) {
-        bloom_dec(A->B, kmer_canonical(x, A->assemble_k));
+        bloom_ldec(A->B, kmer_canonical(x, A->assemble_k));
 
         x = (x << 2) & A->assemble_kmer_mask;
         cnt_best = 0;
