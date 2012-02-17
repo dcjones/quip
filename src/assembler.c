@@ -103,6 +103,10 @@ struct assembler_t_
     /* assembled contigs */
     twobit_t** contigs;
 
+    /* keep track of positions which frequently mismatch, and fix them on the
+     * fly */
+    uint16_t** mismatch_tally;
+
     /* an aligner for each contig*/
     sw_t** contig_aligners;
     sw_t** contig_rc_aligners;
@@ -123,6 +127,9 @@ struct assembler_t_
     /* nothing has been written yet */
     bool initial_state;
 };
+
+
+static void build_kmer_hash(assembler_t* A);
 
 
 assembler_t* assembler_alloc(
@@ -209,10 +216,12 @@ void assembler_free(assembler_t* A)
         twobit_free(A->contigs[i]);
         sw_free(A->contig_aligners[i]);
         sw_free(A->contig_rc_aligners[i]);
+        free(A->mismatch_tally[i]);
     }
     free(A->contigs);
     free(A->contig_aligners);
     free(A->contig_rc_aligners);
+    free(A->mismatch_tally);
     free(A->aln.a.ops);
 
     free(A);
@@ -226,6 +235,84 @@ void assembler_clear_contigs(assembler_t* A)
         twobit_free(A->contigs[i]);
     }
     A->contigs_len = 0;
+}
+
+
+static void tally_mismatches(assembler_t* A, const align_t* aln, const twobit_t* seq)
+{
+    kmer_t u;
+    size_t i; /* position within the edit list */
+    size_t j; /* position within the contig */
+    size_t k; /* position within the read */
+    size_t len = twobit_len(A->contigs[aln->contig_idx]);
+
+    for (i = 0, j = 0; i < aln->a.len; ++i) {
+        switch (aln->a.ops[i]) {
+            case EDIT_MATCH:
+                if (* (uint64_t*) (A->mismatch_tally[i] + 4 * j) > 0) {
+                    u = twobit_get(seq, aln->strand ? len - j - 1 : j);
+                    A->mismatch_tally[aln->contig_idx][4 * j + u]++;
+                }
+                ++j;
+                ++k;
+                break;
+
+            case EDIT_Q_GAP:
+                ++j;
+                break;
+
+            case EDIT_S_GAP:
+                ++k;
+                break;
+
+            case EDIT_MISMATCH:
+                u = twobit_get(seq, aln->strand ? len - j - 1 : j);
+                A->mismatch_tally[aln->contig_idx][4 * j + u]++;
+                ++j;
+                ++k;
+        }
+    }
+}
+
+static void patch_mismatches(assembler_t* A)
+{
+    size_t len;
+    size_t i, j, k;
+
+    uint16_t max_k;
+
+    for (i = 0; i < A->contigs_len; ++i) {
+        len = twobit_len(A->contigs[i]);
+        for (j = 0; j < len; ++j) {
+            if (* (uint64_t*) (A->mismatch_tally[i] + 4 * j) > 0) {
+
+                for (k = 0; k < 4; ++k) {
+                    if (A->mismatch_tally[i][4 * j + k] > 
+                        A->mismatch_tally[i][4 * j + max_k])
+                    {
+                        max_k = k;
+                    }
+                }
+
+                twobit_set(A->contigs[i], j, max_k);
+
+
+                /*
+                 *fprintf(stderr, "mismatch: %u, %u, %u, %u\n",
+                 *        A->mismatch_tally[i][4 * j + 0],
+                 *        A->mismatch_tally[i][4 * j + 1],
+                 *        A->mismatch_tally[i][4 * j + 2],
+                 *        A->mismatch_tally[i][4 * j + 3]);
+                 */
+            }
+        }
+
+        memset(A->mismatch_tally[i], 0, 4 * len * sizeof(uint16_t));
+    }
+
+
+    build_kmer_hash(A);
+
 }
 
 
@@ -330,7 +417,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
             if (aln_score >= 0 &&
                 aln_score < A->aln.aln_score &&
                 /* crude cutoff for what an acceptable alignment is */
-                aln_score < 12 * (int) qlen / 10)
+                aln_score < 125 * (int) qlen / 100)
             {
                 A->aln.contig_idx = pos->contig_idx;
                 A->aln.strand     = strand;
@@ -343,6 +430,9 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
     if (A->aln.aln_score < INT_MAX) {
         seqenc_encode_alignment(A->seqenc,
                 A->aln.contig_idx, A->aln.strand, &A->aln.a, seq);
+
+        tally_mismatches(A, &A->aln, seq);
+
         return true;
     }
     else {
@@ -513,9 +603,10 @@ static int seqset_value_idx_cmp(const void* a_, const void* b_)
 }
 
 
-static void index_contigs(assembler_t* A)
+static void build_kmer_hash(assembler_t* A)
 {
-    fprintf(stderr, "indexing contigs ... ");
+    kmerhash_clear(A->H);
+
     size_t i;
     size_t len;
     size_t pos;
@@ -537,10 +628,20 @@ static void index_contigs(assembler_t* A)
         }
     }
 
+}
+
+
+static void index_contigs(assembler_t* A)
+{
+    fprintf(stderr, "indexing contigs ... ");
+
+    build_kmer_hash(A);
+
     /* build aligner objects */
     A->contig_aligners    = malloc_or_die(A->contigs_len * sizeof(sw_t*));
     A->contig_rc_aligners = malloc_or_die(A->contigs_len * sizeof(sw_t*));
 
+    size_t i;
     twobit_t* contig_rc = twobit_alloc();
     for (i = 0; i < A->contigs_len; ++i) {
         A->contig_aligners[i] = sw_alloc(A->contigs[i]);
@@ -550,8 +651,20 @@ static void index_contigs(assembler_t* A)
     }
     twobit_free(contig_rc);
 
+
+    /* init mismatch tallys */
+    A->mismatch_tally = malloc_or_die(A->contigs_len * sizeof(uint16_t*));
+    for (i = 0; i < A->contigs_len; ++i) {
+        A->mismatch_tally[i] =
+            malloc_or_die(4 * twobit_len(A->contigs[i]) * sizeof(uint16_t));
+
+        memset(A->mismatch_tally[i], 0,
+                4 * twobit_len(A->contigs[i]) * sizeof(uint16_t));
+    }
+
     fprintf(stderr, "done.\n");
 }
+
 
 
 /* Align buffered reads to contigs. */
@@ -713,6 +826,8 @@ void assembler_assemble(assembler_t* A)
         free(A->ord);
         A->ord = NULL;
     }
+
+    if (!A->quick) patch_mismatches(A);
 
     seqenc_flush(A->seqenc);
     A->initial_state = true;
