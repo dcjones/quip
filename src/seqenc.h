@@ -24,7 +24,6 @@ typedef struct seqenc_t_ seqenc_t;
 seqenc_t* seqenc_alloc_encoder(quip_writer_t writer, void* writer_data);
 seqenc_t* seqenc_alloc_decoder(quip_reader_t writer, void* reader_data);
 void      seqenc_free(seqenc_t*);
-void      seqenc_setprior(seqenc_t*);
 
 void seqenc_encode_char_seq(seqenc_t*, const char*, size_t len);
 void seqenc_encode_twobit_seq(seqenc_t*, const twobit_t*);

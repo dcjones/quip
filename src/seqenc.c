@@ -1,6 +1,5 @@
 
 #include "seqenc.h"
-#include "seqenc_prior.h"
 #include "misc.h"
 #include "ac.h"
 #include "dist.h"
@@ -206,26 +205,6 @@ void seqenc_free(seqenc_t* E)
     free(E->contig_lens);
 
     free(E);
-}
-
-
-void seqenc_setprior(seqenc_t* E)
-{
-    uint32_t prior_mask = 0;
-    size_t i;
-    for (i = 0; i < seqenc_prior_k; ++i) {
-        prior_mask = (prior_mask << 2) | 0x3;
-    }
-
-    uint32_t N = 1 << (2 * k);
-    uint32_t x;
-    for (x = 0; x < N; ++x) {
-        for (i = 0; i < 16; ++i) {
-            E->cs.xss[x].xs[i].count =
-                seqenc_prior[((x & prior_mask) << 4) + i];
-        }
-        dist16_update(&E->cs.xss[x]);
-    }
 }
 
 
