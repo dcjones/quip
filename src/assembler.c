@@ -14,33 +14,6 @@
 
 
 
-/* alignments seeds */
-typedef struct aln_seed_t_
-{
-    uint32_t seq_idx;
-    int      qpos;
-    int      spos;
-    uint8_t  strand;
-    struct aln_seed_t_* next;
-} aln_seed_t;
-
-
-static void free_seeds(aln_seed_t** seeds, size_t n)
-{
-    aln_seed_t* seed;
-    size_t i;
-    for (i = 0; i < n; ++i) {
-        seed = seeds[i];
-        while (seed) {
-            seed = seeds[i]->next;
-            free(seeds[i]);
-            seeds[i] = seed;
-        }
-    }
-    free(seeds);
-}
-
-
 /* alignments */
 typedef struct align_t_
 {
@@ -130,6 +103,13 @@ struct assembler_t_
     /* assembled contigs */
     twobit_t** contigs;
 
+    /* an aligner for each contig*/
+    sw_t** contig_aligners;
+    sw_t** contig_rc_aligners;
+
+    /* an alignment */
+    align_t aln;
+
     /* allocated size of the contigs array */
     size_t contigs_size;
 
@@ -177,6 +157,7 @@ assembler_t* assembler_alloc(
     A->seqenc = NULL;
 
     A->assemble_batch = true;
+    A->initial_state = true;
 
     /* If we are not assembling, we do not need any of the data structure
      * initialized below. */
@@ -200,23 +181,17 @@ assembler_t* assembler_alloc(
         A->contigs_size = 512;
         A->contigs_len = 0;;
         A->contigs = malloc_or_die(A->contigs_size * sizeof(twobit_t*));
+
+        A->contig_aligners    = NULL;
+        A->contig_rc_aligners = NULL;
+
+        A->aln.a.ops = NULL;
     }
     else {
         A->seqenc = seqenc_alloc_encoder(writer, writer_data);
-        A->initial_state = true;
     }
 
     return A;
-}
-
-
-static void assembler_reset(assembler_t* A)
-{
-    seqset_clear(A->S);
-    memset(A->ord, 0, A->ord_size * sizeof(uint32_t));
-    A->N = 0;
-
-    if (A->B) bloom_clear(A->B);
 }
 
 
@@ -232,8 +207,13 @@ void assembler_free(assembler_t* A)
     size_t i;
     for (i = 0; i < A->contigs_len; ++i) {
         twobit_free(A->contigs[i]);
+        sw_free(A->contig_aligners[i]);
+        sw_free(A->contig_rc_aligners[i]);
     }
     free(A->contigs);
+    free(A->contig_aligners);
+    free(A->contig_rc_aligners);
+    free(A->aln.a.ops);
 
     free(A);
 }
@@ -249,12 +229,135 @@ void assembler_clear_contigs(assembler_t* A)
 }
 
 
+/* Try desperately to align the given read. If no good alignment is found, just
+ * encode the sequence. Return true if an alignment was found. */
+static bool align_read(assembler_t* A, const twobit_t* seq)
+{
+    /* We only consider the first few seed hits found in the hash table. The
+     * should be in an approximately random order. */
+    static const size_t max_seeds = 5;
+
+
+    /* position of the seed with the subject and query sequecne, resp. */
+    int spos, qpos;
+
+    /* subject and query lengths, reps */
+    int slen, qlen;
+    kmer_t x, y;
+    uint8_t strand;
+
+    /* positions matching the seed k-mer */
+    kmer_pos_t* pos;
+    size_t poslen;
+
+    /* number of skipped seed candidates */
+    size_t skipped;
+
+    /* */
+    int aln_score;
+    A->aln.aln_score = INT_MAX;
+
+    /* Don't try to align any reads that are shorer than the seed length */
+    qlen = twobit_len(seq);
+    if ((size_t) qlen < A->align_k) {
+        seqenc_encode_twobit_seq(A->seqenc, seq);
+        return false;
+    }
+
+    sw_t* aligner;
+
+    size_t i, j;
+    for (i = 0; i < 3; ++i) {
+        if      (i == 0) qpos = 0;
+        else if (i == 1) qpos = (qlen - A->align_k) / 2;
+        else if (i == 2) qpos = qlen - A->align_k - 1;
+
+        x = twobit_get_kmer(
+                seq,
+                qpos,
+                A->align_k);
+        y = kmer_canonical(x, A->align_k);
+
+        poslen = kmerhash_get(A->H, y, &pos);
+        poslen = poslen > max_seeds ? max_seeds : poslen;
+
+        for (j = 0, skipped = 0; j < poslen && j - skipped < max_seeds; ++j, ++pos) {
+            slen = twobit_len(A->contigs[pos->contig_idx]);
+
+            if (pos->contig_pos >= 0) {
+                if (x == y) {
+                    spos = pos->contig_pos;
+                    strand = 0;
+                }
+                else {
+                    spos = slen - pos->contig_pos - A->align_k;
+                    strand = 1;
+                }
+            }
+            else {
+                if (x == y) {
+                    spos = slen + pos->contig_pos - A->align_k + 1;
+                    strand = 1;
+                }
+                else {
+                    spos = -pos->contig_pos - 1;
+                    strand = 0;
+                }
+            }
+
+            /* Is a full alignment possible with this seed? */
+            if ((strand == 0 && (spos < qpos || slen - spos < qlen - qpos)) ||
+                (strand == 1 && (spos < qlen - qpos || slen - spos < qpos))) {
+                ++skipped;
+                continue;
+            }
+
+
+            if (strand == 0) {
+                aligner = A->contig_aligners[pos->contig_idx];
+            }
+            else {
+                aligner = A->contig_rc_aligners[pos->contig_idx];
+            }
+
+            aln_score = sw_seeded_align(
+                            aligner,
+                            seq,
+                            spos,
+                            qpos,
+                            A->align_k);
+
+            if (aln_score >= 0 &&
+                aln_score < A->aln.aln_score &&
+                /* crude cutoff for what an acceptable alignment is */
+                aln_score < 12 * (int) qlen / 10)
+            {
+                A->aln.contig_idx = pos->contig_idx;
+                A->aln.strand     = strand;
+                A->aln.aln_score  = aln_score;
+                sw_trace(aligner, &A->aln.a);
+            }
+        }
+    }
+
+    if (A->aln.aln_score < INT_MAX) {
+        seqenc_encode_alignment(A->seqenc,
+                A->aln.contig_idx, A->aln.strand, &A->aln.a, seq);
+        return true;
+    }
+    else {
+        seqenc_encode_twobit_seq(A->seqenc, seq);
+        return false;
+    }
+}
+
+
 
 void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
 {
     if (A->quick) {
+        /* output the number of contigs (i.e., 0) */
         if (A->initial_state) {
-            /* output the number of contigs (i.e., 0) */
             write_uint32(A->writer, A->writer_data, 0);
             A->initial_state = false;
         }
@@ -262,28 +365,55 @@ void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
         seqenc_encode_char_seq(A->seqenc, seq, seqlen);
         return;
     }
+    else if (A->assemble_batch) {
+        if (A->N == A->ord_size) {
+            A->ord_size *= 2;
+            A->ord = realloc_or_die(A->ord, A->ord_size * sizeof(uint32_t));
+        }
 
-    if (A->N == A->ord_size) {
-        A->ord_size *= 2;
-        A->ord = realloc_or_die(A->ord, A->ord_size * sizeof(uint32_t));
-    }
+        /* does the read contain non-nucleotide characters ? */
+        size_t i;
+        bool has_N = false;
+        for (i = 0; i < seqlen; ++i) {
+            if (seq[i] == 'N') {
+                has_N = true;
+                break;
+            }
+        }
 
-    /* does the read contain non-nucleotide characters ? */
-    size_t i;
-    bool has_N = false;
-    for (i = 0; i < seqlen; ++i) {
-        if (seq[i] == 'N') {
-            has_N = true;
-            break;
+        if (has_N) {
+            A->ord[A->N++] = seqset_inc_eb(A->S, seq);
+        }
+        else {
+            twobit_copy_n(A->x, seq, seqlen);
+            A->ord[A->N++] = seqset_inc_tb(A->S, A->x);
         }
     }
-
-    if (has_N) {
-        A->ord[A->N++] = seqset_inc_eb(A->S, seq);
-    }
     else {
-        twobit_copy_n(A->x, seq, seqlen);
-        A->ord[A->N++] = seqset_inc_tb(A->S, A->x);
+        /* output the number of contigs (i.e., 0) */
+        if (A->initial_state) {
+            write_uint32(A->writer, A->writer_data, 0);
+            A->initial_state = false;
+        }
+
+        /* does the read contain non-nucleotide characters ? */
+        size_t i;
+        bool has_N = false;
+        for (i = 0; i < seqlen; ++i) {
+            if (seq[i] == 'N') {
+                has_N = true;
+                break;
+            }
+        }
+
+        if (has_N) {
+            seqenc_encode_char_seq(A->seqenc, seq, seqlen);
+        }
+        else {
+            twobit_copy_n(A->x, seq, seqlen);
+            align_read(A, A->x);
+        }
+
     }
 }
 
@@ -407,194 +537,24 @@ static void index_contigs(assembler_t* A)
         }
     }
 
+    /* build aligner objects */
+    A->contig_aligners    = malloc_or_die(A->contigs_len * sizeof(sw_t*));
+    A->contig_rc_aligners = malloc_or_die(A->contigs_len * sizeof(sw_t*));
+
+    twobit_t* contig_rc = twobit_alloc();
+    for (i = 0; i < A->contigs_len; ++i) {
+        A->contig_aligners[i] = sw_alloc(A->contigs[i]);
+
+        twobit_revcomp(contig_rc, A->contigs[i]);
+        A->contig_rc_aligners[i] = sw_alloc(contig_rc);
+    }
+    twobit_free(contig_rc);
+
     fprintf(stderr, "done.\n");
 }
 
 
-
-static aln_seed_t** seed_alignments(assembler_t* A,
-                            seqset_value_t* xs, size_t xs_len)
-{
-    if (verbose) fprintf(stderr, "\tseeding alignments ... ");
-
-    aln_seed_t* seed;
-    aln_seed_t** seeds= malloc_or_die(A->contigs_len * sizeof(aln_seed_t*));
-    memset(seeds, 0, A->contigs_len * sizeof(aln_seed_t*));
-
-
-    /* We only consider the first few seed hits found in the hash table. The
-     * should be in an approximately random order. */
-    const size_t max_seeds = 5;
-
-    size_t poslen, skipped;
-    kmer_pos_t* pos;
-    kmer_t x, y;
-    size_t i, j, k;
-
-    int spos, qpos;
-    int slen, qlen;
-    uint8_t strand;
-
-
-    for (i = 0; i < xs_len; ++i) {
-
-        /* Currently, we do not bother aligning reads with Ns (that cannot
-         * be encoded in twobit). */
-        if (!xs[i].is_twobit) continue;
-
-        /* Don't try to align any reads that are shorer than the seed length */
-        qlen = twobit_len(xs[i].seq.tb);
-        if ((size_t) qlen < A->align_k) continue;
-
-        /* loop over seed positions */
-        for (k = 0; k < 3; ++k) {
-            if      (k == 0) qpos = 0;
-            else if (k == 1) qpos = (qlen - A->align_k) / 2;
-            else if (k == 2) qpos = qlen - A->align_k - 1;
-
-            x = twobit_get_kmer(
-                    xs[i].seq.tb,
-                    qpos,
-                    A->align_k);
-            y = kmer_canonical(x, A->align_k);
-
-            poslen = kmerhash_get(A->H, y, &pos);
-            poslen = poslen > max_seeds ? max_seeds : poslen;
-
-
-            /* Adjust positions according to strand and record hits.  */
-            for (j = 0, skipped = 0; j < poslen && j - skipped < max_seeds; ++j, ++pos) {
-                slen = twobit_len(A->contigs[pos->contig_idx]);
-
-                if (pos->contig_pos >= 0) {
-                    if (x == y) {
-                        spos = pos->contig_pos;
-                        strand = 0;
-                    }
-                    else {
-                        spos = slen - pos->contig_pos - A->align_k;
-                        strand = 1;
-                    }
-                }
-                else {
-                    if (x == y) {
-                        spos = slen + pos->contig_pos - A->align_k + 1;
-                        strand = 1;
-                    }
-                    else {
-                        spos = -pos->contig_pos - 1;
-                        strand = 0;
-                    }
-                }
-
-                /* Is a full alignment possible with this seed? */
-                if ((strand == 0 && (spos < qpos || slen - spos < qlen - qpos)) ||
-                    (strand == 1 && (spos < qlen - qpos || slen - spos < qpos))) {
-                    ++skipped;
-                    continue;
-                }
-
-                seed = malloc_or_die(sizeof(aln_seed_t));
-                seed->spos    = spos;
-                seed->qpos    = qpos;
-                seed->strand  = strand;
-                seed->seq_idx = i;
-                seed->next    = seeds[pos->contig_idx];
-                seeds[pos->contig_idx] = seed;
-            }
-        }
-    }
-
-
-    if (verbose) fprintf(stderr, "done.\n");
-
-    return seeds;
-}
-
-
-
-static align_t* extend_seeds(assembler_t* A,
-                             seqset_value_t* xs, size_t xs_len,
-                             aln_seed_t** seeds)
-{
-    if (verbose) fprintf(stderr, "\tlocal alignment ... ");
-
-    size_t i, j;
-    aln_seed_t* seed;
-
-    align_t* alns = malloc_or_die(xs_len * sizeof(align_t));
-    for (i = 0; i < xs_len; ++i) {
-        alns[i].aln_score = INT_MAX;
-        memset(&alns[i].a, 0, sizeof(sw_alignment_t));
-    }
-
-    sw_t* sw;
-    sw_t* sw_rc;
-    twobit_t* contig_rc = twobit_alloc();
-    size_t seqlen;
-
-    int aln_score;
-
-    for (i = 0, j = 0; i < A->contigs_len; ++i) {
-
-        if (!seeds[i]) continue;
-
-        sw = sw_alloc(A->contigs[i]);
-
-        twobit_revcomp(contig_rc, A->contigs[i]);
-        sw_rc = sw_alloc(contig_rc);
-
-        while (seeds[i]) {
-
-            seed = seeds[i];
-            seqlen = twobit_len(xs[seed->seq_idx].seq.tb);
-
-            /* if we already have a good alignment for this read, skip over it
-             * */
-            if (alns[seed->seq_idx].aln_score < 12 * (int) seqlen / 10) {
-                seeds[i] = seed->next;
-                free(seed);
-                continue;
-            }
-
-
-            /* local alignment */
-            aln_score = sw_seeded_align(
-                            seed->strand == 0 ? sw : sw_rc,
-                            xs[seed->seq_idx].seq.tb,
-                            seed->spos,
-                            seed->qpos,
-                            A->align_k);
-
-
-            /* better than the current alignment ? */
-            if (aln_score >= 0 &&
-                aln_score < 13 * (int) seqlen / 10 && /* crude cutoff for what an acceptable alignment is */
-                aln_score < alns[seed->seq_idx].aln_score)
-            {
-                alns[seed->seq_idx].contig_idx = i;
-                alns[seed->seq_idx].strand = seed->strand;
-                alns[seed->seq_idx].aln_score = aln_score;
-                sw_trace(seed->strand == 0 ? sw : sw_rc, &alns[seed->seq_idx].a);
-            }
-
-            seeds[i] = seed->next;
-            free(seed);
-        }
-
-        sw_free(sw);
-        sw_free(sw_rc);
-    }
-
-    twobit_free(contig_rc);
-
-    if (verbose) fprintf(stderr, "done.");
-
-    return alns;
-}
-
-
-
+/* Align buffered reads to contigs. */
 static void align_to_contigs(assembler_t* A,
                              seqset_value_t* xs, size_t xs_len)
 {
@@ -603,33 +563,17 @@ static void align_to_contigs(assembler_t* A,
     /* Sort reads by index. Afterwards xs[i].idx == i should be true for every
      * i, where 0 <= i < xs_len */
     qsort(xs, xs_len, sizeof(seqset_value_t), seqset_value_idx_cmp);
-
-    /* First pass: hash k-mers against the contigs to generate alignment seeds */
-    aln_seed_t** seeds = seed_alignments(A, xs, xs_len);
-
-    /* Second pass: one contig at a time, perform local alignment. */
-    align_t* alns = extend_seeds(A, xs, xs_len, seeds);
-
-    /* Lastly: output compressed reads */
-    size_t aln_count = 0;
     const char* ebseq;
+    size_t aln_count = 0;
     size_t i;
+
     for (i = 0; i < A->N; ++i) {
-        if (alns[A->ord[i]].aln_score < INT_MAX) {
-            seqenc_encode_alignment(A->seqenc,
-                    alns[A->ord[i]].contig_idx, alns[A->ord[i]].strand,
-                    &alns[A->ord[i]].a, xs[A->ord[i]].seq.tb);
-            /*seqenc_encode_twobit_seq(A->seqenc, xs[A->ord[i]].seq.tb);*/
-            ++aln_count;
+        if (xs[A->ord[i]].is_twobit) {
+            if (align_read(A, xs[A->ord[i]].seq.tb)) ++aln_count;
         }
         else {
-            if (xs[A->ord[i]].is_twobit) {
-                seqenc_encode_twobit_seq(A->seqenc, xs[A->ord[i]].seq.tb);
-            }
-            else {
-                ebseq = xs[A->ord[i]].seq.eb;
-                seqenc_encode_char_seq(A->seqenc, ebseq, strlen(ebseq));
-            }
+            ebseq = xs[A->ord[i]].seq.eb;
+            seqenc_encode_char_seq(A->seqenc, ebseq, strlen(ebseq));
         }
     }
 
@@ -638,14 +582,6 @@ static void align_to_contigs(assembler_t* A,
                 "\t%zu / %zu [%0.2f%%] reads aligned to contigs\n",
                 aln_count, (size_t) A->N, 100.0 * (double) aln_count / (double) A->N);
     }
-
-
-    free_seeds(seeds, A->contigs_len);
-
-    for (i = 0; i < xs_len; ++i) {
-        free(alns[i].a.ops);
-    }
-    free(alns);
 
     if (verbose) fprintf(stderr, "done.\n");
 }
@@ -732,19 +668,13 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
 void assembler_assemble(assembler_t* A)
 {
-    if (A->quick) {
-        seqenc_flush(A->seqenc);
-        A->initial_state = true;
-        return;
-    }
+    if (!A->quick && A->assemble_batch) {
 
-    /* dump reads and sort by copy number*/
-    seqset_value_t* xs = seqset_dump(A->S);
-    qsort(xs, seqset_size(A->S), sizeof(seqset_value_t), seqset_value_cnt_cmp);
+        /* dump reads and sort by copy number*/
+        seqset_value_t* xs = seqset_dump(A->S);
+        qsort(xs, seqset_size(A->S), sizeof(seqset_value_t), seqset_value_cnt_cmp);
 
-    size_t n = seqset_size(A->S);
-
-    if (A->assemble_batch) {
+        size_t n = seqset_size(A->S);
 
         count_kmers(A, xs, n);
         make_contigs(A, xs, n);
@@ -774,24 +704,18 @@ void assembler_assemble(assembler_t* A)
             
         index_contigs(A);
 
+        align_to_contigs(A, xs, n);
+
+        free(xs);
+        seqset_free(A->S);
+        A->S = NULL;
+
+        free(A->ord);
+        A->ord = NULL;
     }
-    else {
-        /* indicate that no new contigs will be used */
-        write_uint32(A->writer, A->writer_data, 0); 
-    }
-
-    if (!A->seqenc) {
-        A->seqenc = seqenc_alloc_encoder(A->writer, A->writer_data);
-    }
-
-
-    align_to_contigs(A, xs, n);
-
-    free(xs);
 
     seqenc_flush(A->seqenc);
-
-    assembler_reset(A);
+    A->initial_state = true;
 }
 
 
