@@ -110,7 +110,7 @@ void twobit_append_n(twobit_t* s, const char* seqstr, size_t seqlen)
     size_t idx, off;
     size_t i;
     for (i = 0; i < seqlen; ++i) {
-        c = chartokmer(seqstr[i]);
+        c = chartokmer[(uint8_t) seqstr[i]];
         if (c > 3) continue;
 
         idx = (s->len + i) / (4 * sizeof(kmer_t));
@@ -190,7 +190,7 @@ void twobit_setc(twobit_t* s, size_t i, char seqc)
     size_t idx = i / (4 * sizeof(kmer_t));
     size_t off = i % (4 * sizeof(kmer_t));
 
-    kmer_t c = chartokmer(seqc); 
+    kmer_t c = chartokmer[(uint8_t) seqc]; 
     if (c > 3) return;
 
     s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 << (2 * off))) | (c << (2 * off));
@@ -234,7 +234,7 @@ void twobit_print(const twobit_t* s, FILE* fout)
 {
     size_t i;
     for (i = 0; i < s->len; ++i) {
-        fputc(kmertochar(twobit_get(s, i)), fout);
+        fputc(kmertochar[twobit_get(s, i)], fout);
     }
 }
 

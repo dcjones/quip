@@ -44,29 +44,20 @@ void kmer_free()
 
 
 
+/* map nucleotide ascii characters to numbers */
+const uint8_t chartokmer[256] =
+  { 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0 };
 
-kmer_t chartokmer(char c)
-{
-    switch (c) {
-        case 'a': case 'A': case '0': return 0;
-        case 'c': case 'C': case '1': return 1;
-        case 'g': case 'G': case '2': return 2;
-        case 't': case 'T': case '3': return 3;
 
-        /* error reporting is a bit subtle, remember to check this */
-        default: return 4;
-    }
-}
+const uint8_t kmertochar[5] = { 'A', 'C', 'G', 'T', 'N' };
 
-char kmertochar(kmer_t x)
-{
-    switch (x & 0x3) {
-        case 0: return 'A';
-        case 1: return 'C';
-        case 2: return 'G';
-        case 3: default: return 'T';
-    }
-}
 
 
 kmer_t strtokmer(const char* s)
@@ -74,7 +65,7 @@ kmer_t strtokmer(const char* s)
     size_t k = 0;
     kmer_t x_i, x = 0;
     while (*s && k++ < 4 * sizeof(kmer_t)) {
-        x_i = chartokmer(*s);
+        x_i = chartokmer[(uint8_t) *s];
         if (x_i > 3) break;
         x = (x << 2) | x_i;
     }
@@ -87,7 +78,7 @@ void kmertostr(kmer_t x, char* s, size_t k)
 {
     size_t i = 0;
     for (i = 0; i < k; ++i) {
-        s[k - i - 1] = kmertochar((x & 0x3));
+        s[k - i - 1] = kmertochar[(uint8_t) x & 0x3];
         x >>= 2;
     }
 

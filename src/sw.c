@@ -62,6 +62,7 @@ static const score_t score_match    = 1;
 static const score_t score_mismatch = 3;
 
 static const int band_width = 1;
+static const int colsize = 3; /* 1 + 2 * band_width */
 
 
 
@@ -126,7 +127,6 @@ static inline score_t min_score(score_t a, score_t b)
 /* Align the query block between qu and qv, inclusively. */ 
 static void sw_align_sub(sw_t* sw, int qu, int qv)
 {
-    const int colsize = 1 + 2 * band_width;
     int colstart, colend;
     int i, j, k;
 
@@ -175,7 +175,6 @@ static void sw_ensure_query_len(sw_t* sw, int m)
         sw->m = m;
         sw->query = realloc_or_die(sw->query, sw->m * sizeof(uint8_t));
 
-        const int colsize = 1 + 2 * band_width;
         free(sw->F);
         sw->F = malloc_or_die((m + 1) * colsize * sizeof(score_t));
     }
@@ -197,9 +196,6 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
     int i, j;
 
     for (i = 0; i < qlen; ++i) sw->query[i] = twobit_get(query, i);
-
-
-    const int colsize = 1 + 2 * band_width;
 
     /* align up to the seed */
     memset(sw->F, 0, colsize * sizeof(score_t));
@@ -255,8 +251,6 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
 
 void sw_trace(sw_t* sw, sw_alignment_t* aln)
 {
-    const int colsize = 1 + 2 * band_width;
-
     edit_op_t op;
     int i, j, i_next, j_next;
     score_t s;

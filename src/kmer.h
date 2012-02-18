@@ -19,10 +19,8 @@ void kmer_free();
 
 
 /* nucleotide character to kmer */
-kmer_t chartokmer(char);
-
-/* kmer to nucleotide character */
-char kmertochar(kmer_t);
+extern const uint8_t chartokmer[];
+extern const uint8_t kmertochar[];
 
 /* nucleotide string to kmer */
 kmer_t strtokmer(const char*);

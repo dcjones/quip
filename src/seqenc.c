@@ -7,20 +7,6 @@
 #include <string.h>
 
 
-/* map nucleotide ascii characters to numbers */
-static const uint8_t nuc_map[256] =
-  { 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 0, 4, 1, 4, 4, 4, 2, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 0, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-    4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0 };
-
-static const uint8_t rev_nuc_map[5] = { 'A', 'C', 'G', 'T', 'N' };
-
-
 /* Number of mismatchisg reads before a contig position is flipped. */
 const uint16_t mismatch_patch_factor = 5;
 const uint16_t mismatch_patch_cutoff = 5;
@@ -275,7 +261,7 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
             while (j < len && x[j] == 'N') ++j;
             if (j == len) break;
 
-            uv = (nuc_map[(uint8_t) x[i]] << 2) | nuc_map[(uint8_t) x[j]];
+            uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[j]];
             cond_dist16_encode(E->ac, &E->cs, ctx, uv);
             ctx = ((ctx << 4) | uv) & E->ctx_mask;
 
@@ -284,27 +270,27 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
 
         /* handle odd read lengths */
         if (i < len && x[i] != 'N') {
-            uv = nuc_map[(uint8_t) x[i]];
+            uv = chartokmer[(uint8_t) x[i]];
             cond_dist16_encode(E->ac, &E->cs, ctx, uv);
         }
     }
     /* no Ns, use a slightly more efficent loop */
     else {
         for (i = 0; i < prefix_len; i += 2) {
-            uv = (nuc_map[(uint8_t) x[i]] << 2) | nuc_map[(uint8_t) x[i + 1]];
+            uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
             cond_dist16_encode(E->ac, &E->cs0[i/2], ctx, uv);
             ctx = (ctx << 4) | uv;
         }
 
         for (; i < len - 1; i += 2) {
-            uv = (nuc_map[(uint8_t) x[i]] << 2) | nuc_map[(uint8_t) x[i + 1]];
+            uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
             cond_dist16_encode(E->ac, &E->cs, ctx, uv);
             ctx = ((ctx << 4) | uv) & E->ctx_mask;
         }
 
         /* handle odd read lengths */
         if (i == len - 1) {
-            uv = nuc_map[(uint8_t) x[i]];
+            uv = chartokmer[(uint8_t) x[i]];
             cond_dist16_encode(E->ac, &E->cs, ctx, uv);
         }
     }
@@ -473,8 +459,8 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
             u = uv >> 2;
             v = uv & 0x3;
 
-            x->seq.s[i] = rev_nuc_map[u];
-            x->seq.s[j] = rev_nuc_map[v];
+            x->seq.s[i] = kmertochar[u];
+            x->seq.s[j] = kmertochar[v];
 
             ctx = ((ctx << 4) | uv) & E->ctx_mask;
 
@@ -486,8 +472,8 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
             uv = cond_dist16_decode(E->ac, &E->cs0[i/2], ctx);
             u = uv >> 2;
             v = uv & 0x3;
-            x->seq.s[i++] = rev_nuc_map[u];
-            x->seq.s[i++] = rev_nuc_map[v];
+            x->seq.s[i++] = kmertochar[u];
+            x->seq.s[i++] = kmertochar[v];
             ctx = (ctx << 4) | uv;
         }
 
@@ -495,8 +481,8 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
             uv = cond_dist16_decode(E->ac, &E->cs, ctx);
             u = uv >> 2;
             v = uv & 0x3;
-            x->seq.s[i++] = rev_nuc_map[u];
-            x->seq.s[i++] = rev_nuc_map[v];
+            x->seq.s[i++] = kmertochar[u];
+            x->seq.s[i++] = kmertochar[v];
             ctx = ((ctx << 4) | uv) & E->ctx_mask;
         }
     }
@@ -504,7 +490,7 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
     if (i < n && (x->qual.n == 0 || qs[i] != 0)) {
         uv = cond_dist16_decode(E->ac, &E->cs, ctx);
         v = uv & 0x3;
-        x->seq.s[i] = rev_nuc_map[v];
+        x->seq.s[i] = kmertochar[v];
     }
 
     x->seq.s[n] = '\0';
@@ -568,7 +554,7 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
             case EDIT_MATCH:
                 if (strand) u = kmer_comp1(twobit_get(contig, contig_len - j - 1));
                 else        u = twobit_get(contig, j);
-                x->seq.s[i] = kmertochar(u);
+                x->seq.s[i] = kmertochar[u];
 
                 if (strand) contig_pos = contig_len - j - 1;
                 else        contig_pos = j;
@@ -583,7 +569,7 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
 
             case EDIT_MISMATCH:
                 u = cond_dist4_decode(E->ac, &E->d_ins_nuc, ctx);
-                x->seq.s[i] = kmertochar(u);
+                x->seq.s[i] = kmertochar[u];
 
                 if (strand) contig_pos = contig_len - j - 1;
                 else        contig_pos = j;
@@ -602,7 +588,7 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
 
             case EDIT_S_GAP:
                 u = cond_dist4_decode(E->ac, &E->d_ins_nuc, ctx);
-                x->seq.s[i] = kmertochar(u);
+                x->seq.s[i] = kmertochar[u];
 
                 ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
                 ++i;
