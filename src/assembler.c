@@ -772,7 +772,7 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
         /* skip overy terribly short contigs */
         len = twobit_len(contig);
-        if (len < 10 * A->assemble_k) {
+        if (len < twobit_len(xs[i].seq.tb) + A->assemble_k) {
             
             /* reclaim k-mers from the failed contig */
             x = 0;
