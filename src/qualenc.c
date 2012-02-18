@@ -23,6 +23,14 @@ struct qualenc_t_
 };
 
 
+/* index into the 'cs' conditional distribution */
+#define cs_index(n, i, mu, q2, q1) \
+    (q1 + qual_size * (\
+            q2 + qual_size * (\
+                mu + mu_bins * (\
+                    (i * pos_bins) / n))))
+
+
 static void qualenc_init(qualenc_t* E, bool decode)
 {
     cond_dist41_init(&E->cs, pos_bins * mu_bins * qual_size * qual_size, decode);
@@ -96,23 +104,17 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
     /* case: i = 0 */
     if (n >= 1) {
-        cond_dist41_encode(E->ac, &E->cs,
-                mu * qual_size * qual_size +
-                qual_last * qual_size + qual_last, qs[0]);
+        cond_dist41_encode(E->ac, &E->cs, cs_index(n, 0, mu, 0, 0), qs[0]);
     }
 
     /* case: i = 1 */
     if (n >= 2) {
-        cond_dist41_encode(E->ac, &E->cs,
-                mu * qual_size * qual_size +
-                qual_last * qual_size + qs[0], qs[1]);
+        cond_dist41_encode(E->ac, &E->cs, cs_index(n, 1, mu, 0, qs[0]), qs[1]);
     }
 
     /* case: i = 2 */
     if (n >= 3) {
-        cond_dist41_encode(E->ac, &E->cs,
-                mu * qual_size * qual_size +
-                qs[0] * qual_size + qs[1], qs[2]);
+        cond_dist41_encode(E->ac, &E->cs, cs_index(n, 2, mu, qs[0], qs[1]), qs[2]);
     }
 
     /* case: i >= 4 */
@@ -121,10 +123,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
         q1 = qs[i - 1];
         q2 = charmax2(qs[i - 2], qs[i - 3]);
 
-        cond_dist41_encode(E->ac, &E->cs,
-                (i * pos_bins) / (n + 1) * mu_bins * qual_size * qual_size +
-                mu * qual_size * qual_size +
-                q2 * qual_size + q1, q);
+        cond_dist41_encode(E->ac, &E->cs, cs_index(n, i, mu, q2, q1), q);
     }
 }
 
@@ -153,24 +152,21 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     if (n >= 1) {
         qs[qual->n++] =
             cond_dist41_decode(E->ac, &E->cs,
-                    mu * qual_size * qual_size +
-                    qual_last * qual_size + qual_last);
+                    cs_index(n, 0, mu, 0, 0));
     }
 
     /* case: i = 1 */
     if (n >= 2) {
         qs[qual->n++] =
             cond_dist41_decode(E->ac, &E->cs,
-                    mu * qual_size * qual_size +
-                    qual_last * qual_size + qs[0]);
+                    cs_index(n, 0, mu, 0, qs[0]));
     }
 
     /* case: i = 2 */
     if (n >= 3) {
         qs[qual->n++] =
             cond_dist41_decode(E->ac, &E->cs,
-                    mu * qual_size * qual_size +
-                    qs[0] * qual_size + qs[1]);
+                    cs_index(n, 0, mu, qs[0], qs[1]));
     }
 
 
@@ -182,10 +178,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
                 qual->s[qual->n - 3]);
 
         qs[qual->n++] =
-            cond_dist41_decode(E->ac, &E->cs,
-                    (i * pos_bins) / (n + 1) * mu_bins * qual_size * qual_size +
-                    mu * qual_size * qual_size +
-                    q2 * qual_size + q1);
+            cond_dist41_decode(E->ac, &E->cs, cs_index(n, i, mu, q2, q1));
         ++i;
     }
 
