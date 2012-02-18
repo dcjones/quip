@@ -89,6 +89,24 @@ sw_t* sw_alloc(const twobit_t* subject)
 }
 
 
+void sw_set_subject(sw_t* sw, const twobit_t* subject)
+{
+    int len = twobit_len(subject);
+
+    if (len != sw->n) {
+        free(sw->subject);
+        sw->subject = malloc_or_die((len + band_width) * sizeof(uint8_t));
+        sw->n = len;
+    }
+
+    int i;
+    /* the lead of the subject sequence is padded to slightly simplify the
+     * alignment */
+    for (i = 0; i < band_width; ++i) sw->subject[i] = 5; /* '5' to ensure mismatches */
+    for (i = 0; i < sw->n; ++i) sw->subject[band_width + i] = twobit_get(subject, i);
+}
+
+
 void sw_free(sw_t* sw)
 {
     free(sw->subject);

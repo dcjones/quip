@@ -24,7 +24,6 @@ typedef struct align_t_
 } align_t;
 
 
-
 static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
 {
     uint8_t bytes[4];
@@ -245,14 +244,16 @@ static void tally_mismatches(assembler_t* A, const align_t* aln, const twobit_t*
     size_t j; /* position within the contig */
     size_t k; /* position within the read */
     size_t len = twobit_len(A->contigs[aln->contig_idx]);
+    size_t contig_pos;
 
-    for (i = 0, j = 0; i < aln->a.len; ++i) {
+    for (i = 0, j = aln->a.spos, k = 0; i < aln->a.len; ++i) {
         switch (aln->a.ops[i]) {
             case EDIT_MATCH:
-                if (* (uint64_t*) (A->mismatch_tally[i] + 4 * j) > 0) {
-                    u = twobit_get(seq, aln->strand ? len - j - 1 : j);
-                    A->mismatch_tally[aln->contig_idx][4 * j + u]++;
-                }
+                contig_pos = aln->strand ? len - j - 1 : j;
+                u = twobit_get(seq, k);
+                if (aln->strand) u = kmer_comp1(u);
+                A->mismatch_tally[aln->contig_idx][4 * contig_pos + u]++;
+
                 ++j;
                 ++k;
                 break;
@@ -266,8 +267,11 @@ static void tally_mismatches(assembler_t* A, const align_t* aln, const twobit_t*
                 break;
 
             case EDIT_MISMATCH:
-                u = twobit_get(seq, aln->strand ? len - j - 1 : j);
-                A->mismatch_tally[aln->contig_idx][4 * j + u]++;
+                contig_pos = aln->strand ? len - j - 1 : j;
+                u = twobit_get(seq, k);
+                if (aln->strand) u = kmer_comp1(u);
+                A->mismatch_tally[aln->contig_idx][4 * contig_pos + u]++;
+
                 ++j;
                 ++k;
         }
@@ -279,40 +283,53 @@ static void patch_mismatches(assembler_t* A)
     size_t len;
     size_t i, j, k;
 
-    uint16_t max_k;
+    int max_k;
+    kmer_t u;
+
+    size_t flip_cnt = 0;
 
     for (i = 0; i < A->contigs_len; ++i) {
         len = twobit_len(A->contigs[i]);
         for (j = 0; j < len; ++j) {
             if (* (uint64_t*) (A->mismatch_tally[i] + 4 * j) > 0) {
 
-                for (k = 0; k < 4; ++k) {
+                for (k = 0, max_k = 0; k < 4; ++k) {
                     if (A->mismatch_tally[i][4 * j + k] > 
-                        A->mismatch_tally[i][4 * j + max_k])
+                            A->mismatch_tally[i][4 * j + max_k])
                     {
                         max_k = k;
                     }
                 }
 
-                twobit_set(A->contigs[i], j, max_k);
+                u = twobit_get(A->contigs[i], j);
 
-
-                /*
-                 *fprintf(stderr, "mismatch: %u, %u, %u, %u\n",
-                 *        A->mismatch_tally[i][4 * j + 0],
-                 *        A->mismatch_tally[i][4 * j + 1],
-                 *        A->mismatch_tally[i][4 * j + 2],
-                 *        A->mismatch_tally[i][4 * j + 3]);
-                 */
+                if (A->mismatch_tally[i][4 * j + max_k] > mismatch_patch_cutoff &&
+                        A->mismatch_tally[i][4 * j + max_k] > 
+                        mismatch_patch_factor * A->mismatch_tally[i][4 * j + u])
+                {
+                    twobit_set(A->contigs[i], j, max_k);
+                    ++flip_cnt;
+                }
             }
         }
 
         memset(A->mismatch_tally[i], 0, 4 * len * sizeof(uint16_t));
     }
 
+    if (verbose) fprintf(stderr, "\t%zu mismatches flipped.\n", flip_cnt);
 
+    /* rebuild index */
     build_kmer_hash(A);
 
+    /* rebuild aligners */
+    twobit_t* contig_rc = twobit_alloc();
+    for (i = 0; i < A->contigs_len; ++i) {
+        sw_set_subject(A->contig_aligners[i], A->contigs[i]);
+
+        twobit_revcomp(contig_rc, A->contigs[i]);
+        sw_set_subject(A->contig_rc_aligners[i], contig_rc);
+    }
+    twobit_free(contig_rc);
 }
 
 
@@ -394,7 +411,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
             /* Is a full alignment possible with this seed? */
             if ((strand == 0 && (spos < qpos || slen - spos < qlen - qpos)) ||
-                (strand == 1 && (spos < qlen - qpos || slen - spos < qpos))) {
+                    (strand == 1 && (spos < qlen - qpos || slen - spos < qpos))) {
                 ++skipped;
                 continue;
             }
@@ -408,16 +425,16 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
             }
 
             aln_score = sw_seeded_align(
-                            aligner,
-                            seq,
-                            spos,
-                            qpos,
-                            A->align_k);
+                    aligner,
+                    seq,
+                    spos,
+                    qpos,
+                    A->align_k);
 
             if (aln_score >= 0 &&
-                aln_score < A->aln.aln_score &&
-                /* crude cutoff for what an acceptable alignment is */
-                aln_score < 125 * (int) qlen / 100)
+                    aln_score < A->aln.aln_score &&
+                    /* crude cutoff for what an acceptable alignment is */
+                    aln_score < 13 * (int) qlen / 10)
             {
                 A->aln.contig_idx = pos->contig_idx;
                 A->aln.strand     = strand;
@@ -745,7 +762,7 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
         /* skip overy terribly short contigs */
         len = twobit_len(contig);
-        if (len < 3 * A->assemble_k) {
+        if (len < 8 * A->assemble_k) {
             
             /* reclaim k-mers from the failed contig */
             x = 0;
@@ -891,7 +908,7 @@ void disassembler_read(disassembler_t* D, seq_t* x, size_t n)
 
 void disassembler_reset(disassembler_t* D)
 {
-    seqenc_reset_decoder(D->seqenc);
+    if (!D->init_state) seqenc_reset_decoder(D->seqenc);
     D->init_state = true;
 }
 

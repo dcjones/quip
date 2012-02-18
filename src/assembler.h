@@ -44,5 +44,6 @@ void            disassembler_free(disassembler_t*);
 void disassembler_read(disassembler_t*, seq_t* x, size_t n);
 void disassembler_reset(disassembler_t*);
 
+
 #endif
 

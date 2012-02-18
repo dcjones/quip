@@ -40,6 +40,11 @@ void seqenc_decode(seqenc_t* E, seq_t* seq, size_t n);
 void seqenc_reset_decoder(seqenc_t* E);
 
 
+/* Number of mismatchisg reads before a contig position is flipped. */
+extern const uint16_t mismatch_patch_factor;
+extern const uint16_t mismatch_patch_cutoff;
+
+
 #endif
 
 

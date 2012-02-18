@@ -21,6 +21,11 @@ static const uint8_t nuc_map[256] =
 static const uint8_t rev_nuc_map[5] = { 'A', 'C', 'G', 'T', 'N' };
 
 
+/* Number of mismatchisg reads before a contig position is flipped. */
+const uint16_t mismatch_patch_factor = 5;
+const uint16_t mismatch_patch_cutoff = 5;
+
+
 /* Order of the markov chain assigning probabilities to dinucleotides. */
 static const size_t k = 11;
 
@@ -88,6 +93,9 @@ struct seqenc_t_
     /* lengths of the expected contigs */
     uint32_t* contig_lens;
 
+    /* tallies of mismatches */
+    uint16_t** mismatch_tally;
+
     /* are we decoding */
     bool decoder;
 
@@ -143,6 +151,8 @@ static void seqenc_init(seqenc_t* E, bool decoder)
     E->contig_lens      = NULL;
     E->contig_count     = 0;
     E->expected_contigs = 0;
+    E->mismatch_tally   = NULL;
+
 
     E->decoder = decoder;
 }
@@ -200,9 +210,11 @@ void seqenc_free(seqenc_t* E)
 
     for (i = 0; i < E->contig_count; ++i) {
         twobit_free(E->contigs[i]);
+        free(E->mismatch_tally[i]);
     }
     free(E->contigs);
     free(E->contig_lens);
+    free(E->mismatch_tally);
 
     free(E);
 }
@@ -419,6 +431,12 @@ void seqenc_prepare_decoder(seqenc_t* E, uint32_t n, const uint32_t* lens)
     E->contig_lens = malloc_or_die(n * sizeof(uint32_t));
 
     for (i = 0; i < n; ++i) E->contig_lens[i] = lens[i];
+
+    E->mismatch_tally = malloc_or_die(n * sizeof(uint16_t*));
+    for (i = 0; i < n; ++i) {
+        E->mismatch_tally[i] = malloc_or_die(4 * E->contig_lens[i] * sizeof(uint16_t));
+        memset(E->mismatch_tally[i], 0, 4 * E->contig_lens[i] * sizeof(uint16_t));
+    }
 }
 
 
@@ -536,10 +554,12 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
     /* decoded edit operations */
     edit_op_t op, last_op = EDIT_MATCH;
 
-    kmer_t u, ctx = 0; /* nucleotide context */
+    kmer_t u, v, ctx = 0; /* nucleotide context */
 
     size_t i; /* position within the read */
     size_t j; /* position within the contig */
+
+    size_t contig_pos;
 
     for (i = 0, j = spos; i < n;) {
         op = cond_dist4_decode(E->ac, &E->d_edit_op, last_op);
@@ -550,6 +570,12 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
                 else        u = twobit_get(contig, j);
                 x->seq.s[i] = kmertochar(u);
 
+                if (strand) contig_pos = contig_len - j - 1;
+                else        contig_pos = j;
+
+                v = strand ? kmer_comp1(u) : u;
+                E->mismatch_tally[contig_idx][4 * contig_pos + v]++;
+
                 ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
                 ++i;
                 ++j;
@@ -558,6 +584,12 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
             case EDIT_MISMATCH:
                 u = cond_dist4_decode(E->ac, &E->d_ins_nuc, ctx);
                 x->seq.s[i] = kmertochar(u);
+
+                if (strand) contig_pos = contig_len - j - 1;
+                else        contig_pos = j;
+
+                v = strand ? kmer_comp1(u) : u;
+                E->mismatch_tally[contig_idx][4 * contig_pos + v]++;
 
                 ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
                 ++i;
@@ -631,8 +663,50 @@ void seqenc_flush(seqenc_t* E)
 }
 
 
+static void patch_mismatches(seqenc_t* E)
+{
+    size_t len;
+    size_t i, j, k;
+
+    kmer_t u;
+    uint16_t max_k;
+
+    size_t flip_cnt = 0;
+
+    for (i = 0; i < E->contig_count; ++i) {
+        len = twobit_len(E->contigs[i]);
+        for (j = 0; j < len; ++j) {
+            if (* (uint64_t*) (E->mismatch_tally[i] + 4 * j) > 0) {
+
+                for (k = 0, max_k = 0; k < 4; ++k) {
+                    if (E->mismatch_tally[i][4 * j + k] > 
+                        E->mismatch_tally[i][4 * j + max_k])
+                    {
+                        max_k = k;
+                    }
+                }
+
+                u = twobit_get(E->contigs[i], j);
+
+                if (E->mismatch_tally[i][4 * j + max_k] > mismatch_patch_cutoff &&
+                    E->mismatch_tally[i][4 * j + max_k] > 
+                    mismatch_patch_factor * E->mismatch_tally[i][4 * j + u])
+                {
+                    twobit_set(E->contigs[i], j, max_k);
+                    ++flip_cnt;
+                }
+            }
+        }
+
+        memset(E->mismatch_tally[i], 0, 4 * len * sizeof(uint16_t));
+    }
+
+    if (verbose) fprintf(stderr, "\t%zu mismatches flipped.\n", flip_cnt);
+}
+
 void seqenc_reset_decoder(seqenc_t* E)
 {
+    patch_mismatches(E);
     ac_reset_decoder(E->ac);
 }
 
