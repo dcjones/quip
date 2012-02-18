@@ -61,7 +61,7 @@ static const score_t score_s_gap    = 4;
 static const score_t score_match    = 1;
 static const score_t score_mismatch = 3;
 
-static const int band_width = 2;
+static const int band_width = 1;
 
 
 
