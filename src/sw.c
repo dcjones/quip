@@ -71,13 +71,14 @@ sw_t* sw_alloc(const twobit_t* subject)
 
     sw->n = (int) twobit_len(subject);
 
-    sw->subject = malloc_or_die((sw->n + band_width) * sizeof(uint8_t));
+    sw->subject = malloc_or_die((sw->n + 2 * band_width) * sizeof(uint8_t));
 
     int i;
     /* the lead of the subject sequence is padded to slightly simplify the
      * alignment */
     for (i = 0; i < band_width; ++i) sw->subject[i] = 5; /* '5' to ensure mismatches */
     for (i = 0; i < sw->n; ++i) sw->subject[band_width + i] = twobit_get(subject, i);
+    for (i = 0; i < band_width; ++i) sw->subject[sw->n + i] = 5;
 
     /* We don't know the query length in advance, so these are all allocated
      * and/or expanded when needed. */
