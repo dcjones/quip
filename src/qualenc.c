@@ -26,6 +26,8 @@ struct qualenc_t_
 static void qualenc_init(qualenc_t* E, bool decode)
 {
     cond_dist41_init(&E->cs, pos_bins * mu_bins * qual_size * qual_size, decode);
+    cond_dist41_set_update_rate(&E->cs, 4);
+
     dist41_init(&E->ms, decode);
 }
 
@@ -81,10 +83,9 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
     uint32_t mu = 0;
     for (i = 0; i < n; ++i) mu += qs[i];
+    mu /= n;
 
-    mu = (uint32_t) ((float) mu / (float) n);
     mu = (mu * mu_bins) / (qual_size + 1);
-
     dist41_encode(E->ac, &E->ms, mu);
 
 

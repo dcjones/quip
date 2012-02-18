@@ -85,8 +85,7 @@ void dfun(update)(dist_t* D)
 }
 
 
-
-void dfun(encode)(ac_t* ac, dist_t* D, symb_t x)
+static void dfun(encode2)(ac_t* ac, dist_t* D, symb_t x, uint8_t update_rate)
 {
     uint32_t b0 = ac->b;
 
@@ -105,9 +104,14 @@ void dfun(encode)(ac_t* ac, dist_t* D, symb_t x)
     if (b0 > ac->b)         ac_propogate_carry(ac);
     if (ac->l < min_length) ac_renormalize_encoder(ac);
 
-    D->xs[x].count++;
+    D->xs[x].count += update_rate;
 
     if(!--D->update_delay) dfun(update)(D);
+}
+
+void dfun(encode)(ac_t* ac, dist_t* D, symb_t x)
+{
+    dfun(encode2)(ac, D, x, 1);
 }
 
 
@@ -190,6 +194,7 @@ void cdfun(init) (cond_dist_t* D, size_t n, bool decode)
 {
     D->n = n;
     D->xss   = malloc_or_die(n * sizeof(dist_t));
+    D->update_rate = 1;
 
     D->xss[0].update_delay = DISTSIZE * update_delay_factor;
     if (decode && DISTSIZE > 16) {
@@ -227,6 +232,12 @@ void cdfun(free) (cond_dist_t* D)
 }
 
 
+void cdfun(set_update_rate) (cond_dist_t* D, uint8_t update_rate)
+{
+    D->update_rate = update_rate;
+}
+
+
 void cdfun(setall) (cond_dist_t* D, const uint16_t* cs)
 {
     size_t i;
@@ -258,7 +269,7 @@ void cdfun(setone) (cond_dist_t* D, const uint16_t* cs, size_t i)
 
 void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x)
 {
-    dfun(encode)(ac, D->xss + y, x);
+    dfun(encode2)(ac, D->xss + y, x, D->update_rate);
 }
 
 

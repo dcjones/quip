@@ -60,11 +60,16 @@ typedef struct cdfun(t_)
 
     /* alphabet over which the distribution is conditioned */
     uint32_t n;
+
+    /* rate at which distributions are updated */
+    uint8_t update_rate;
 } cond_dist_t;
 
 
 void cdfun(init) (cond_dist_t*, size_t n, bool decode);
 void cdfun(free) (cond_dist_t*);
+
+void cdfun(set_update_rate) (cond_dist_t*, uint8_t);
 
 void cdfun(setall) (cond_dist_t*, const uint16_t* cs);
 void cdfun(setone) (cond_dist_t*, const uint16_t* cs, size_t i);
