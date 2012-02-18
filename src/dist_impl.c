@@ -115,7 +115,7 @@ void dfun(encode)(ac_t* ac, dist_t* D, symb_t x)
 }
 
 
-symb_t dfun(decode)(ac_t* ac, dist_t* D)
+static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
 {
     if (ac->init_state) {
         ac->bufavail = ac->reader(ac->reader_data, ac->buf, ac->buflen);
@@ -181,13 +181,18 @@ symb_t dfun(decode)(ac_t* ac, dist_t* D)
 
     if (ac->l < min_length) ac_renormalize_decoder(ac);
 
-    D->xs[s].count++;
+    D->xs[s].count += update_rate;
 
     if (--D->update_delay == 0) dfun(update)(D);
 
     return s;
 }
 
+
+symb_t dfun(decode)(ac_t* ac, dist_t* D)
+{
+    return dfun(decode2)(ac, D, 1);
+}
 
 
 void cdfun(init) (cond_dist_t* D, size_t n, bool decode)
@@ -275,7 +280,7 @@ void cdfun(encode)(ac_t* ac, cond_dist_t* D, uint32_t y, symb_t x)
 
 symb_t cdfun(decode)(ac_t* ac, cond_dist_t* D, uint32_t y)
 {
-    return dfun(decode)(ac, D->xss + y);
+    return dfun(decode2)(ac, D->xss + y, D->update_rate);
 }
 
 
