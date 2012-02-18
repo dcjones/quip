@@ -57,7 +57,7 @@ struct sw_t_
 /* Scoring scheme */
 static const score_t score_inf      = UINT16_MAX / 2;
 static const score_t score_q_gap    = 2;
-static const score_t score_s_gap    = 4;
+static const score_t score_s_gap    = 3;
 static const score_t score_match    = 1;
 static const score_t score_mismatch = 3;
 

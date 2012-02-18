@@ -175,7 +175,6 @@ assembler_t* assembler_alloc(
 
         A->N = 0;
 
-        // TODO: set n and m in some principled way
         A->B = bloom_alloc(4194304, 8);
 
         A->x = twobit_alloc();
@@ -185,7 +184,7 @@ assembler_t* assembler_alloc(
         A->count_cutoff = 2;
 
         A->contigs_size = 512;
-        A->contigs_len = 0;;
+        A->contigs_len = 0;
         A->contigs = malloc_or_die(A->contigs_size * sizeof(twobit_t*));
 
         A->contig_aligners    = NULL;
@@ -334,13 +333,15 @@ static void patch_mismatches(assembler_t* A)
 
 
 /* Try desperately to align the given read. If no good alignment is found, just
- * encode the sequence. Return true if an alignment was found. */
-static bool align_read(assembler_t* A, const twobit_t* seq)
+ * encode the sequence. Return 0 if no alignment was found, 1 if a seed was
+ * found but no good alignment, and 2 if a good alignment was found. */
+static int align_read(assembler_t* A, const twobit_t* seq)
 {
     /* We only consider the first few seed hits found in the hash table. The
      * should be in an approximately random order. */
     static const size_t max_seeds = 5;
 
+    int ret = 0;
 
     /* position of the seed with the subject and query sequecne, resp. */
     int spos, qpos;
@@ -440,7 +441,9 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
                 A->aln.strand     = strand;
                 A->aln.aln_score  = aln_score;
                 sw_trace(aligner, &A->aln.a);
+                ret = 2;
             }
+            else if (aln_score >= 0 && ret == 0) ret = 1;
         }
     }
 
@@ -450,11 +453,12 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
         tally_mismatches(A, &A->aln, seq);
 
-        return true;
+        return ret;
     }
     else {
         seqenc_encode_twobit_seq(A->seqenc, seq);
-        return false;
+
+        return ret;
     }
 }
 
@@ -695,11 +699,15 @@ static void align_to_contigs(assembler_t* A,
     qsort(xs, xs_len, sizeof(seqset_value_t), seqset_value_idx_cmp);
     const char* ebseq;
     size_t aln_count = 0;
+    size_t aborted_aln_count = 0;
     size_t i;
+    int ret;
 
     for (i = 0; i < A->N; ++i) {
         if (xs[A->ord[i]].is_twobit) {
-            if (align_read(A, xs[A->ord[i]].seq.tb)) ++aln_count;
+            ret = align_read(A, xs[A->ord[i]].seq.tb);
+            if (ret == 2)      ++aln_count;
+            else if (ret == 1) ++aborted_aln_count;
         }
         else {
             ebseq = xs[A->ord[i]].seq.eb;
@@ -709,8 +717,10 @@ static void align_to_contigs(assembler_t* A,
 
     if (verbose) {
         fprintf(stderr,
-                "\t%zu / %zu [%0.2f%%] reads aligned to contigs\n",
-                aln_count, (size_t) A->N, 100.0 * (double) aln_count / (double) A->N);
+                "\t%zu / %zu [%0.2f%%] reads aligned to contigs (%0.2f%% aborted)\n",
+                aln_count, (size_t) A->N,
+                100.0 * (double) aln_count / (double) A->N,
+                100.8 * (double) aborted_aln_count / (double) A->N);
     }
 
     if (verbose) fprintf(stderr, "done.\n");
@@ -762,7 +772,7 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
         /* skip overy terribly short contigs */
         len = twobit_len(contig);
-        if (len < 8 * A->assemble_k) {
+        if (len < 10 * A->assemble_k) {
             
             /* reclaim k-mers from the failed contig */
             x = 0;

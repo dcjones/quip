@@ -4,10 +4,6 @@
 #include <assert.h>
 #include <string.h>
 
-/* TODO:
- * The big-endian code ought to be double checked, and tested.
- */
-
 
 /* the number of subtables, hard-coded so I can use stack space in a few places
  * */
