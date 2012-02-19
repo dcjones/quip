@@ -11,7 +11,7 @@
 /* Every quality encoding scheme uses ASCII charocters in [33, 104] */
 static const char   qual_last  = 40;
 static const size_t qual_size  = 41;
-static const size_t pos_bins   = 8;
+static const size_t pos_bins   = 6;
 static const size_t q2_bins    = 12;
 static const size_t q3_bins    = 12;
 static const size_t delta_bins = 8;
@@ -125,7 +125,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     char* qs = seq->qual.s;
 
     unsigned char qprev[4] = {0, 0, 0, 0};
-    int delta = 0; 
+    int delta = 6; 
 
     size_t i;
     for (i = 0; i < n; ++i) {
