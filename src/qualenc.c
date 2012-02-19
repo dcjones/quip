@@ -85,7 +85,7 @@ static inline int intmin2(int a, int b)
 void qualenc_encode(qualenc_t* E, const seq_t* x)
 {
     unsigned char qprev[4] = {0, 0, 0, 0};
-    int delta = 0; 
+    int delta = 6; 
 
     char* qs = x->qual.s;
     size_t n = x->qual.n;
