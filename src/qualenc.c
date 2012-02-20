@@ -18,9 +18,17 @@ static const int    delta_max  = 41;
 
 /* Map quality scores to a smaller alphabet size. */
 static const uint8_t q_bin_map[41] =
-  {  15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
-     15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 14, 13, 12, 11, 10,
+  {  15, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+     14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 13, 12, 11, 10,
       9,  8,  7,  6,  5,  4,  3,  2,  1 };
+
+
+/* Map running deltas to a smaller alphabet size. */
+static const uint8_t delta_bin_map[41] =
+  {   0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,
+      3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  5,  5,  5,  5,  5,  6,
+      6,  6,  6,  6,  7,  7,  7,  7,  7 };
+
 
 struct qualenc_t_
 {
@@ -29,12 +37,12 @@ struct qualenc_t_
 };
 
 
-#define cs_index(n, i, delta, q3, q2, q1) \
+#define cs_index(n, bin, delta, q3, q2, q1) \
     (q1 + qual_size * (\
-            q_bin_map[(uint8_t) q2] + q_bins * (\
-                q_bin_map[(uint8_t) q3] + q_bins * (\
-                    (delta * delta_bins / delta_max) + delta_bins * (\
-                        (i * pos_bins) / n)))))
+       q2 + q_bins * (\
+         q3 + q_bins * (\
+           delta_bin_map[delta] + delta_bins * (\
+             bin)))))
 
 
 static void qualenc_init(qualenc_t* E)
@@ -73,6 +81,11 @@ void qualenc_free(qualenc_t* E)
     free(E);
 }
 
+static inline char charmin2(char a, char b)
+{
+    return a < b ? a : b;
+}
+
 
 static inline char charmax2(char a, char b)
 {
@@ -95,23 +108,48 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     qprev.ui64 = 0;
 
     int delta = 6; 
+    int qdiff;
 
     char* qs = x->qual.s;
     size_t n = x->qual.n;
 
+    /* this is: ceil(n / pos_bins) */
+    size_t pos_bin_size = (n + pos_bins - 1) / pos_bins;
     size_t i;
 
     for (i = 0; i < n; ++i) {
         cond_dist41_encode(E->ac, &E->cs,
-                cs_index(n, i, delta,
-                         charmax2(qprev.ui8[3], qprev.ui8[2]),
+                cs_index(n, i / pos_bin_size, delta,
+                         charmin2(qprev.ui8[3], qprev.ui8[2]),
                          qprev.ui8[1], qprev.ui8[0]), qs[i]);
 
-        if (qprev.ui8[0] > qs[i]) {
-            delta = intmin2(delta_max - 1, delta + qprev.ui8[0] - qs[i]);
-        }
+        qdiff = (int) qprev.ui8[0] - (int) qs[i];
 
         qprev.ui64 <<= 8;
+        qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
+        qprev.ui8[0] = qs[i];
+
+        if (qdiff > 0) {
+            delta += qdiff;
+            if (delta >= delta_max) {
+                delta = delta_max - 1;
+                ++i;
+                break;
+            }
+        }
+    }
+
+    /* We enter this loop when delta hits its maximum. It is the same as the
+     * above loop but saves a few cycles by not dealing with delta any further.
+     * */
+    for (; i < n; ++i) {
+        cond_dist41_encode(E->ac, &E->cs,
+                cs_index(n, i / pos_bin_size, delta,
+                         charmin2(qprev.ui8[3], qprev.ui8[2]),
+                         qprev.ui8[1], qprev.ui8[0]), qs[i]);
+
+        qprev.ui64 <<= 8;
+        qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
         qprev.ui8[0] = qs[i];
     }
 }
@@ -138,21 +176,44 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     qprev.ui64 = 0;
 
     int delta = 6; 
+    int qdiff;
 
+    /* this is: ceil(n / pos_bins) */
+    size_t pos_bin_size = (n + pos_bins - 1) / pos_bins;
     size_t i;
+
     for (i = 0; i < n; ++i) {
         qs[i] = cond_dist41_decode(E->ac, &E->cs,
-                    cs_index(n, i, delta,
-                             charmax2(qprev.ui8[3], qprev.ui8[2]),
+                    cs_index(n, i / pos_bin_size, delta,
+                             charmin2(qprev.ui8[3], qprev.ui8[2]),
                              qprev.ui8[1], qprev.ui8[0]));
 
-        if (qprev.ui8[0] > qs[i]) {
-            delta = intmin2(delta_max - 1, delta + qprev.ui8[0] - qs[i]);
-        }
+        qdiff = (int) qprev.ui8[0] - (int) qs[i];
 
         qprev.ui64 <<= 8;
+        qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
         qprev.ui8[0] = qs[i];
 
+        if (qdiff > 0) {
+            delta += qdiff;
+            if (delta >= delta_max) {
+                delta = delta_max - 1;
+                ++i;
+                break;
+            }
+        }
+    }
+
+    /* Faster loop once delta hits its maximum. */
+    for (; i < n; ++i) {
+        qs[i] = cond_dist41_decode(E->ac, &E->cs,
+                    cs_index(n, i / pos_bin_size, delta,
+                             charmin2(qprev.ui8[3], qprev.ui8[2]),
+                             qprev.ui8[1], qprev.ui8[0]));
+
+        qprev.ui64 <<= 8;
+        qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
+        qprev.ui8[0] = qs[i];
     }
 
     qual->n = n;
