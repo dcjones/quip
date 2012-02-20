@@ -95,8 +95,6 @@ idenc_t* idenc_alloc_encoder(quip_writer_t writer, void* writer_data)
 
     idenc_init(E);
 
-    E->decoder = false;
-
     return E;
 }
 
@@ -110,8 +108,6 @@ idenc_t* idenc_alloc_decoder(quip_reader_t reader, void* reader_data)
 
     idenc_init(E);
 
-    E->decoder = true;
-
     return E;
 }
 
@@ -124,12 +120,7 @@ void idenc_free(idenc_t* E)
 
     size_t i;
     for (i = 0; i < E->groups; ++i){
-        dist100_free(&E->ms[i]);
-        dist4_free(&E->ts[i]);
-        dist100_free(&E->ls[i]);
         cond_dist128_free(&E->ds[i]);
-        dist100_free(&E->ns[i]);
-        dist8_free(&E->bs[i]);
         cond_dist256_free(&E->ks[i]);
     }
 
@@ -156,13 +147,13 @@ static void idenc_add_group(idenc_t* E)
     E->bs = realloc_or_die(E->bs, E->groups * sizeof(dist8_t));
     E->ks = realloc_or_die(E->ks, E->groups * sizeof(cond_dist256_t));
 
-    dist100_init      (&E->ms[E->groups - 1], E->decoder);
-    dist4_init        (&E->ts[E->groups - 1], E->decoder);
-    dist100_init      (&E->ls[E->groups - 1], E->decoder);
-    cond_dist128_init (&E->ds[E->groups - 1], 128 * 128, E->decoder);
-    dist100_init      (&E->ns[E->groups - 1], E->decoder);
-    dist8_init        (&E->bs[E->groups - 1], E->decoder);
-    cond_dist256_init (&E->ks[E->groups - 1], 8, E->decoder);
+    dist100_init      (&E->ms[E->groups - 1]);
+    dist4_init        (&E->ts[E->groups - 1]);
+    dist100_init      (&E->ls[E->groups - 1]);
+    cond_dist128_init (&E->ds[E->groups - 1], 128 * 128);
+    dist100_init      (&E->ns[E->groups - 1]);
+    dist8_init        (&E->bs[E->groups - 1]);
+    cond_dist256_init (&E->ks[E->groups - 1], 8);
 }
 
 

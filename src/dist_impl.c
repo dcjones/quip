@@ -5,29 +5,14 @@
 
 
 
-void dfun(init)(dist_t* D, bool decode)
+void dfun(init)(dist_t* D)
 {
-    if (decode && DISTSIZE > 16) {
-        D->dec = malloc_or_die((dec_size + 6) * sizeof(uint16_t));
-    }
-    else {
-        D->dec = NULL;
-    }
-
     D->update_delay = DISTSIZE * update_delay_factor;
 
     /* initialize to pseudocounts of 1 */
     size_t i;
     for (i = 0; i < DISTSIZE; ++i) D->xs[i].count = 1;
     dfun(update)(D);
-}
-
-
-
-void dfun(free)(dist_t* D)
-{
-    if (D == NULL) return;
-    free(D->dec);
 }
 
 
@@ -62,24 +47,12 @@ void dfun(update)(dist_t* D)
     /* update frequencies */
     const uint32_t scale = 0x80000000U / z;
     const uint32_t shift = 31 - dist_length_shift;
-    uint32_t j, w, c = 0;
+    uint32_t c = 0;
 
     for (i = 0; i < DISTSIZE; ++i) {
         D->xs[i].freq = (uint16_t) ((scale * c) >> shift);
         c += D->xs[i].count;
     }
-
-
-    /* update decoder table */
-    if (D->dec) {
-        for (i = 0, j = 0; i < DISTSIZE; ++i) {
-            w = D->xs[i].freq >> dec_shift;
-            while (j < w) D->dec[++j] = i - 1;
-        }
-        D->dec[0] = 0;
-        while (j < dec_size) D->dec[++j] = DISTSIZE - 1;
-    }
-
 
     D->update_delay = DISTSIZE * update_delay_factor;
 }
@@ -137,44 +110,25 @@ static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
     symb_t s, n, m;
     uint32_t z, x, y = ac->l;
 
-    if (D->dec) {
-        uint32_t dv = ac->v / (ac->l >>= dist_length_shift);
-        uint32_t t = dv >> dec_shift;
+    x = s = 0;
+    ac->l >>= dist_length_shift;
+    n = DISTSIZE;
+    m = n >> 1;
 
-        s = D->dec[t];
-        n = D->dec[t + 1] + 1;
-
-        /* binary search in [s, n] */
-        while (n > s + 1) {
-            m = (s + n) >> 1;
-            if (D->xs[m].freq > dv) n = m;
-            else                    s = m;
+    do {
+        z = ac->l * D->xs[m].freq;
+        if (z > ac->v) {
+            n = m;
+            y = z;
+        }
+        else {
+            s = m;
+            x = z;
         }
 
-        x = D->xs[s].freq * ac->l;
-        if (s != DISTSIZE - 1) y = D->xs[s + 1].freq * ac->l;
-    }
-    else {
-        x = s = 0;
-        ac->l >>= dist_length_shift;
-        n = DISTSIZE;
-        m = n >> 1;
+        m = (s + n) >> 1;
 
-        do {
-            z = ac->l * D->xs[m].freq;
-            if (z > ac->v) {
-                n = m;
-                y = z;
-            }
-            else {
-                s = m;
-                x = z;
-            }
-
-            m = (s + n) >> 1;
-
-        } while(m != s);
-    }
+    } while(m != s);
 
     ac->v -= x;
     ac->l = y - x;
@@ -195,18 +149,13 @@ symb_t dfun(decode)(ac_t* ac, dist_t* D)
 }
 
 
-void cdfun(init) (cond_dist_t* D, size_t n, bool decode)
+void cdfun(init) (cond_dist_t* D, size_t n)
 {
     D->n = n;
     D->xss   = malloc_or_die(n * sizeof(dist_t));
     D->update_rate = 1;
 
     D->xss[0].update_delay = DISTSIZE * update_delay_factor;
-    if (decode && DISTSIZE > 16) {
-        /* allocate enough memory for everyone */
-        D->xss[0].dec = malloc_or_die(n * (dec_size + 6) * sizeof(uint16_t));
-    }
-    else D->xss[0].dec = NULL;
 
     size_t i;
     for (i = 0; i < DISTSIZE; ++i) D->xss[0].xs[i].count = 1;
@@ -215,15 +164,6 @@ void cdfun(init) (cond_dist_t* D, size_t n, bool decode)
 
     for (i = 1; i < n; ++i) {
         memcpy(D->xss + i, D->xss, sizeof(dist_t));
-        D->xss[i].dec = NULL;
-    }
-
-    /* properly initialize the dec tables */
-    if (decode && DISTSIZE > 16) {
-        for (i = 1; i < n; ++i) {
-            D->xss[i].dec = D->xss[i - 1].dec + dec_size + 6;
-            memcpy(D->xss[i].dec, D->xss[i - 1].dec, (dec_size + 6) * sizeof(uint16_t));
-        }
     }
 }
 
@@ -232,7 +172,6 @@ void cdfun(free) (cond_dist_t* D)
 {
     if (D == NULL) return;
 
-    free(D->xss[0].dec);
     free(D->xss);
 }
 
@@ -254,9 +193,6 @@ void cdfun(setall) (cond_dist_t* D, const uint16_t* cs)
 
     for (i = 1; i < D->n; ++i) {
         memcpy(D->xss + i, D->xss, sizeof(dist_t));
-        if (D->xss[0].dec) {
-            memcpy(D->xss[i].dec, D->xss[i - 1].dec, (dec_size + 6) * sizeof(uint16_t));
-        }
     }
 }
 

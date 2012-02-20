@@ -23,9 +23,6 @@ typedef struct dfun(t_)
         uint16_t count;
         uint16_t freq;
     } xs[DISTSIZE];
-
-    /* decoder table */
-    uint16_t* dec;
 } dist_t;
 
 
@@ -33,8 +30,7 @@ typedef struct dfun(t_)
  * The structure is either allocated with the specify intent of either decoding
  * or encoding to save memory.
  * */
-void dfun(init) (dist_t*, bool decode);
-void dfun(free) (dist_t*);
+void dfun(init) (dist_t*);
 
 /* explicitly set the distiribution */
 void dfun(set) (dist_t*, const uint16_t* cs);
@@ -66,7 +62,7 @@ typedef struct cdfun(t_)
 } cond_dist_t;
 
 
-void cdfun(init) (cond_dist_t*, size_t n, bool decode);
+void cdfun(init) (cond_dist_t*, size_t n);
 void cdfun(free) (cond_dist_t*);
 
 void cdfun(set_update_rate) (cond_dist_t*, uint8_t);

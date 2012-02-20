@@ -81,20 +81,16 @@ struct seqenc_t_
 
     /* tallies of mismatches */
     uint16_t** mismatch_tally;
-
-    /* are we decoding */
-    bool decoder;
-
 };
 
 
 
-static void seqenc_init(seqenc_t* E, bool decoder)
+static void seqenc_init(seqenc_t* E)
 {
     size_t N = 1 << (2 * k);
     E->ctx_mask = N - 1;
 
-    cond_dist16_init(&E->cs, N, decoder);
+    cond_dist16_init(&E->cs, N);
 
     /* choose an initial distribution that is slightly more informed than
      * uniform */
@@ -108,39 +104,36 @@ static void seqenc_init(seqenc_t* E, bool decoder)
     size_t i;
     size_t N0 = 1;
     for (i = 0; i < prefix_len; ++i, N0 <<= 4) {
-        cond_dist16_init(&E->cs0[i], N0, decoder);
+        cond_dist16_init(&E->cs0[i], N0);
     }
 
 
-    dist2_init(&E->ms, decoder);
-    dist2_init(&E->ss, decoder);
+    dist2_init(&E->ms);
+    dist2_init(&E->ss);
 
-    dist4_init(&E->d_contig_idx_bytes, decoder);
-    cond_dist256_init(&E->d_contig_idx, 4, decoder);
+    dist4_init(&E->d_contig_idx_bytes);
+    cond_dist256_init(&E->d_contig_idx, 4);
 
-    dist4_init(&E->d_contig_off_bytes, decoder);
-    cond_dist256_init(&E->d_contig_off, 4, decoder);
+    dist4_init(&E->d_contig_off_bytes);
+    cond_dist256_init(&E->d_contig_off, 4);
 
 
     N = 1 << (2 * insert_nuc_k);
     E->ins_ctx_mask = N -1;
 
-    cond_dist4_init(&E->d_ins_nuc, N, decoder);
+    cond_dist4_init(&E->d_ins_nuc, N);
 
 
     N = 1 << (2 * edit_op_k);
     E->edit_op_mask = N - 1;
 
-    cond_dist4_init(&E->d_edit_op, N, decoder);
+    cond_dist4_init(&E->d_edit_op, N);
 
     E->contigs          = NULL;
     E->contig_lens      = NULL;
     E->contig_count     = 0;
     E->expected_contigs = 0;
     E->mismatch_tally   = NULL;
-
-
-    E->decoder = decoder;
 }
 
 
@@ -150,7 +143,7 @@ seqenc_t* seqenc_alloc_encoder(quip_writer_t writer, void* writer_data)
 
     E->ac = ac_alloc_encoder(writer, writer_data);
 
-    seqenc_init(E, false);
+    seqenc_init(E);
 
     return E;
 }
@@ -162,7 +155,7 @@ seqenc_t* seqenc_alloc_decoder(quip_reader_t reader, void* reader_data)
 
     E->ac = ac_alloc_decoder(reader, reader_data);
 
-    seqenc_init(E, true);
+    seqenc_init(E);
 
     return E;
 }
@@ -182,13 +175,7 @@ void seqenc_free(seqenc_t* E)
     free(E->cs0);
 
 
-    dist2_free(&E->ms);
-    dist2_free(&E->ss);
-
-    dist4_free(&E->d_contig_idx_bytes);
     cond_dist256_free(&E->d_contig_idx);
-
-    dist4_free(&E->d_contig_off_bytes);
     cond_dist256_free(&E->d_contig_off);
 
     cond_dist4_free(&E->d_ins_nuc);

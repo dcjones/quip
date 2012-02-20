@@ -34,9 +34,9 @@ struct qualenc_t_
 
 
 
-static void qualenc_init(qualenc_t* E, bool decode)
+static void qualenc_init(qualenc_t* E)
 {
-    cond_dist41_init(&E->cs, delta_bins * pos_bins * q3_bins * q2_bins * qual_size, decode);
+    cond_dist41_init(&E->cs, delta_bins * pos_bins * q3_bins * q2_bins * qual_size);
     cond_dist41_set_update_rate(&E->cs, 4);
 }
 
@@ -46,7 +46,7 @@ qualenc_t* qualenc_alloc_encoder(quip_writer_t writer, void* writer_data)
     qualenc_t* E = malloc_or_die(sizeof(qualenc_t));
     E->ac = ac_alloc_encoder(writer, writer_data);
 
-    qualenc_init(E, false);
+    qualenc_init(E);
 
     return E;
 }
@@ -57,7 +57,7 @@ qualenc_t* qualenc_alloc_decoder(quip_reader_t reader, void* reader_data)
     qualenc_t* E = malloc_or_die(sizeof(qualenc_t));
     E->ac = ac_alloc_decoder(reader, reader_data);
 
-    qualenc_init(E, true);
+    qualenc_init(E);
 
     return E;
 }
