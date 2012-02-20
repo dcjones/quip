@@ -25,9 +25,9 @@ static const uint8_t q_bin_map[41] =
 
 /* Map running deltas to a smaller alphabet size. */
 static const uint8_t delta_bin_map[41] =
-  {   0,  0,  0,  0,  0,  0,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,
-      3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  5,  5,  5,  5,  5,  6,
-      6,  6,  6,  6,  7,  7,  7,  7,  7 };
+  {   0,  1,  2,  3,  3,  4,  4,  4,  4,  5,  5,  5,  5,  5,  5,  6,
+      6,  6,  6,  6,  6,  6,  7,  7,  7,  7,  7,  7,  7,  7,  7,  7,
+      7,  7,  7,  7,  7,  7,  7,  7,  7 };
 
 
 struct qualenc_t_
@@ -107,7 +107,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
     qprev.ui64 = 0;
 
-    int delta = 6; 
+    int delta = 0; 
     int qdiff;
 
     char* qs = x->qual.s;
@@ -175,7 +175,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
 
     qprev.ui64 = 0;
 
-    int delta = 6; 
+    int delta = 0; 
     int qdiff;
 
     /* this is: ceil(n / pos_bins) */
