@@ -17,7 +17,7 @@
 typedef struct dfun(t_)
 {
     /* number of new observations until the distribution is updated */
-    uint32_t update_delay;
+    uint16_t update_delay;
 
     struct {
         uint16_t count;
@@ -43,10 +43,7 @@ void   dfun(encode)(ac_t*, dist_t*, symb_t);
 symb_t dfun(decode)(ac_t*, dist_t*);
 
 
-/* cache-conscious conditional distributions:
- * Once conditional distributions get very large, cache-misses become a huge
- * bottleneck. This implementation periodically rearranges to array so that
- * frequently used portions of the probability space are grouped together.
+/* Conditional probabilitie distribution.
  */
 
 typedef struct cdfun(t_)

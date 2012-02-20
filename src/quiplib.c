@@ -16,7 +16,7 @@ const size_t assembler_k = 30;
 const size_t aligner_k = 16;
 
 /* approximate number of bases per block */
-const size_t block_size = 100000000;
+const size_t block_size = 50000000;
 
 bool verbose = true;
 

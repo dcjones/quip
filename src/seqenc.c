@@ -27,7 +27,7 @@ static const size_t insert_nuc_k = 4;
 /* order of the markov-chain assigning probabilities to edit operations in
  * encoded alignment.s
  */
-static const size_t edit_op_k = 8;
+static const size_t edit_op_k = 6;
 
 
 struct seqenc_t_
@@ -210,6 +210,7 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
     size_t i = 0;
     size_t j = 0;
 
+#if 0
     for (i = 0; i < len; ++i) {
         if (x[i] == 'N') break;
     }
@@ -240,8 +241,10 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
     }
     /* no Ns, use a slightly more efficent loop */
     else {
+#endif
         for (i = 0; i < len - 1; i += 2) {
             uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
+            uv &= 0xf;
             cond_dist16_encode(E->ac, &E->cs, ctx, uv);
             ctx = ((ctx << 4) | uv) & E->ctx_mask;
         }
@@ -251,7 +254,7 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
             uv = chartokmer[(uint8_t) x[i]];
             cond_dist16_encode(E->ac, &E->cs, ctx, uv);
         }
-    }
+    /*}*/
 }
 
 

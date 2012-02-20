@@ -184,7 +184,7 @@ assembler_t* assembler_alloc(
         A->count_cutoff = 2;
 
         A->contigs_size = 512;
-        A->contigs_len = 0;
+        A->contigs_len  = 0;
         A->contigs = malloc_or_die(A->contigs_size * sizeof(twobit_t*));
 
         A->contig_aligners    = NULL;

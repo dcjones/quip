@@ -11,12 +11,16 @@
 /* Every quality encoding scheme uses ASCII charocters in [33, 104] */
 static const char   qual_last  = 40;
 static const size_t qual_size  = 41;
-static const size_t pos_bins   = 6;
-static const size_t q2_bins    = 12;
-static const size_t q3_bins    = 12;
+static const size_t pos_bins   = 4;
+static const size_t q_bins     = 16;
 static const size_t delta_bins = 8;
 static const int    delta_max  = 41;
 
+/* Map quality scores to a smaller alphabet size. */
+static const uint8_t q_bin_map[41] =
+  {  15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+     15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 14, 13, 12, 11, 10,
+      9,  8,  7,  6,  5,  4,  3,  2,  1 };
 
 struct qualenc_t_
 {
@@ -27,16 +31,15 @@ struct qualenc_t_
 
 #define cs_index(n, i, delta, q3, q2, q1) \
     (q1 + qual_size * (\
-            (qual_size - q2 >= q2_bins ? q2_bins - 1 : qual_size - q2) + q2_bins * (\
-                (qual_size - q3 >= q3_bins ? q3_bins - 1 : qual_size - q3) + q3_bins * (\
+            q_bin_map[(uint8_t) q2] + q_bins * (\
+                q_bin_map[(uint8_t) q3] + q_bins * (\
                     (delta * delta_bins / delta_max) + delta_bins * (\
                         (i * pos_bins) / n)))))
 
 
-
 static void qualenc_init(qualenc_t* E)
 {
-    cond_dist41_init(&E->cs, delta_bins * pos_bins * q3_bins * q2_bins * qual_size);
+    cond_dist41_init(&E->cs, delta_bins * pos_bins * q_bins * q_bins * qual_size);
     cond_dist41_set_update_rate(&E->cs, 4);
 }
 
@@ -84,7 +87,13 @@ static inline int intmin2(int a, int b)
 
 void qualenc_encode(qualenc_t* E, const seq_t* x)
 {
-    unsigned char qprev[4] = {0, 0, 0, 0};
+    union {
+        uint64_t ui64;
+        uint8_t  ui8[4];
+    } qprev;
+
+    qprev.ui64 = 0;
+
     int delta = 6; 
 
     char* qs = x->qual.s;
@@ -95,18 +104,15 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     for (i = 0; i < n; ++i) {
         cond_dist41_encode(E->ac, &E->cs,
                 cs_index(n, i, delta,
-                         charmax2(qprev[3], qprev[2]),
-                         qprev[1], qprev[0]), qs[i]);
+                         charmax2(qprev.ui8[3], qprev.ui8[2]),
+                         qprev.ui8[1], qprev.ui8[0]), qs[i]);
 
-
-        qprev[3] = qprev[2];
-        qprev[2] = qprev[1];
-        qprev[1] = qprev[0];
-        qprev[0] = qs[i];
-
-        if (qprev[1] > qprev[0]) {
-            delta = intmin2(delta_max - 1, delta + qprev[1] - qprev[0]);
+        if (qprev.ui8[0] > qs[i]) {
+            delta = intmin2(delta_max - 1, delta + qprev.ui8[0] - qs[i]);
         }
+
+        qprev.ui64 <<= 8;
+        qprev.ui8[0] = qs[i];
     }
 }
 
@@ -124,25 +130,29 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     qual->n = 0;
     char* qs = seq->qual.s;
 
-    unsigned char qprev[4] = {0, 0, 0, 0};
+    union {
+        uint64_t ui64;
+        uint8_t  ui8[4];
+    } qprev;
+
+    qprev.ui64 = 0;
+
     int delta = 6; 
 
     size_t i;
     for (i = 0; i < n; ++i) {
         qs[i] = cond_dist41_decode(E->ac, &E->cs,
                     cs_index(n, i, delta,
-                             charmax2(qprev[3], qprev[2]),
-                             qprev[1], qprev[0]));
+                             charmax2(qprev.ui8[3], qprev.ui8[2]),
+                             qprev.ui8[1], qprev.ui8[0]));
 
-        qprev[3] = qprev[2];
-        qprev[2] = qprev[1];
-        qprev[1] = qprev[0];
-        qprev[0] = qs[i];
-
-        
-        if (qprev[1] > qprev[0]) {
-            delta = intmin2(delta_max - 1, delta + qprev[1] - qprev[0]);
+        if (qprev.ui8[0] > qs[i]) {
+            delta = intmin2(delta_max - 1, delta + qprev.ui8[0] - qs[i]);
         }
+
+        qprev.ui64 <<= 8;
+        qprev.ui8[0] = qs[i];
+
     }
 
     qual->n = n;
