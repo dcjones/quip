@@ -16,13 +16,13 @@ kmer_t* complement8 = NULL;
 void kmer_init()
 {
     kmer_t x;
-    complement2 = malloc_or_die(0x100 * sizeof(kmer_t));
-    for (x = 0; x <= 0xff; ++x) {
+    complement2 = malloc_or_die(0x10 * sizeof(kmer_t));
+    for (x = 0; x <= 0xf; ++x) {
         complement2[x] = (complement1[x & 0x3] << 2) | complement1[(x >> 2)];
     }
 
 
-    complement4 = malloc_or_die(0x1000 * sizeof(kmer_t));
+    complement4 = malloc_or_die(0x100 * sizeof(kmer_t));
     for (x = 0; x <= 0xff; ++x) {
         complement4[x] = (complement2[x & 0xf] << 4) | complement2[x >> 4];
     }

@@ -1,5 +1,6 @@
 
 #include "seqenc.h"
+#include "seqenc_prior.h"
 #include "misc.h"
 #include "ac.h"
 #include "dist.h"
@@ -82,6 +83,27 @@ struct seqenc_t_
 };
 
 
+static void seqenc_setprior(seqenc_t* E)
+{
+    size_t N = 1 << (2 * seqenc_prior_k);
+    size_t M = 1 << (2 * (k - seqenc_prior_k));
+    size_t u;
+    size_t i;
+
+    for (u = 0; u < N; ++u) {
+        for (i = 0; i < 16; ++i) {
+            E->cs.xss[u].xs[i].count = seqenc_prior[(u << 4) + i];
+        }
+        dist16_update(&E->cs.xss[u]);
+
+        for (i = 1; i < M; ++i) {
+            memcpy(&E->cs.xss[(i << (2 * seqenc_prior_k)) | u],
+                   &E->cs.xss[u], sizeof(dist16_t));
+        }
+    }
+}
+
+
 
 static void seqenc_init(seqenc_t* E)
 {
@@ -92,10 +114,7 @@ static void seqenc_init(seqenc_t* E)
 
     /* choose an initial distribution that is slightly more informed than
      * uniform */
-    uint16_t cs_init[16] =
-        { 5, 2, 3, 4, 4, 3, 1, 3, 3, 2, 3, 2, 3, 3, 4, 5 };
-    cond_dist16_setall(&E->cs, cs_init);
-
+    seqenc_setprior(E);
 
     dist2_init(&E->ms);
     dist2_init(&E->ss);
