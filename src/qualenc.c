@@ -1,5 +1,6 @@
 
 #include "qualenc.h"
+#include "qualenc_prior.h"
 #include "ac.h"
 #include "dist.h"
 #include "misc.h"
@@ -45,10 +46,31 @@ struct qualenc_t_
              bin)))))
 
 
+
+static void qualenc_setprior(qualenc_t* E)
+{
+    size_t q0, q1;
+    for (q1 = 0; q1 < qual_size; ++q1) {
+        for (q0 = 0; q0 < qual_size; ++q0) {
+            E->cs.xss[q1].xs[q0].count = qualenc_prior[q1 * qual_size + q0];
+        }
+        dist41_update(&E->cs.xss[q1]);
+    }
+
+    size_t i;
+    for (i = 1; i < q_bins * q_bins * delta_bins * pos_bins; ++i) {
+        memcpy(&E->cs.xss[i * qual_size], &E->cs.xss[0],
+                qual_size * sizeof(dist41_t));
+    }
+}
+
+
 static void qualenc_init(qualenc_t* E)
 {
     cond_dist41_init(&E->cs, delta_bins * pos_bins * q_bins * q_bins * qual_size);
-    cond_dist41_set_update_rate(&E->cs, 4);
+    qualenc_setprior(E);
+
+    cond_dist41_set_update_rate(&E->cs, 6);
 }
 
 

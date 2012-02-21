@@ -17,6 +17,7 @@ quip_SOURCES = quip.c version.h \
 			   twobit.h      twobit.c \
 			   parse.h       parse.c \
 			   qualenc.h     qualenc.c \
+			   qualenc_prior.h qualenc_prior.c \
 			   quiplib.c     quip.h
 
 noinst_HEADERS = dist_impl.h dist_impl.c dist_template_on.h dist_template_off.h

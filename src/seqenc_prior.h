@@ -8,6 +8,5 @@
 extern const size_t   seqenc_prior_k;
 extern const uint16_t seqenc_prior[];
 
-
 #endif
 

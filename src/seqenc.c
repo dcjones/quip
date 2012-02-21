@@ -19,7 +19,7 @@ static const size_t k = 11;
 
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */
-static const size_t prefix_len = 2;
+static const size_t prefix_len = 4;
 
 /* Order of the markov chain assigning probabilities to inserted nucleotides in
  * alignments. */
@@ -42,6 +42,9 @@ struct seqenc_t_
 
     /* nucelotide probability given the last k nucleotides */
     cond_dist16_t cs;
+
+    /* special case models for the first 2 * prefix_les positions. */
+    cond_dist16_t cs0[5];
 
     /* binary distribution of unique (0) / match (1) */
     dist2_t ms;
@@ -112,9 +115,15 @@ static void seqenc_init(seqenc_t* E)
 
     cond_dist16_init(&E->cs, N);
 
+    size_t i;
+    for (i = 0; i < prefix_len; ++i) {
+        cond_dist16_init(&E->cs0[i], 1 << (4 * i));
+    }
+
     /* choose an initial distribution that is slightly more informed than
      * uniform */
     seqenc_setprior(E);
+    cond_dist16_set_update_rate(&E->cs, 2);
 
     dist2_init(&E->ms);
     dist2_init(&E->ss);
@@ -176,13 +185,17 @@ void seqenc_free(seqenc_t* E)
     ac_free(E->ac);
     cond_dist16_free(&E->cs);
 
+    size_t i;
+    for (i = 0; i < prefix_len; ++i) {
+        cond_dist16_free(&E->cs0[i]);
+    }
+
     cond_dist256_free(&E->d_contig_idx);
     cond_dist256_free(&E->d_contig_off);
 
     cond_dist4_free(&E->d_ins_nuc);
     cond_dist4_free(&E->d_edit_op);
 
-    size_t i;
     for (i = 0; i < E->contig_count; ++i) {
         twobit_free(E->contigs[i]);
         free(E->mismatch_tally[i]);
@@ -205,7 +218,13 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
     size_t i;
     uint32_t ctx = 0;
 
-    for (i = 0; i < n - 1; i += 2) {
+    for (i = 0; i < n - 1 && i / 2 < prefix_len; i += 2) {
+        uv = (twobit_get(x, i) << 2) | twobit_get(x, i + 1);
+        cond_dist16_encode(E->ac, &E->cs0[i/2], ctx, uv);
+        ctx = ((ctx << 4) | uv) & E->ctx_mask;
+    }
+
+    for (; i < n - 1; i += 2) {
         uv = (twobit_get(x, i) << 2) | twobit_get(x, i + 1);
         cond_dist16_encode(E->ac, &E->cs, ctx, uv);
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
@@ -259,7 +278,13 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
     }
     /* no Ns, use a slightly more efficent loop */
     else {
-        for (i = 0; i < len - 1; i += 2) {
+        for (i = 0; i < len - 1 && i / 2 < prefix_len; i += 2) {
+            uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
+            cond_dist16_encode(E->ac, &E->cs0[i/2], ctx, uv);
+            ctx = ((ctx << 4) | uv) & E->ctx_mask;
+        }
+
+        for (; i < len - 1; i += 2) {
             uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
             cond_dist16_encode(E->ac, &E->cs, ctx, uv);
             ctx = ((ctx << 4) | uv) & E->ctx_mask;
