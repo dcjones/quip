@@ -12,10 +12,8 @@
 const uint16_t mismatch_patch_factor = 5;
 const uint16_t mismatch_patch_cutoff = 5;
 
-
 /* Order of the markov chain assigning probabilities to dinucleotides. */
 static const size_t k = 11;
-
 
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */
@@ -29,6 +27,10 @@ static const size_t insert_nuc_k = 4;
  * encoded alignment.s
  */
 static const size_t edit_op_k = 6;
+
+/* The rate at which the nucleotide markov chain is updated. */
+static const size_t seq_update_rate = 2;
+
 
 
 struct seqenc_t_
@@ -114,16 +116,17 @@ static void seqenc_init(seqenc_t* E)
     E->ctx_mask = N - 1;
 
     cond_dist16_init(&E->cs, N);
+    cond_dist16_set_update_rate(&E->cs, seq_update_rate);
 
     size_t i;
     for (i = 0; i < prefix_len; ++i) {
         cond_dist16_init(&E->cs0[i], 1 << (4 * i));
+        cond_dist16_set_update_rate(&E->cs0[i], seq_update_rate);
     }
 
     /* choose an initial distribution that is slightly more informed than
      * uniform */
     seqenc_setprior(E);
-    cond_dist16_set_update_rate(&E->cs, 2);
 
     dist2_init(&E->ms);
     dist2_init(&E->ss);

@@ -8,6 +8,8 @@
 #include <string.h>
 #include <assert.h>
 
+/* The rate at which the quality markov chain is updated. */
+static const size_t qual_update_rate = 5;
 
 /* Every quality encoding scheme uses ASCII charocters in [33, 104] */
 static const char   qual_last  = 40;
@@ -70,7 +72,7 @@ static void qualenc_init(qualenc_t* E)
     cond_dist41_init(&E->cs, delta_bins * pos_bins * q_bins * q_bins * qual_size);
     qualenc_setprior(E);
 
-    cond_dist41_set_update_rate(&E->cs, 6);
+    cond_dist41_set_update_rate(&E->cs, qual_update_rate);
 }
 
 
