@@ -473,7 +473,16 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
         }
     }
     else {
-        for (i = 0; i < n - 1;) {
+        for (i = 0; i < n - 1 && i / 2 < prefix_len;) {
+            uv = cond_dist16_decode(E->ac, &E->cs0[i/2], ctx);
+            u = uv >> 2;
+            v = uv & 0x3;
+            x->seq.s[i++] = kmertochar[u];
+            x->seq.s[i++] = kmertochar[v];
+            ctx = ((ctx << 4) | uv) & E->ctx_mask;
+        }
+
+        while (i < n - 1) {
             uv = cond_dist16_decode(E->ac, &E->cs, ctx);
             u = uv >> 2;
             v = uv & 0x3;
