@@ -107,10 +107,37 @@ static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
         ac->init_state = false;
     }
 
-    /* Binary search to find the correct symbol. */
 
-    symb_t low_sym, hi_sym, mid_sym;
-    uint32_t low_val, hi_val, mid_val;
+    symb_t sym;
+    uint32_t low_val, hi_val;
+
+
+#if DISTSIZE < 16
+
+    /* linear search */
+
+    sym = DISTSIZE;
+    hi_val = ac->l;
+
+    ac->l >>= dist_length_shift;
+
+    do {
+        low_val = ac->l * D->xs[sym - 1].freq;
+
+        if (low_val <= ac->v || sym == 1) break;
+
+        hi_val = low_val;
+        --sym;
+    } while(true);
+
+    --sym;
+
+#else
+
+    /* binary search */
+
+    symb_t low_sym, mid_sym, hi_sym;
+    uint32_t mid_val;
 
     low_val = 0;
     hi_val  = ac->l;
@@ -136,16 +163,20 @@ static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
 
     } while(mid_sym != low_sym);
 
+    sym = low_sym;
+
+#endif
+
     ac->v -= low_val;
     ac->l = hi_val - low_val;
 
     if (ac->l < min_length) ac_renormalize_decoder(ac);
 
-    D->xs[mid_sym].count += update_rate;
+    D->xs[sym].count += update_rate;
 
     if (--D->update_delay == 0) dfun(update)(D);
 
-    return low_sym;
+    return sym;
 }
 
 
