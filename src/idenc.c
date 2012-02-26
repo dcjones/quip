@@ -124,13 +124,13 @@ void idenc_free(idenc_t* E)
         cond_dist256_free(&E->ks[i]);
     }
 
-    free_aligned(E->ms);
-    free_aligned(E->ts);
-    free_aligned(E->ls);
-    free_aligned(E->ds);
-    free_aligned(E->ns);
-    free_aligned(E->bs);
-    free_aligned(E->ks);
+    free(E->ms);
+    free(E->ts);
+    free(E->ls);
+    free(E->ds);
+    free(E->ns);
+    free(E->bs);
+    free(E->ks);
 
     free(E);
 }
@@ -139,33 +139,13 @@ void idenc_free(idenc_t* E)
 static void idenc_add_group(idenc_t* E)
 {
     E->groups++;
-    E->ms = realloc_aligned_or_die(E->ms,
-        (E->groups - 1) * sizeof(dist100_t),
-        E->groups       * sizeof(dist100_t));
-
-    E->ts = realloc_aligned_or_die(E->ts,
-        (E->groups - 1) * sizeof(dist4_t),
-        E->groups       * sizeof(dist4_t));
-
-    E->ls = realloc_aligned_or_die(E->ls,
-        (E->groups - 1) * sizeof(dist100_t),
-        E->groups       * sizeof(dist100_t));
-
-    E->ds = realloc_aligned_or_die(E->ds,
-        (E->groups - 1) * sizeof(cond_dist128_t),
-        E->groups       * sizeof(cond_dist128_t));
-
-    E->ns = realloc_aligned_or_die(E->ns,
-        (E->groups - 1) * sizeof(dist100_t),
-        E->groups       * sizeof(dist100_t));
-
-    E->bs = realloc_aligned_or_die(E->bs,
-        (E->groups - 1) * sizeof(dist8_t),
-        E->groups       * sizeof(dist8_t));
-
-    E->ks = realloc_aligned_or_die(E->ks,
-        (E->groups - 1) * sizeof(cond_dist256_t),
-        E->groups       * sizeof(cond_dist256_t));
+    E->ms = realloc_or_die(E->ms, E->groups * sizeof(dist100_t));
+    E->ts = realloc_or_die(E->ts, E->groups * sizeof(dist4_t));
+    E->ls = realloc_or_die(E->ls, E->groups * sizeof(dist100_t));
+    E->ds = realloc_or_die(E->ds, E->groups * sizeof(cond_dist128_t));
+    E->ns = realloc_or_die(E->ns, E->groups * sizeof(dist100_t));
+    E->bs = realloc_or_die(E->bs, E->groups * sizeof(dist8_t));
+    E->ks = realloc_or_die(E->ks, E->groups * sizeof(cond_dist256_t));
 
     dist100_init      (&E->ms[E->groups - 1]);
     dist4_init        (&E->ts[E->groups - 1]);

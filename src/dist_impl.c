@@ -112,80 +112,10 @@ static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
     uint32_t low_val, hi_val;
 
 
-#if DISTSIZE == 41
+#if DISTSIZE < 16
 
     /* linear search */
 
-    hi_val = ac->l;
-    ac->l >>= dist_length_shift;
-
-    __m128i fs, fs_low, fs_high, cmp1, cmp2, cmp3;
-    const __m128i low_mask = _mm_set1_epi32(0xffff);
-    const __m128i ls       = _mm_set1_epi32(ac->l);
-    const __m128i vs       = _mm_set1_epi32(ac->v);
-    const __m128i vs_low   = _mm_and_si128(vs, low_mask);
-    const __m128i vs_high  = _mm_srli_epi32(vs, 16);
-
-    symb_t low_sym = 0;
-    int cmpmask;
-
-    while (low_sym + 4 < DISTSIZE) {
-        /* load the next four frequencies */
-        fs = _mm_load_si128((__m128i*) (D->xs + low_sym));
-
-        /* mask out the counts */
-        fs = _mm_and_si128(fs, low_mask);
-
-        /* multiply by l */
-        fs = _mm_mullo_epi32(fs, ls);
-
-        /* compare to ac->v */
-
-        /* SSE provides no unsigned comparison operations so we have to
-           simulate one using signed comparisons on 16-bit halves. */
-        fs_high = _mm_srli_epi32(fs, 16);
-        fs_low  = _mm_and_si128(fs, low_mask);
-        cmp1 = _mm_cmpgt_epi32(fs_high, vs_high);
-        cmp2 = _mm_cmpeq_epi32(fs_high, vs_high);
-        cmp3 = _mm_cmpgt_epi32(fs_low, vs_low);
-        cmpmask = _mm_movemask_epi8(_mm_or_si128(cmp1, _mm_and_si128(cmp2, cmp3)));
-
-        if (cmpmask != 0) break;
-
-        low_sym += 4;
-    }
-
-    /* we now know that the correct value is one of the next four */
-    sym = low_sym;
-
-    uint32_t vals[4];
-
-    if (sym + 3 < DISTSIZE && (vals[3] = D->xs[sym + 3].freq * ac->l) <= ac->v) {
-        low_val = vals[3];
-        sym = low_sym + 3;
-    }
-    else if (sym + 2 < DISTSIZE && (vals[2] = D->xs[sym + 2].freq * ac->l) <= ac->v) {
-        hi_val  = vals[3];
-        low_val = vals[2];
-        sym = low_sym + 2;
-    }
-    else if (sym + 1 < DISTSIZE && (vals[1] = D->xs[sym + 1].freq * ac->l) <= ac->v) {
-        hi_val  = vals[2];
-        low_val = vals[1];
-        sym = low_sym + 1;
-    }
-    else if (sym + 0 < DISTSIZE && (vals[0] = D->xs[sym + 0].freq * ac->l) <= ac->v) {
-        hi_val  = vals[1];
-        low_val = vals[0];
-        sym = low_sym + 0;
-    }
-    else {
-        hi_val  = vals[0];
-        low_val = D->xs[sym - 1].freq * ac->l;
-        sym = low_sym - 1;
-    } 
-
-#if 0
     sym = DISTSIZE;
     hi_val = ac->l;
 
@@ -201,7 +131,6 @@ static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
     } while(true);
 
     --sym;
-#endif
 
 #else
 
@@ -260,7 +189,7 @@ symb_t dfun(decode)(ac_t* ac, dist_t* D)
 void cdfun(init) (cond_dist_t* D, size_t n)
 {
     D->n = n;
-    D->xss = malloc_aligned_or_die(n * sizeof(dist_t));
+    D->xss   = malloc_or_die(n * sizeof(dist_t));
     D->update_rate = 1;
 
     D->xss[0].update_delay = DISTSIZE * update_delay_factor;
@@ -280,7 +209,7 @@ void cdfun(free) (cond_dist_t* D)
 {
     if (D == NULL) return;
 
-    free_aligned(D->xss);
+    free(D->xss);
 }
 
 

@@ -16,21 +16,13 @@
 
 typedef struct dfun(t_)
 {
-    struct {
-        uint16_t freq;
-        uint16_t count;
-    } xs[DISTSIZE];
-
     /* number of new observations until the distribution is updated */
     uint16_t update_delay;
 
-
-/* We use SSE instructions to decode certain alphabet sizes. Doing this
- * efficiently requires alignment at 16-byte boundaries. Hence the padding. */
-#if defined(__SSE2__) && DISTSIZE == 41
-    uint8_t __padding__[10];
-#endif
-
+    struct {
+        uint16_t count;
+        uint16_t freq;
+    } xs[DISTSIZE];
 } dist_t;
 
 
@@ -40,7 +32,7 @@ typedef struct dfun(t_)
  * */
 void dfun(init) (dist_t*);
 
-/* explicitly set the distribution */
+/* explicitly set the distiribution */
 void dfun(set) (dist_t*, const uint16_t* cs);
 
 /* update distribution to reflect calls new observations */
@@ -51,7 +43,7 @@ void   dfun(encode)(ac_t*, dist_t*, symb_t);
 symb_t dfun(decode)(ac_t*, dist_t*);
 
 
-/* Conditional probability distribution.
+/* Conditional probabilitie distribution.
  */
 
 typedef struct cdfun(t_)

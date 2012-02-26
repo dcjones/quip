@@ -23,8 +23,6 @@
 #include "misc.h"
 #include <string.h>
 #include <assert.h>
-#include <emmintrin.h>
-#include <smmintrin.h>
 
 
 /* The distribution is updated every "initial_update_factor * n" new

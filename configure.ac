@@ -18,9 +18,9 @@ AC_TYPE_SIZE_T
 
 AC_HEADER_STDBOOL
 
-opt_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O3 -DNDEBUG -msse4.1"
+opt_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O3 -DNDEBUG"
 #opt_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O3 -DNDEBUG -march=corei7-avx"
-dbg_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O0 -msse4.1"
+dbg_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O0"
 
 AC_ARG_ENABLE([debug],
               [AS_HELP_STRING([--enable-debug],
