@@ -8,6 +8,8 @@
 
 #include "misc.h"
 #include <stdlib.h>
+#include <string.h>
+#include <emmintrin.h>
 
 
 
@@ -23,6 +25,7 @@ void or_die(int b, const char* msg)
 void* malloc_or_die(size_t n)
 {
     void* p = malloc(n);
+
     if (p == NULL) {
         fprintf(stderr, "Can not allocate %zu bytes.\n", n);
         exit(1);
@@ -34,11 +37,55 @@ void* malloc_or_die(size_t n)
 void* realloc_or_die(void* ptr, size_t n)
 {
     void* p = realloc(ptr, n);
+
     if (p == NULL) {
         fprintf(stderr, "Can not allocate %zu bytes.\n", n);
         exit(1);
     }
     return p;
+}
+
+
+void* malloc_aligned_or_die(size_t n)
+{
+#ifdef __SSE2__
+    void* p = _mm_malloc(n, 16);
+#else
+    void* p = malloc(n);
+#endif
+
+    if (p == NULL) {
+        fprintf(stderr, "Can not allocate %zu bytes.\n", n);
+        exit(1);
+    }
+    return p;
+}
+
+
+void* realloc_aligned_or_die(void* ptr, size_t oldn, size_t newn)
+{
+    #ifdef __SSE2__
+        void* p = _mm_malloc(newn, 16);
+        memcpy(p, ptr, oldn);
+        free_aligned(ptr);
+    #else
+        void* p = realloc(ptr, newn);
+    #endif
+
+    if (p == NULL) {
+        fprintf(stderr, "Can not allocate %zu bytes.\n", newn);
+        exit(1);
+    }
+    return p;
+}
+
+void free_aligned(void* ptr)
+{
+    #ifdef __SSE2__
+        _mm_free(ptr);
+    #else
+        free(ptr);
+    #endif
 }
 
 

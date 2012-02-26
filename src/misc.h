@@ -18,6 +18,12 @@ void or_die(int b, const char* msg);
 
 void* malloc_or_die(size_t);
 void* realloc_or_die(void*, size_t);
+
+/* Allocate blocks aligned to 16-bit boundaries if SSE2 is enabled. */
+void* malloc_aligned_or_die(size_t);
+void* realloc_aligned_or_die(void*, size_t oldn, size_t newn);
+void free_aligned(void*);
+
 FILE* fopen_or_die(const char*, const char*);
 
 uint32_t strhash(const char*, size_t len);
