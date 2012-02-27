@@ -17,7 +17,7 @@ ac_t* ac_alloc_encoder(quip_writer_t writer, void* writer_data)
     ac->b = 0;
     ac->l = max_length;
 
-    ac->buflen = 4096;
+    ac->buflen = 65536;
     ac->buf = malloc_or_die(ac->buflen * sizeof(uint8_t));
     ac->bufpos = 0;
 
