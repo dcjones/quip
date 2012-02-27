@@ -252,33 +252,3 @@ void fastq_rewind(fastq_t* fqf)
     fqf->c = fqf->buf;
 }
 
-
-void fastq_print(FILE* fout, seq_t* seq)
-{
-    size_t i;
-    for (i = 0; i < seq->qual.n; ++i) {
-        seq->qual.s[i] += qual_first;
-    }
-
-    /* FASTQ */
-    if (seq->qual.n > 0) {
-        fprintf(fout, "@%s\n%s\n+%s\n%s\n",
-                      seq->id1.s,
-                      seq->seq.s,
-                      seq->id2.s,
-                      seq->qual.s );
-    }
-
-    /* FASTA */
-    else {
-        fprintf(fout, ">%s\n%s\n",
-                      seq->id1.s,
-                      seq->seq.s );
-    }
-
-    for (i = 0; i < seq->qual.n; ++i) {
-        seq->qual.s[i] -= qual_first;
-    }
-}
-
-

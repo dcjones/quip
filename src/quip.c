@@ -27,6 +27,7 @@
 #endif
 
 
+static const char qual_first = 33;
 
 const char* prog_name;
 
@@ -93,6 +94,21 @@ static FILE* fopen_attempt(const char* fn, const char* mode)
 
 
     return NULL;
+}
+
+/* Note this function alters the input seq_t. Specifically, it
+ * rescales the quality scores to printable characters. */
+static void fastq_print(FILE* f, seq_t* seq)
+{
+    size_t i;
+    for (i = 0; i < seq->qual.n; ++i) {
+        seq->qual.s[i] += qual_first;
+    }
+
+    fprintf(f, "@%s\n%s\n+\n%s\n",
+            seq->id1.s,
+            seq->seq.s,
+            seq->qual.s);
 }
 
 
