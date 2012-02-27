@@ -116,28 +116,6 @@ static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
     uint32_t low_val, hi_val;
 
 
-#if DISTSIZE < 16
-
-    /* linear search */
-
-    sym = DISTSIZE;
-    hi_val = ac->l;
-
-    ac->l >>= dist_length_shift;
-
-    do {
-        low_val = ac->l * D->xs[sym - 1].freq;
-
-        if (low_val <= ac->v || sym == 1) break;
-
-        hi_val = low_val;
-        --sym;
-    } while(true);
-
-    --sym;
-
-#else
-
     /* binary search */
 
     symb_t low_sym, mid_sym, hi_sym;
@@ -168,8 +146,6 @@ static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
     } while(mid_sym != low_sym);
 
     sym = low_sym;
-
-#endif
 
     ac->v -= low_val;
     ac->l = hi_val - low_val;
