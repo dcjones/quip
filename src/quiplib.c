@@ -578,8 +578,12 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
 
         /* reset decoders */
         idenc_reset_decoder(D->idenc);
+        idenc_start_decoder(D->idenc);
+
         disassembler_reset(D->disassembler);
+
         qualenc_reset_decoder(D->qualenc);
+        qualenc_start_decoder(D->qualenc);
     }
 
     /* read length */

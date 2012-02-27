@@ -94,32 +94,8 @@ static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
 {
     prefetch(D);
 
-    if (ac->init_state) {
-        ac->bufavail = ac->reader(ac->reader_data, ac->buf, ac->buflen);
-
-        if (ac->bufavail < 4) {
-            fprintf(stderr, "Malformed compressed data encountered.");
-            exit(EXIT_FAILURE);
-        }
-
-        ac->v = ((uint32_t) ac->buf[0] << 24) | ((uint32_t) ac->buf[1] << 16) |
-                ((uint32_t) ac->buf[2] << 8)  | ((uint32_t) ac->buf[3]);
-
-        ac->l = max_length;
-
-        ac->bufpos = 4;
-        ac->init_state = false;
-    }
-
-
-    symb_t sym;
-    uint32_t low_val, hi_val;
-
-
-    /* binary search */
-
     symb_t low_sym, mid_sym, hi_sym;
-    uint32_t mid_val;
+    uint32_t low_val, mid_val, hi_val;
 
     low_val = 0;
     hi_val  = ac->l;
@@ -130,6 +106,7 @@ static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
 
     ac->l >>= dist_length_shift;
 
+    /* binary search */
     do {
         mid_val = ac->l * D->xs[mid_sym].freq;
         if (mid_val > ac->v) {
@@ -145,18 +122,16 @@ static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
 
     } while(mid_sym != low_sym);
 
-    sym = low_sym;
-
     ac->v -= low_val;
     ac->l = hi_val - low_val;
 
     if (ac->l < min_length) ac_renormalize_decoder(ac);
 
-    D->xs[sym].count += update_rate;
+    D->xs[low_sym].count += update_rate;
 
     if (--D->update_delay == 0) dfun(update)(D);
 
-    return sym;
+    return low_sym;
 }
 
 

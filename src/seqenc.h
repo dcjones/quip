@@ -37,6 +37,8 @@ void seqenc_flush(seqenc_t* E);
 void seqenc_prepare_decoder(seqenc_t* E, uint32_t n, const uint32_t* lens);
 
 void seqenc_decode(seqenc_t* E, seq_t* seq, size_t n);
+
+void seqenc_start_decoder(seqenc_t* E);
 void seqenc_reset_decoder(seqenc_t* E);
 
 

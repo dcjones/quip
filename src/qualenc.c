@@ -245,6 +245,12 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
 }
 
 
+void qualenc_start_decoder(qualenc_t* E)
+{
+    ac_start_decoder(E->ac);
+}
+
+
 void qualenc_reset_decoder(qualenc_t* E)
 {
     ac_reset_decoder(E->ac);

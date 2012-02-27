@@ -46,8 +46,6 @@ ac_t* ac_alloc_decoder(quip_reader_t reader, void* reader_data)
     ac->reader = reader;
     ac->reader_data = reader_data;
 
-    ac->init_state = true;
-
     return ac;
 }
 
@@ -173,11 +171,28 @@ void ac_flush_encoder(ac_t* ac)
 }
 
 
+void ac_start_decoder(ac_t* ac)
+{
+    ac->bufavail = ac->reader(ac->reader_data, ac->buf, ac->buflen);
+
+    if (ac->bufavail < 4) {
+        fprintf(stderr, "Malformed compressed data encountered.");
+        exit(EXIT_FAILURE);
+    }
+
+    ac->v = ((uint32_t) ac->buf[0] << 24) | ((uint32_t) ac->buf[1] << 16) |
+    ((uint32_t) ac->buf[2] << 8)  | ((uint32_t) ac->buf[3]);
+
+    ac->l = max_length;
+
+    ac->bufpos = 4;
+}
+
+
 void ac_reset_decoder(ac_t* ac)
 {
     ac->bufpos = 0;
     ac->bufavail = 0;
-    ac->init_state = true;
 }
 
 

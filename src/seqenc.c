@@ -695,6 +695,13 @@ static void patch_mismatches(seqenc_t* E)
     if (verbose) fprintf(stderr, "\t%zu mismatches flipped.\n", flip_cnt);
 }
 
+
+void seqenc_start_decoder(seqenc_t* E)
+{
+    ac_start_decoder(E->ac);
+}
+
+
 void seqenc_reset_decoder(seqenc_t* E)
 {
     patch_mismatches(E);

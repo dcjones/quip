@@ -909,6 +909,8 @@ void disassembler_read(disassembler_t* D, seq_t* x, size_t n)
 
         free(contig_lens);
 
+        seqenc_start_decoder(D->seqenc);
+
         D->init_state = false;
     }
 

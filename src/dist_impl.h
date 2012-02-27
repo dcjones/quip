@@ -32,7 +32,7 @@ typedef struct dfun(t_)
  * */
 void dfun(init) (dist_t*);
 
-/* explicitly set the distiribution */
+/* explicitly set the distribution */
 void dfun(set) (dist_t*, const uint16_t* cs);
 
 /* update distribution to reflect calls new observations */
@@ -43,7 +43,7 @@ void   dfun(encode)(ac_t*, dist_t*, symb_t);
 symb_t dfun(decode)(ac_t*, dist_t*);
 
 
-/* Conditional probabilitie distribution.
+/* Conditional probability distribution.
  */
 
 typedef struct cdfun(t_)

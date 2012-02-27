@@ -47,9 +47,6 @@ typedef struct ac_t_
     /* callback function for decoder input */
     quip_reader_t reader;
     void* reader_data;
-
-    /* initial state: used when decoding */
-    bool init_state;
 } ac_t;
 
 extern const uint32_t min_length;
@@ -62,6 +59,10 @@ void  ac_free(ac_t*);
 
 /* Choose the final code value. */
 void ac_flush_encoder(ac_t*);
+
+/* This must be called following a call to alloc_decoder or
+ * reset_decoder prior to  any symbols are decoded. */
+void ac_start_decoder(ac_t*);
 
 /* Start over decoding. */
 void ac_reset_decoder(ac_t*);

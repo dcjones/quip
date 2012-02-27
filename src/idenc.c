@@ -476,6 +476,12 @@ decode_loop_end:
 }
 
 
+void idenc_start_decoder(idenc_t* E)
+{
+    ac_start_decoder(E->ac);
+}
+
+
 void idenc_reset_decoder(idenc_t* E)
 {
     ac_reset_decoder(E->ac);
