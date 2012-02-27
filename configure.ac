@@ -18,8 +18,22 @@ AC_TYPE_SIZE_T
 
 AC_HEADER_STDBOOL
 
+# Check if the compiler has a builtin prefetch function
+AC_LANG(C)
+AC_MSG_CHECKING([for __builtin_prefetch])
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM(
+    [[#include<stdlib.h>]],
+    [[__builtin_prefetch(NULL);]])],
+  [
+    AC_MSG_RESULT([yes])
+    AC_DEFINE_UNQUOTED([HAVE_PREFETCH], 1, [Define to 1 if you have the `__builtin_prefetch' function.] ) ],
+  [
+    AC_MSG_RESULT([no])
+    AC_DEFINE_UNQUOTED([HAVE_PREFETCH], 0, [Define to 1 if you have the `__builtin_prefetch' function.] ) ],
+  ])
+
 opt_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O3 -DNDEBUG"
-#opt_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O3 -DNDEBUG -march=corei7-avx"
 dbg_CFLAGS="--std=c99 -Wall -Wextra -pedantic -g -O0"
 
 AC_ARG_ENABLE([debug],

@@ -60,6 +60,8 @@ void dfun(update)(dist_t* D)
 
 static void dfun(encode2)(ac_t* ac, dist_t* D, symb_t x, uint8_t update_rate)
 {
+    prefetch(D);
+
     uint32_t b0 = ac->b;
 
     uint32_t u;
@@ -90,6 +92,8 @@ void dfun(encode)(ac_t* ac, dist_t* D, symb_t x)
 
 static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
 {
+    prefetch(D);
+
     if (ac->init_state) {
         ac->bufavail = ac->reader(ac->reader_data, ac->buf, ac->buflen);
 
