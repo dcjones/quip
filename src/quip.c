@@ -154,6 +154,11 @@ static int quip_compress(char** fns, size_t fn_count)
                 free(out_fn);
             }
 
+            /* We do our own buffering, so we use unbuffered
+             * streams to avoid unnecessary copying. */
+            setvbuf(fin,  NULL, _IONBF, 0);
+            setvbuf(fout, NULL, _IONBF, 0);
+
             C = quip_comp_alloc(block_writer, fout, quick_flag);
 
             fq = fastq_open(fin);
@@ -186,6 +191,9 @@ static int quip_decompress(char** fns, size_t fn_count)
     char* out_fn = NULL;
     size_t fn_len;
     size_t i;
+
+    const size_t outbuf_size = 1048576;
+    char* outbuf = malloc_or_die(outbuf_size * sizeof(char));
 
     seq_t* r = fastq_alloc_seq();
     quip_decompressor_t* D;
@@ -224,6 +232,18 @@ static int quip_decompress(char** fns, size_t fn_count)
                 free(out_fn);
             }
 
+            /* We do our own buffering for input, so we
+             * use unbuffered streams to avoid unnecessary
+             * copying. */
+            setvbuf(fin,  NULL, _IONBF, 0);
+
+            /* Output streams to benefit from buffering.
+             * We use a very large to hopefully improve the
+             * throughput of many small writes.
+             */
+            setvbuf(fin, outbuf, _IOFBF, outbuf_size);
+
+
             D = quip_decomp_alloc(block_reader, fin);
 
             while (quip_decomp_read(D, r)) {
@@ -241,6 +261,7 @@ static int quip_decompress(char** fns, size_t fn_count)
 
 
     fastq_free_seq(r);
+    free(outbuf);
 
     return EXIT_SUCCESS;
 }

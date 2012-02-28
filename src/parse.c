@@ -15,7 +15,7 @@
 static const char   qual_first = 33;
 
 static const size_t init_str_size  = 128;
-static const size_t fastq_buf_size = 4096;
+static const size_t fastq_buf_size = 1048576;
 
 static void fastq_alloc_str(str_t* s)
 {
