@@ -52,6 +52,8 @@ AC_DEFINE([_FILE_OFFSET_BITS], [64],
 AC_CHECK_FUNC(fileno, ,
               AC_MSG_ERROR([The 'fileno' function is missing.]))
 
+AC_CHECK_FUNCS(isatty)
+
 AC_CHECK_HEADER(getopt.h, ,
                 AC_MSG_ERROR([The posix getopt.h header is needed.]))
 

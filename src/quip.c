@@ -31,10 +31,10 @@ static const char qual_first = 33;
 
 const char* prog_name;
 
+bool force_flag      = false;
 bool quick_flag      = false;
 bool stdout_flag     = false;
 bool decompress_flag = false;
-
 
 
 void print_help()
@@ -44,8 +44,9 @@ void print_help()
 "Compress or decompress FASTQ sequence files with extreme prejudice.\n\n"
 "  -d, --decompress   decompress\n"
 "  -c, --stdout       write on standard output\n"
-"  -q, --quick        compress much quicker, at a slightly lower compression ratio\n"
-"  -v, --verbose      output lots of useless information\n"
+"  -f, --force        allow overwriting of output files, etc\n"
+"  -q, --quick        compress quicker, at a lower compression ratio\n"
+"  -v, --verbose      output a great deal of useless information\n"
 "  -h, --help         print this message\n"
 "  -V, --version      display program version\n\n"
 "Report bugs to <dcjones@cs.washington.edu>.\n");
@@ -115,6 +116,16 @@ static int quip_compress(char** fns, size_t fn_count)
     if (stdout_flag) {
         SET_BINARY_MODE(stdout);
     }
+
+#ifdef HAVE_ISATTY
+    if (!force_flag && (stdout_flag || fn_count == 0)) {
+        fprintf(stderr,
+            "%s: refusing to write compressed data to your terminal screen.\n\n"
+            "Use -f is you really want to do this. (Hint: you don't.)\n",
+            prog_name);
+        return EXIT_FAILURE;
+    }
+#endif
 
     const char* fn;
     char* out_fn;
@@ -274,6 +285,8 @@ int main(int argc, char* argv[])
         {"quick",      no_argument, NULL, 'q'},
         {"stdout",     no_argument, NULL, 'c'},
         {"decompress", no_argument, NULL, 'd'},
+        {"uncompress", no_argument, NULL, 'd'},
+        {"force",      no_argument, NULL, 'f'},
         {"verbose",    no_argument, NULL, 'v'},
         {"help",       no_argument, NULL, 'h'},
         {"version",    no_argument, NULL, 'V'},
@@ -292,7 +305,7 @@ int main(int argc, char* argv[])
     }
 
     while (1) {
-        opt = getopt_long(argc, argv, "qcdvhV", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "qcdfvhV", long_options, &opt_idx);
 
         if (opt == -1) break;
 
@@ -307,6 +320,10 @@ int main(int argc, char* argv[])
 
             case 'd':
                 decompress_flag = true;
+                break;
+
+            case 'f':
+                force_flag = true;
                 break;
 
             case 'v':
