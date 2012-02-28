@@ -34,7 +34,6 @@ const char* prog_name;
 bool quick_flag      = false;
 bool stdout_flag     = false;
 bool decompress_flag = false;
-bool keep_flag       = true;
 
 
 
@@ -43,10 +42,9 @@ void print_help()
     printf(
 "Usage: quip [OPTION]... [FILE]...\n"
 "Compress or decompress FASTQ sequence files with extreme prejudice.\n\n"
-"  -q, --quick        compress much quicker, at a slightly lower compression ratio\n"
-"  -c, --stdout       write on standard output, keep original files unchanged\n"
 "  -d, --decompress   decompress\n"
-"  -k, --keep         do not delete the input file(s)\n"
+"  -c, --stdout       write on standard output\n"
+"  -q, --quick        compress much quicker, at a slightly lower compression ratio\n"
 "  -v, --verbose      output lots of useless information\n"
 "  -h, --help         print this message\n"
 "  -V, --version      display program version\n\n"
@@ -276,7 +274,6 @@ int main(int argc, char* argv[])
         {"quick",      no_argument, NULL, 'q'},
         {"stdout",     no_argument, NULL, 'c'},
         {"decompress", no_argument, NULL, 'd'},
-        {"keep",       no_argument, NULL, 'k'},
         {"verbose",    no_argument, NULL, 'v'},
         {"help",       no_argument, NULL, 'h'},
         {"version",    no_argument, NULL, 'V'},
@@ -295,7 +292,7 @@ int main(int argc, char* argv[])
     }
 
     while (1) {
-        opt = getopt_long(argc, argv, "qcdkvhV", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "qcdvhV", long_options, &opt_idx);
 
         if (opt == -1) break;
 
@@ -310,10 +307,6 @@ int main(int argc, char* argv[])
 
             case 'd':
                 decompress_flag = true;
-                break;
-
-            case 'k':
-                keep_flag = true;
                 break;
 
             case 'v':

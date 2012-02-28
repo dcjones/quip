@@ -1,0 +1,110 @@
+.TH QUIP 1 "February 27, 2012" "Quip"
+.SH NAME
+quip, unquip
+.SH SYNOPSIS
+.PP
+quip [\f[I]options\f[]] [\f[I]input.fastq\f[]]...
+.SH DESCRIPTION
+.PP
+.I Quip
+compresses DNA/RNA sequencing data in the FASTQ format using an extremely
+efficient assembly algorithm and specialized statistical modeling. It works
+only on FASTQ data and cannot be applied to anything else.
+.PP
+When invoked, \f[I]quip\f[] will compress a file and write the compressed data to a
+new file with the suffix \f[I].qp\f[] added, leaving the original file intact
+(contrary to the default gzip/bzi2 behavior). Similarly, \f[I]uquip\f[] will take a
+file compressed with quip and write uncompressed output to a new file with the
+\f[I].qp\f[] suffix removed. If no input file is provided, data is read from standard input.
+.PP
+Quip will not clobber output files unless the \f[I]--force\f[] option is supplied.
+.SH OPTIONS
+.TP
+.B \-d, --decompress, --uncompress
+Decompress a compressed FASTQ file. Compression is the default, unless the program is
+invoked as \f[I]unquip\f[].
+.TP
+.B \-c, --stdout
+Print output to standard out.
+.TP
+.B /-f, --force
+Force compression or decompression even if this would involve writing binary
+data to a terminal, clobbering an existing file, or decompressing a file
+that does not have a \f[I].qp\f[] suffix.
+.TP
+.B \-q, --quick
+Skip the assembly step of the compression algorithm, saving time at
+the cost of a larger compressed file. This option is ignored when decompressing:
+files compressed with and without the \f[I]-q\f[] switch are in the same format
+and no special handling is needed to decompress them.
+.TP
+.B \-v, --verbose
+While running, print a great deal of information that is of no use unless you
+are debugging Quip or just curious about how it works.
+.TP
+.B \-V, --version
+Print some information about the program version.
+.TP
+.B \-h, --help
+Print brief usage instructions.
+
+.SH OPTIMIZING COMPRESSION
+.PP
+Quip will work on all sequencing data in the FASTQ format, but for those concerned
+about maximizing the level of compression, some simple advice can be followed when
+in comes to the input data.
+.PP
+Most importantly, data from separate sources should never be concatenated and
+compressed into one file. Quip assembles reads into contigs and builds a
+statistical model that tightly fits the data. Mixing data from multiple
+samples or sequencing protocols could drastically diminish the effectiveness
+of both of these strategies. If a single archive file is desired, we recommend
+running quip separately on each of the files then using the Unix \f[I]tar\f[]
+command to combine these compressed files into one archive. (Note: There is no
+added benefit to subsequently compressing this tar file with gzip/bzip2.)
+.PP
+Often with data in the FASTQ format, a significant amount of space is used by
+highly redundant read identifiers. Quip works hard to locate and compress out
+this redundancy, drastically reducing the size of IDs, so much so that it is
+not necessary or advisable to remove IDs, but their formatting can make a
+significant difference.
+.PP
+If numbers are used in the read IDs, compression will benefit greatly if they
+are sequentially increasing in a predictable way. Moreover, it is best not to
+pad numbers with leading zeros or spaces. Separate pieces of information in
+the ID (e.g., machine name, tile coordinates) should ideally be delimited by a
+non-alphanumeric character, such as a space or comma, so that they can be
+compressed using separate models.
+.PP
+Some have proposed transformations to FASTQ data to increase the compression
+ratio. These are largely targeted towards optimizing compression in programs
+using the Lempel-Ziv algorithm, such as gzip. Quip is not one these
+programs, and will not benefit from these transformations. The algorithms
+used in Quip are highly tuned to work with unadulterated, untransformed
+FASTQ data.
+.PP
+Along similar lines, sorting or reordering reads is unlikely to improve
+the compression ratio, and is not recommended.
+
+.SH BUGS AND LIMITATIONS
+.PP
+Just in case some poor bastard has read this far and still doesn't get it:
+\f[B]Quip is not a general purpose compression program.\f[] It will not
+compress files that are not in the FASTQ format.
+.PP
+Quip will not compress AB SOLiD colorspace data.
+.PP
+Quip only supports quality scores on Phred+33 scale, which is not
+compatible with certain versions of the Illumina platform.
+.PP
+In certain versions of FASTQ, the read ID is printed twice: before the
+sequence and before the quality scores. This is a profoundly idiotic idea that
+has thankfully fallen out of use. Quip will read data in this format, but will
+ignore the second listing of the read ID.
+.PP
+Quip does not very aggressively check that the input data is in the correct
+format, which is a dangerous and should be remedied.
+
+.SH AUTHOR
+Quip was conceived and written by Daniel C. Jones <dcjones@cs.washington.edu>
+and grievances should thusly be addressed.
