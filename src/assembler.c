@@ -116,7 +116,7 @@ struct assembler_t_
     /* allocated size of the contigs array */
     size_t contigs_size;
 
-    /* number of contigs stored in the contigs arary */
+    /* number of contigs stored in the contigs array */
     size_t contigs_len;
 
     /* should we try attempt to assemble contigs with the current batch of reads
@@ -729,7 +729,7 @@ static void align_to_contigs(assembler_t* A,
 
 
 
-/* Count the number of occurences of each k-mer in the array of reads xs, of
+/* Count the number of occurrences of each k-mer in the array of reads xs, of
  * length n. */
 static void count_kmers(assembler_t* A, seqset_value_t* xs, size_t n)
 {
@@ -771,7 +771,7 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
         make_contig(A, xs[i].seq.tb, contig);
 
-        /* skip overy terribly short contigs */
+        /* skip over terribly short contigs */
         len = twobit_len(contig);
         if (len < twobit_len(xs[i].seq.tb) + A->assemble_k) {
             
