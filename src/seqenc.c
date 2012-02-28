@@ -692,7 +692,7 @@ static void patch_mismatches(seqenc_t* E)
         memset(E->mismatch_tally[i], 0, 4 * len * sizeof(uint16_t));
     }
 
-    if (verbose) fprintf(stderr, "\t%zu mismatches flipped.\n", flip_cnt);
+    if (quip_verbose) fprintf(stderr, "\t%zu mismatches flipped.\n", flip_cnt);
 }
 
 

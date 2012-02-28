@@ -27,7 +27,7 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t, void* reader_data);
 void                 quip_decomp_free(quip_decompressor_t*);
 bool                 quip_decomp_read(quip_decompressor_t*, seq_t*);
 
-extern bool verbose;
+extern bool quip_verbose;
 
 #endif
 

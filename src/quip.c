@@ -18,13 +18,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(MSDOS) || defined(OS2) || defined(WIN32) || defined(__CYGWIN__)
-#  include <fcntl.h>
-#  include <io.h>
-#  define SET_BINARY_MODE(file) setmode(fileno(file), O_BINARY)
-#else
-#  define SET_BINARY_MODE(file)
-#endif
+#include <fcntl.h>
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif 
 
 
 static const char qual_first = 33;
@@ -35,7 +32,6 @@ bool force_flag      = false;
 bool quick_flag      = false;
 bool stdout_flag     = false;
 bool decompress_flag = false;
-
 
 void print_help()
 {
@@ -64,36 +60,99 @@ static void block_writer(void* param, const uint8_t* data, size_t datalen)
     fwrite(data, 1, datalen, (FILE*) param);
 }
 
+
 static size_t block_reader(void* param, uint8_t* data, size_t datalen)
 {
     return fread(data, 1, datalen, (FILE*) param);
 }
 
-
-
-/* Call fopen, and print an appropriate error message if need be. */
-static FILE* fopen_attempt(const char* fn, const char* mode)
+/* Prompt the user for a yes/no question. */
+static bool yesno()
 {
-    FILE* f = fopen(fn, mode);
-    if (f) return f;
+    int c = getchar();
+    bool yes = c == 'y' || c == 'Y';
+    while (c != '\n' && c != EOF) c = getchar();
+
+    return yes;
+}
 
 
-    switch (errno) {
-        case EACCES:
-            fprintf(stderr, "%s: %s: Permission denied.\n", prog_name, fn);
-            break;
+/* Open an input file, or die trying */
+static FILE* open_fin(const char* fn)
+{
+    int fd = open(fn, O_RDONLY | O_NOCTTY | O_BINARY);
 
-        case ENOENT:
-            fprintf(stderr, "%s: %s: No such file.\n", prog_name, fn);
-            break;
+    if (fd == -1) {
+        switch (errno) {
+            case EACCES:
+                fprintf(stderr, "%s: %s: Permission denied.\n", prog_name, fn);
+                break;
 
-        default:
-            fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, fn);
+            default:
+                fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, fn);
+        }
+
+        return NULL;
     }
 
+    FILE* f = fdopen(fd, "rb");
 
-    return NULL;
+    if (f == NULL) {
+        fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, fn);
+        close(fd);
+        return NULL;
+    }
+
+    return f;
 }
+
+
+/* Open an output file, or die trying */
+static FILE* open_fout(const char* fn, bool force)
+{
+    int fd = open(fn, O_WRONLY | O_CREAT | O_BINARY | (force ? 0 : O_EXCL),
+                      S_IRUSR | S_IWUSR);
+
+    if (fd == -1) {
+        switch (errno) {
+            case EEXIST:
+                fprintf(stderr, "%s: %s: File already exists.\n", prog_name, fn);
+
+#if HAVE_ISATTY
+                if (isatty(fileno(stdin))) {
+                    fprintf(stderr, "Would you like to overwrite it (y or n)? ");
+                    fflush(stderr);
+                    if (yesno()) return open_fout(fn, true);
+                }
+#endif
+
+                break;
+
+            case EACCES:
+                fprintf(stderr, "%s: %s: Permission denied.\n", prog_name, fn);
+                break;
+
+            default:
+                fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, fn);
+
+        }
+
+        return NULL;
+    }
+
+    FILE* f = fdopen(fd, "wb");
+
+    if (f == NULL) {
+        fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, fn);
+        close(fd);
+        return NULL;
+    }
+
+    return f;
+}
+
+
+
 
 /* Note this function alters the input seq_t. Specifically, it
  * rescales the quality scores to printable characters. */
@@ -118,7 +177,7 @@ static int quip_compress(char** fns, size_t fn_count)
     }
 
 #ifdef HAVE_ISATTY
-    if (!force_flag && (stdout_flag || fn_count == 0)) {
+    if (!force_flag && (stdout_flag || fn_count == 0) && isatty(fileno(stdout))) {
         fprintf(stderr,
             "%s: refusing to write compressed data to your terminal screen.\n\n"
             "Use -f is you really want to do this. (Hint: you don't.)\n",
@@ -152,15 +211,20 @@ static int quip_compress(char** fns, size_t fn_count)
     else {
         for (i = 0; i < fn_count; ++i) {
             fn = fns[i];
-            fin = fopen_attempt(fn, "rb");
+            fin = open_fin(fn);
             if (!fin) continue;
 
             if (stdout_flag) fout = stdout;
             else {
                 out_fn = malloc_or_die((strlen(fn) + 4) * sizeof(char));
                 sprintf(out_fn, "%s.qp", fn);
-                fout = fopen_attempt(out_fn, "wb");
+                fout = open_fout(out_fn, force_flag);
                 free(out_fn);
+
+                if (fout == NULL) {
+                    fclose(fin);
+                    continue;
+                }
             }
 
             /* We do our own buffering, so we use unbuffered
@@ -228,7 +292,7 @@ static int quip_decompress(char** fns, size_t fn_count)
                 continue;
             }
 
-            fin = fopen_attempt(fn, "rb");
+            fin = open_fin(fn);
             if (!fin) continue;
 
             if (stdout_flag) fout = stdout;
@@ -236,10 +300,15 @@ static int quip_decompress(char** fns, size_t fn_count)
                 out_fn = malloc_or_die((fn_len - 2) * sizeof(char));
                 memcpy(out_fn, fn, fn_len - 3);
                 out_fn[fn_len - 2] = '\0';
-                // TODO: test for clobber
-                fout = fopen_attempt(out_fn, "wb");
+                fout = open_fout(out_fn, force_flag);
                 free(out_fn);
+
+                if (fout == NULL) {
+                    fclose(fin);
+                    continue;
+                }
             }
+
 
             /* We do our own buffering for input, so we
              * use unbuffered streams to avoid unnecessary
@@ -327,7 +396,7 @@ int main(int argc, char* argv[])
                 break;
 
             case 'v':
-                verbose = true;
+                quip_verbose = true;
                 break;
 
             case 'h':

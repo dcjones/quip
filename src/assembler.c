@@ -315,7 +315,7 @@ static void patch_mismatches(assembler_t* A)
         memset(A->mismatch_tally[i], 0, 4 * len * sizeof(uint16_t));
     }
 
-    if (verbose) fprintf(stderr, "\t%zu mismatches flipped.\n", flip_cnt);
+    if (quip_verbose) fprintf(stderr, "\t%zu mismatches flipped.\n", flip_cnt);
 
     /* rebuild index */
     build_kmer_hash(A);
@@ -654,7 +654,7 @@ static void build_kmer_hash(assembler_t* A)
 
 static void index_contigs(assembler_t* A)
 {
-    fprintf(stderr, "indexing contigs ... ");
+    if (quip_verbose) fprintf(stderr, "indexing contigs ... ");
 
     build_kmer_hash(A);
 
@@ -683,7 +683,7 @@ static void index_contigs(assembler_t* A)
                 4 * twobit_len(A->contigs[i]) * sizeof(uint16_t));
     }
 
-    fprintf(stderr, "done.\n");
+    if (quip_verbose) fprintf(stderr, "done.\n");
 }
 
 
@@ -692,7 +692,7 @@ static void index_contigs(assembler_t* A)
 static void align_to_contigs(assembler_t* A,
                              seqset_value_t* xs, size_t xs_len)
 {
-    if (verbose) fprintf(stderr, "aligning reads to contigs ...\n");
+    if (quip_verbose) fprintf(stderr, "aligning reads to contigs ...\n");
 
     /* Sort reads by index. Afterwards xs[i].idx == i should be true for every
      * i, where 0 <= i < xs_len */
@@ -715,15 +715,16 @@ static void align_to_contigs(assembler_t* A,
         }
     }
 
-    if (verbose) {
+    if (quip_verbose) {
         fprintf(stderr,
                 "\t%zu / %zu [%0.2f%%] reads aligned to contigs (%0.2f%% aborted)\n",
                 aln_count, (size_t) A->N,
                 100.0 * (double) aln_count / (double) A->N,
                 100.8 * (double) aborted_aln_count / (double) A->N);
+
+        fprintf(stderr, "done.\n");
     }
 
-    if (verbose) fprintf(stderr, "done.\n");
 }
 
 
@@ -732,7 +733,7 @@ static void align_to_contigs(assembler_t* A,
  * length n. */
 static void count_kmers(assembler_t* A, seqset_value_t* xs, size_t n)
 {
-    if (verbose) fprintf(stderr, "counting k-mers ... ");
+    if (quip_verbose) fprintf(stderr, "counting k-mers ... ");
 
     size_t i, j, seqlen;
     kmer_t x, y;
@@ -751,14 +752,14 @@ static void count_kmers(assembler_t* A, seqset_value_t* xs, size_t n)
         }
     }
 
-    if (verbose) fprintf(stderr, "done.\n");
+    if (quip_verbose) fprintf(stderr, "done.\n");
 }
 
 
 /* Heuristically build contigs from k-mers counts and a set of reads */
 static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 {
-    if (verbose) fprintf(stderr, "assembling contigs ... ");
+    if (quip_verbose) fprintf(stderr, "assembling contigs ... ");
 
     twobit_t* contig = twobit_alloc();
     kmer_t x, y;
@@ -801,7 +802,7 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
     twobit_free(contig);
 
-    if (verbose) fprintf(stderr, "done. (%zu contigs)\n", A->contigs_len);
+    if (quip_verbose) fprintf(stderr, "done. (%zu contigs)\n", A->contigs_len);
 }
 
 

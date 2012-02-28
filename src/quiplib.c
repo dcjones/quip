@@ -18,7 +18,7 @@ const size_t aligner_k = 16;
 /* approximate number of bases per block */
 const size_t block_size = 50000000;
 
-bool verbose = true;
+bool quip_verbose = false;
 
 
 static void write_uint32(quip_writer_t writer, void* writer_data, uint32_t x)
@@ -224,7 +224,7 @@ static void quip_comp_add_readlen(quip_compressor_t* C, size_t l)
 
 void quip_comp_flush_block(quip_compressor_t* C)
 {
-    if (verbose) {
+    if (quip_verbose) {
         fprintf(stderr, "writing a block of %zu compressed bases...\n", C->buffered_bases);
     }
 
@@ -250,7 +250,7 @@ void quip_comp_flush_block(quip_compressor_t* C)
 
     /* write compressed ids */
     C->writer(C->writer_data, C->idbuf, C->idbuf_len);
-    if (verbose) {
+    if (quip_verbose) {
         fprintf(stderr, "\tid: %zu / %zu (%0.2f%%)\n",
                 C->idbuf_len, C->id_bytes,
                 100.0 * (double) C->idbuf_len / (double) C->id_bytes);
@@ -259,7 +259,7 @@ void quip_comp_flush_block(quip_compressor_t* C)
 
     /* write compressed sequences */
     C->writer(C->writer_data, C->seqbuf, C->seqbuf_len);
-    if (verbose) {
+    if (quip_verbose) {
         fprintf(stderr, "\tseq: %zu / %zu (%0.2f%%)\n",
                 C->seqbuf_len, C->seq_bytes,
                 100.0 * (double) C->seqbuf_len / (double) C->seq_bytes);
@@ -269,7 +269,7 @@ void quip_comp_flush_block(quip_compressor_t* C)
 
     /* write compressed qualities */
     C->writer(C->writer_data, C->qualbuf, C->qualbuf_len);
-    if (verbose) {
+    if (quip_verbose) {
         fprintf(stderr, "\tqual: %zu / %zu (%0.2f%%)\n",
                 C->qualbuf_len, C->qual_bytes,
                 100.0 * (double) C->qualbuf_len / (double) C->qual_bytes);

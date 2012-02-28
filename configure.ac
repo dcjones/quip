@@ -49,9 +49,13 @@ AS_IF([test "x$enable_debug" = xyes],
 AC_DEFINE([_FILE_OFFSET_BITS], [64],
           [Do not crash on >4GB files on 32bit machines.])
 
+# These are POSIX standards, but we just to be careful.
+AC_CHECK_FUNC(open, ,
+              AC_MSG_ERROR([The 'open' function is missing.]))
+AC_CHECK_FUNC(fdopen, ,
+              AC_MSG_ERROR([The 'fdopen' function is missing.]))
 AC_CHECK_FUNC(fileno, ,
               AC_MSG_ERROR([The 'fileno' function is missing.]))
-
 AC_CHECK_FUNCS(isatty)
 
 AC_CHECK_HEADER(getopt.h, ,
