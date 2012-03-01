@@ -1,6 +1,6 @@
 .TH QUIP 1 "February 27, 2012" "Quip"
 .SH NAME
-quip, unquip
+quip, unquip, quipcat \- compress and decompress FASTQ sequencing data
 .SH SYNOPSIS
 .PP
 quip [\f[I]options\f[]] [\f[I]input.fastq\f[]]...
@@ -17,17 +17,25 @@ new file with the suffix \f[I].qp\f[] added, leaving the original file intact
 file compressed with quip and write uncompressed output to a new file with the
 \f[I].qp\f[] suffix removed. If no input file is provided, data is read from standard input.
 .PP
-Quip will not clobber output files unless the \f[I]--force\f[] option is supplied.
+Quip will not automatically clobber output files unless the \f[I]--force\f[] option is supplied.
 .SH OPTIONS
 .TP
 .B \-d, --decompress, --uncompress
 Decompress a compressed FASTQ file. Compression is the default, unless the program is
 invoked as \f[I]unquip\f[].
 .TP
+.B \-l, --list
+Print some summary information about the archive, including number of reads,
+number of bases, and compression ratio.
+.TP
+.B \-t, --test
+Test the integrity of the archive by performing a dry-run decompression and
+verifying checksums along the way.
+.TP
 .B \-c, --stdout
 Print output to standard out.
 .TP
-.B /-f, --force
+.B \-f, --force
 Force compression or decompression even if this would involve writing binary
 data to a terminal, clobbering an existing file, or decompressing a file
 that does not have a \f[I].qp\f[] suffix.
@@ -36,7 +44,8 @@ that does not have a \f[I].qp\f[] suffix.
 Skip the assembly step of the compression algorithm, saving time at
 the cost of a larger compressed file. This option is ignored when decompressing:
 files compressed with and without the \f[I]-q\f[] switch are in the same format
-and no special handling is needed to decompress them.
+and no special handling is needed to decompress them. This option will not
+significantly affect the decompression time.
 .TP
 .B \-v, --verbose
 While running, print a great deal of information that is of no use unless you
@@ -98,8 +107,8 @@ Quip only supports quality scores on Phred+33 scale, which is not
 compatible with certain versions of the Illumina platform.
 .PP
 In certain versions of FASTQ, the read ID is printed twice: before the
-sequence and before the quality scores. This is a profoundly idiotic idea that
-has thankfully fallen out of use. Quip will read data in this format, but will
+sequence and before the quality scores. This is an idiotic idea that has
+thankfully fallen out of use. Quip will read data in this format, but will
 ignore the second listing of the read ID.
 .PP
 Quip does not very aggressively check that the input data is in the correct

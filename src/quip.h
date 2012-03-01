@@ -77,6 +77,13 @@ typedef struct quip_list_t_
     uint64_t num_blocks;
     uint64_t num_bases;
     uint64_t num_reads;
+
+    /* the uncompressed (0) and compressed (1) byte counts */
+    uint64_t id_bytes[2];
+    uint64_t seq_bytes[2];
+    uint64_t qual_bytes[2];
+    uint64_t header_bytes;
+
 } quip_list_t;
 
 void quip_list(quip_reader_t, void* reader_data, quip_list_t*);

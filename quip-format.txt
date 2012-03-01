@@ -53,30 +53,26 @@ Block Header
     |    Read Len.  |    Run Len.   |  ...
     +---+---+---+---+---+---+---+---+
 
-    +---+---+---+---+---+---+---+---+---+---+---+---+
-    |  ID Byte Cnt  |       CRC64 ID Checksum       |
-    +---+---+---+---+---+---+---+---+---+---+---+---+
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    | Uncomp. Bytes |  Comp. Bytes  |        CRC64 Checksum         |   (ID chunk description)
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
-    +---+---+---+---+---+---+---+---+---+---+---+---+
-    | Seq Byte Cnt  |    CRC64 Sequence Checksum    |
-    +---+---+---+---+---+---+---+---+---+---+---+---+
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    | Uncomp. Bytes |  Comp. Bytes  |        CRC64 Checksum         |   (Sequence chunk description)
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
-    +---+---+---+---+---+---+---+---+---+---+---+---+
-    | Qual Byte Cnt |    CRC64 Quality Checksum     |
-    +---+---+---+---+---+---+---+---+---+---+---+---+
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    | Uncomp. Bytes |  Comp. Bytes  |        CRC64 Checksum         |   (Quality chunk description)
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
     A block header consists of a 4-byte integer giving the number of reads in
-    the block, followed by a 
+    the block, followed by a 4-byte integer giving the number of bases.
 
-    Following this, 4-byte compressed byte counts and 8-byte checksums are
-    given for read IDs, sequences, and quality scores, respectively.
+    Next read-lengths are listed using run-length encoded.
 
-
-
-OLD FORMAT:
-    +---+---+---+---+---+ ... +---+---+---+---+---+---+---+---+---+---+---+---+---+
-    |   Read Count  |  Read Lens  |  Id Byte Cnt  | Seq Byte Cnt  | Qual Byte Cnt |
-    +---+---+---+---+---+ ... +---+---+---+---+---+---+---+---+---+---+---+---+---+
+    Following this, 4-byte uncompressed and compressed byte counts and 8-byte
+    checksums are given for read IDs, sequences, and quality scores,
+    respectively.
 
 
 
@@ -131,10 +127,6 @@ an empty block and the end of the stream.
     +---+---+---+---+
     |       0       |
     +---+---+---+---+
-
-    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-    |       Total Read Count        |        Total Base Count       |
-    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
 
 SPECULATIVE:

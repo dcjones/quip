@@ -117,9 +117,9 @@ struct quip_compressor_t_
     uint64_t qual_crc;
 
     /* for compression statistics */
-    size_t id_bytes;
-    size_t qual_bytes;
-    size_t seq_bytes;
+    uint32_t id_bytes;
+    uint32_t qual_bytes;
+    uint32_t seq_bytes;
 
     /* run length encoded read lengths */
     uint32_t* readlen_vals;
@@ -280,20 +280,23 @@ void quip_comp_flush_block(quip_compressor_t* C)
     qualenc_flush(C->qualenc);
 
     /* write the size of each chunk and its checksum */
+    write_uint32(C->writer, C->writer_data, C->id_bytes);
     write_uint32(C->writer, C->writer_data, C->idbuf_len);
     write_uint64(C->writer, C->writer_data, C->id_crc);
 
+    write_uint32(C->writer, C->writer_data, C->seq_bytes);
     write_uint32(C->writer, C->writer_data, C->seqbuf_len);
     write_uint64(C->writer, C->writer_data, C->seq_crc);
 
+    write_uint32(C->writer, C->writer_data, C->qual_bytes);
     write_uint32(C->writer, C->writer_data, C->qualbuf_len);
     write_uint64(C->writer, C->writer_data, C->qual_crc);
 
     /* write compressed ids */
     C->writer(C->writer_data, C->idbuf, C->idbuf_len);
     if (quip_verbose) {
-        fprintf(stderr, "\tid: %zu / %zu (%0.2f%%)\n",
-                C->idbuf_len, C->id_bytes,
+        fprintf(stderr, "\tid: %u / %u (%0.2f%%)\n",
+                (unsigned int) C->idbuf_len, (unsigned int) C->id_bytes,
                 100.0 * (double) C->idbuf_len / (double) C->id_bytes);
     }
     C->idbuf_len = 0;
@@ -301,8 +304,8 @@ void quip_comp_flush_block(quip_compressor_t* C)
     /* write compressed sequences */
     C->writer(C->writer_data, C->seqbuf, C->seqbuf_len);
     if (quip_verbose) {
-        fprintf(stderr, "\tseq: %zu / %zu (%0.2f%%)\n",
-                C->seqbuf_len, C->seq_bytes,
+        fprintf(stderr, "\tseq: %u / %u (%0.2f%%)\n",
+                (unsigned int) C->seqbuf_len, (unsigned int) C->seq_bytes,
                 100.0 * (double) C->seqbuf_len / (double) C->seq_bytes);
     }
     C->seqbuf_len = 0;
@@ -311,8 +314,8 @@ void quip_comp_flush_block(quip_compressor_t* C)
     /* write compressed qualities */
     C->writer(C->writer_data, C->qualbuf, C->qualbuf_len);
     if (quip_verbose) {
-        fprintf(stderr, "\tqual: %zu / %zu (%0.2f%%)\n",
-                C->qualbuf_len, C->qual_bytes,
+        fprintf(stderr, "\tqual: %u / %u (%0.2f%%)\n",
+                (unsigned int) C->qualbuf_len, (unsigned int) C->qual_bytes,
                 100.0 * (double) C->qualbuf_len / (double) C->qual_bytes);
     }
     C->qualbuf_len = 0;
@@ -364,8 +367,6 @@ void quip_comp_finish(quip_compressor_t* C)
 
     /* write an empty header to signify the end of the stream */
     write_uint32(C->writer, C->writer_data, 0);
-    write_uint64(C->writer, C->writer_data, C->total_reads);
-    write_uint64(C->writer, C->writer_data, C->total_bases);
 
     C->finished = true;
 }
@@ -571,6 +572,7 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
     }
 
     /* read id byte count */
+    read_uint32(D->reader, D->reader_data); /* uncompressed bytes */
     uint32_t id_byte_cnt = read_uint32(D->reader, D->reader_data);
     if (id_byte_cnt > D->idbuf_size) {
         D->idbuf_size = id_byte_cnt;
@@ -580,6 +582,7 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
     D->exp_id_crc = read_uint64(D->reader, D->reader_data);
 
     /* read seq byte count */
+    read_uint32(D->reader, D->reader_data); /* uncompressed bytes */
     uint32_t seq_byte_cnt = read_uint32(D->reader, D->reader_data);
     if (seq_byte_cnt > D->seqbuf_size) {
         D->seqbuf_size = seq_byte_cnt;
@@ -589,6 +592,7 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
     D->exp_seq_crc = read_uint64(D->reader, D->reader_data);
 
     /* read qual byte count */
+    read_uint32(D->reader, D->reader_data); /* uncompressed bytes */
     uint32_t qual_byte_cnt = read_uint32(D->reader, D->reader_data);
     if (qual_byte_cnt > D->qualbuf_size) {
         D->qualbuf_size = qual_byte_cnt;
@@ -700,6 +704,8 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
     memset(l, 0, sizeof(quip_list_t));
     uint32_t block_reads;
     uint32_t readlen_count;
+    uint64_t n;
+
     uint64_t block_bytes;
 
     uint8_t header[7];
@@ -718,6 +724,7 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
     while (true) {
         /* read a block header */
         block_reads = read_uint32(reader, reader_data);
+        l->header_bytes += 4;
         if (block_reads == 0) break;
 
         l->num_reads += block_reads;
@@ -729,21 +736,33 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
         while (readlen_count < block_reads) {
             read_uint32(reader, reader_data); /* read length */
             readlen_count += read_uint32(reader, reader_data);
+            l->header_bytes += 8;
         }
 
         block_bytes = 0;
 
         /* id byte-count and checksum */
-        block_bytes += read_uint32(reader, reader_data);
+        l->id_bytes[0] += read_uint32(reader, reader_data);
+        n = read_uint32(reader, reader_data);
+        l->id_bytes[1] += n;
+        block_bytes += n;
         read_uint64(reader, reader_data);
 
         /* sequence byte-count and checksum */
-        block_bytes += read_uint32(reader, reader_data);
+        l->seq_bytes[0] += read_uint32(reader, reader_data);
+        n = read_uint32(reader, reader_data);
+        l->seq_bytes[1] += n;
+        block_bytes += n;
         read_uint64(reader, reader_data);
 
         /* quality scores byte-count and checksum */
-        block_bytes += read_uint32(reader, reader_data);
+        l->qual_bytes[0] += read_uint32(reader, reader_data);
+        n = read_uint32(reader, reader_data);
+        l->qual_bytes[1] += n;
+        block_bytes += n;
         read_uint64(reader, reader_data);
+
+        l->header_bytes += 52;
 
         /* seek past the compressed data */
         reader(reader_data, NULL, block_bytes);

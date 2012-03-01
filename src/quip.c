@@ -382,8 +382,23 @@ static int quip_cmd_decompress(char** fns, size_t fn_count)
 
 static void quip_print_list(const char* fn, quip_list_t* l)
 {
-    printf("%s: %"PRIu64" bases, %"PRIu64" reads, %"PRIu64" blocks\n",
-           fn, l->num_bases, l->num_reads, l->num_blocks);
+    const uint64_t read_overhead = 6;
+
+    uint64_t total_bytes[2];
+    total_bytes[0] = l->id_bytes[0] + l->seq_bytes[0] + l->qual_bytes[0] + read_overhead * l->num_reads;
+    total_bytes[1] = l->id_bytes[1] + l->seq_bytes[1] + l->qual_bytes[1] + l->header_bytes;
+
+    printf("%10"PRIu64"  "
+           "%12"PRIu64"  "
+           "%12"PRIu64"  "
+           "%12"PRIu64"  "
+           "%0.4f  "
+           "%s"
+           "\n",
+           l->num_reads, l->num_bases,
+           total_bytes[0], total_bytes[1],
+           (double) total_bytes[1] / (double) total_bytes[0],
+           fn);
 }
 
 
@@ -394,6 +409,8 @@ static int quip_cmd_list(char** fns, size_t fn_count)
     FILE* fin;
     size_t i;
     quip_list_t l;
+
+    printf("     Reads         Bases  Uncompressed    Compressed   Ratio  Filename\n");
 
     if (fn_count == 0) {
         quip_list(block_reader, stdin, &l);
@@ -412,7 +429,6 @@ static int quip_cmd_list(char** fns, size_t fn_count)
 
             fin = open_fin(fn);
             if (!fin) continue;
-            setvbuf(fin,  NULL, _IONBF, 0);
             quip_list(block_reader, fin, &l);
             quip_print_list(fn, &l);
         }
@@ -452,9 +468,9 @@ int main(int argc, char* argv[])
     /* determine the base program name */
     prog_name = argv[0];
     char* p;
-    if ((p = strrchr(argv[0], '/')) != NULL) prog_name = p;
+    if ((p = strrchr(argv[0], '/')) != NULL) prog_name = p + 1;
 #if defined(WIN32) || defined(MSDOS)
-    if ((p = strrchr(argv[0], '\\')) != NULL) prog_name = p;
+    if ((p = strrchr(argv[0], '\\')) != NULL) prog_name = p + 1;
 #endif
 
 
