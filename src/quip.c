@@ -17,6 +17,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <fcntl.h>
 #ifndef O_BINARY
@@ -27,12 +28,17 @@ static const char qual_first = 33;
 
 const char* prog_name;
 
+
 bool force_flag      = false;
 bool quick_flag      = false;
 bool stdout_flag     = false;
-bool decompress_flag = false;
-bool test_flag       = false;
-bool list_flag       = false;
+
+enum {
+    QUIP_CMD_COMPRESS,
+    QUIP_CMD_DECOMPRESS,
+    QUIP_CMD_LIST,
+    QUIP_CMD_TEST
+} quip_cmd = QUIP_CMD_COMPRESS;
 
 void print_help()
 {
@@ -66,7 +72,29 @@ static void block_writer(void* param, const uint8_t* data, size_t datalen)
 
 static size_t block_reader(void* param, uint8_t* data, size_t datalen)
 {
-    return fread(data, 1, datalen, (FILE*) param);
+    FILE* f = (FILE*) param;
+
+    if (data == NULL) {
+        if (fseek(f, datalen, SEEK_CUR) == 0) return datalen;
+        else {
+            /* The stream is not seekable, so we have
+             * to read and discard datalen bytes. */
+            const size_t bufsize = 4096;
+            size_t readcnt = 0;
+            uint8_t* buf = malloc_or_die(bufsize);
+            size_t remaining = datalen;
+
+            while (remaining > 0) {
+                readcnt = fread(buf, 1, remaining < bufsize ? remaining : bufsize, f);
+                if (readcnt == 0) break;
+                else remaining -= readcnt;
+            }
+
+            free(buf);
+            return datalen - remaining;
+        }
+    }
+    else return fread(data, 1, datalen, (FILE*) param);
 }
 
 /* Prompt the user for a yes/no question. */
@@ -179,7 +207,7 @@ static void fastq_print(FILE* f, seq_t* seq)
 }
 
 
-static int quip_compress(char** fns, size_t fn_count)
+static int quip_cmd_compress(char** fns, size_t fn_count)
 {
     if (stdout_flag) {
         SET_BINARY_MODE(stdout);
@@ -263,7 +291,7 @@ static int quip_compress(char** fns, size_t fn_count)
 }
 
 
-static int quip_decompress(char** fns, size_t fn_count)
+static int quip_cmd_decompress(char** fns, size_t fn_count)
 {
     const char* fn;
     FILE* fin;
@@ -322,7 +350,7 @@ static int quip_decompress(char** fns, size_t fn_count)
              * copying. */
             setvbuf(fin,  NULL, _IONBF, 0);
 
-            /* Output streams to benefit from buffering.
+            /* Output streams do benefit from buffering.
              * We use a very large to hopefully improve the
              * throughput of many small writes.
              */
@@ -352,12 +380,62 @@ static int quip_decompress(char** fns, size_t fn_count)
 }
 
 
+static void quip_print_list(const char* fn, quip_list_t* l)
+{
+    printf("%s: %"PRIu64" bases, %"PRIu64" reads, %"PRIu64" blocks\n",
+           fn, l->num_bases, l->num_reads, l->num_blocks);
+}
+
+
+static int quip_cmd_list(char** fns, size_t fn_count)
+{
+    const char* fn;
+    size_t fn_len;
+    FILE* fin;
+    size_t i;
+    quip_list_t l;
+
+    if (fn_count == 0) {
+        quip_list(block_reader, stdin, &l);
+        quip_print_list("stdin", &l);
+    }
+    else {
+        for (i = 0; i < fn_count; ++i) {
+            fn = fns[i];
+            fn_len = strlen(fn);
+
+            if (fn_len < 3 || memcmp(fn + (fn_len - 3), ".qp", 3) != 0) {
+                fprintf(stderr, "%s: %s: Unknown suffix -- ignored.\n",
+                    prog_name, fn);
+                continue;
+            }
+
+            fin = open_fin(fn);
+            if (!fin) continue;
+            setvbuf(fin,  NULL, _IONBF, 0);
+            quip_list(block_reader, fin, &l);
+            quip_print_list(fn, &l);
+        }
+    }
+
+    return EXIT_SUCCESS;
+}
+
+
+static int quip_cmd_test(__unused char** fns, __unused size_t fn_count)
+{
+    /* TODO */
+    return EXIT_SUCCESS;
+}
+
 
 
 int main(int argc, char* argv[])
 {
     static struct option long_options[] = 
     {
+        {"list",       no_argument, NULL, 'l'},
+        {"test",       no_argument, NULL, 't'},
         {"quick",      no_argument, NULL, 'q'},
         {"stdout",     no_argument, NULL, 'c'},
         {"decompress", no_argument, NULL, 'd'},
@@ -382,19 +460,27 @@ int main(int argc, char* argv[])
 
     /* default to decompress when invoked under the name 'unquip' */
     if (strcmp(prog_name, "unquip") == 0) {
-        decompress_flag = true;
+        quip_cmd = QUIP_CMD_DECOMPRESS;
     }
     else if (strcmp(prog_name, "quipcat") == 0) {
-        decompress_flag = true;
+        quip_cmd = QUIP_CMD_DECOMPRESS;
         stdout_flag = true;
     }
     
     while (1) {
-        opt = getopt_long(argc, argv, "qcdfvhV", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "ltqcdfvhV", long_options, &opt_idx);
 
         if (opt == -1) break;
 
         switch (opt) {
+            case 'l':
+                quip_cmd = QUIP_CMD_LIST;
+                break;
+
+            case 't':
+                quip_cmd = QUIP_CMD_TEST;
+                break;
+
             case 'q':
                 quick_flag = true;
                 break;
@@ -404,7 +490,7 @@ int main(int argc, char* argv[])
                 break;
 
             case 'd':
-                decompress_flag = true;
+                quip_cmd = QUIP_CMD_DECOMPRESS;
                 break;
 
             case 'f':
@@ -435,8 +521,23 @@ int main(int argc, char* argv[])
     kmer_init();
 
     int ret;
-    if (decompress_flag) ret = quip_decompress(argv + optind, argc - optind);
-    else                 ret = quip_compress(argv + optind, argc - optind);
+    switch (quip_cmd) {
+        case QUIP_CMD_COMPRESS:
+            ret = quip_cmd_compress(argv + optind, argc - optind);
+            break;
+
+        case QUIP_CMD_DECOMPRESS:
+            ret = quip_cmd_decompress(argv + optind, argc - optind);
+            break;
+
+        case QUIP_CMD_LIST:
+            ret = quip_cmd_list(argv + optind, argc - optind);
+            break;
+
+        case QUIP_CMD_TEST:
+            ret = quip_cmd_list(argv + optind, argc - optind);
+            break;
+    }
 
     kmer_free();
 

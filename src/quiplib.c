@@ -512,8 +512,8 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
     D->end_of_stream = false;
 
     uint8_t header[7];
-    D->reader(D->reader_data, header, 7);
-    if (memcmp(quip_header_magic, header, 6) != 0) {
+    if (D->reader(D->reader_data, header, 7) < 7 ||
+        memcmp(quip_header_magic, header, 6) != 0) {
         fprintf(stderr, "Input is not a quip file.\n");
         exit(EXIT_FAILURE);
     }
@@ -694,4 +694,59 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
     return true;
 }
 
+
+void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
+{
+    memset(l, 0, sizeof(quip_list_t));
+    uint32_t block_reads;
+    uint32_t readlen_count;
+    uint64_t block_bytes;
+
+    uint8_t header[7];
+    if (reader(reader_data, header, 7) < 7 ||
+        memcmp(quip_header_magic, header, 6) != 0) {
+        fprintf(stderr, "Input is not a quip file.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (header[6] != quip_header_version) {
+        fprintf(stderr, "Input is an old quip format --- an older version of quip is needed.\n");
+        exit(EXIT_FAILURE);
+    }
+
+
+    while (true) {
+        /* read a block header */
+        block_reads = read_uint32(reader, reader_data);
+        if (block_reads == 0) break;
+
+        l->num_reads += block_reads;
+        l->num_bases += read_uint32(reader, reader_data);
+        l->num_blocks++;
+
+        /* read lengths */
+        readlen_count = 0;
+        while (readlen_count < block_reads) {
+            read_uint32(reader, reader_data); /* read length */
+            readlen_count += read_uint32(reader, reader_data);
+        }
+
+        block_bytes = 0;
+
+        /* id byte-count and checksum */
+        block_bytes += read_uint32(reader, reader_data);
+        read_uint64(reader, reader_data);
+
+        /* sequence byte-count and checksum */
+        block_bytes += read_uint32(reader, reader_data);
+        read_uint64(reader, reader_data);
+
+        /* quality scores byte-count and checksum */
+        block_bytes += read_uint32(reader, reader_data);
+        read_uint64(reader, reader_data);
+
+        /* seek past the compressed data */
+        reader(reader_data, NULL, block_bytes);
+    }
+}
 

@@ -72,14 +72,14 @@ bool quip_decomp_read(quip_decompressor_t*, seq_t*);
 
 /* Efficiently determine the number of reads summary information
    about a compressed stream. */
-typedef struct quip_info_t_
+typedef struct quip_list_t_
 {
     uint64_t num_blocks;
     uint64_t num_bases;
     uint64_t num_reads;
-} quip_info_t;
+} quip_list_t;
 
-void quip_list(quip_reader_t, void* reader_data);
+void quip_list(quip_reader_t, void* reader_data, quip_list_t*);
 
 /* Test the integrity of a stream. */
  void quip_test(quip_reader_t, void* reader_data); 
