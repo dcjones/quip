@@ -56,7 +56,10 @@ AC_CHECK_FUNC(fdopen, ,
               AC_MSG_ERROR([The 'fdopen' function is missing.]))
 AC_CHECK_FUNC(fileno, ,
               AC_MSG_ERROR([The 'fileno' function is missing.]))
-AC_CHECK_FUNCS(isatty)
+AC_CHECK_FUNC(unlink, ,
+              AC_MSG_ERROR([The 'unlink' function is missing.]))
+AC_CHECK_FUNC(isatty, ,
+              AC_MSG_ERROR([The 'isatty' function is missing.]))
 
 AC_CHECK_HEADER(getopt.h, ,
                 AC_MSG_ERROR([The posix getopt.h header is needed.]))

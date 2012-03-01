@@ -17,7 +17,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <unistd.h>
 #include <fcntl.h>
 #ifndef O_BINARY
 #define O_BINARY 0
@@ -32,6 +32,8 @@ bool force_flag      = false;
 bool quick_flag      = false;
 bool stdout_flag     = false;
 bool decompress_flag = false;
+bool test_flag       = false;
+bool list_flag       = false;
 
 void print_help()
 {
@@ -39,6 +41,8 @@ void print_help()
 "Usage: quip [OPTION]... [FILE]...\n"
 "Compress or decompress FASTQ sequence files with extreme prejudice.\n\n"
 "  -d, --decompress   decompress\n"
+"  -t, --test         test compressed file integrity\n"
+"  -l, --list         list total number of reads and bases\n"
 "  -c, --stdout       write on standard output\n"
 "  -f, --force        allow overwriting of output files, etc\n"
 "  -q, --quick        compress quicker, at a lower compression ratio\n"
@@ -108,23 +112,29 @@ static FILE* open_fin(const char* fn)
 
 
 /* Open an output file, or die trying */
-static FILE* open_fout(const char* fn, bool force)
+static FILE* open_fout(const char* fn)
 {
-    int fd = open(fn, O_WRONLY | O_CREAT | O_BINARY | (force ? 0 : O_EXCL),
+    int fd = open(fn, O_WRONLY | O_CREAT | O_BINARY | O_EXCL,
                       S_IRUSR | S_IWUSR);
+    bool overwrite = false;
 
     if (fd == -1) {
         switch (errno) {
             case EEXIST:
-                fprintf(stderr, "%s: %s: File already exists.\n", prog_name, fn);
-
-#if HAVE_ISATTY
-                if (isatty(fileno(stdin))) {
-                    fprintf(stderr, "Would you like to overwrite it (y or n)? ");
-                    fflush(stderr);
-                    if (yesno()) return open_fout(fn, true);
+                if (force_flag) overwrite = true;
+                else {
+                    fprintf(stderr, "%s: %s: File already exists.\n", prog_name, fn);
+                    if (isatty(fileno(stdin))) {
+                        fprintf(stderr, "Would you like to overwrite it (y or n)? ");
+                        fflush(stderr);
+                        overwrite = yesno();
+                    }
                 }
-#endif
+
+                if (overwrite) {
+                    if (unlink(fn) == 0) return open_fout(fn);
+                    fprintf(stderr, "%s: %s: Cannot overwrite file.\n", prog_name, fn);
+                }
 
                 break;
 
@@ -176,7 +186,6 @@ static int quip_compress(char** fns, size_t fn_count)
         SET_BINARY_MODE(stdout);
     }
 
-#ifdef HAVE_ISATTY
     if (!force_flag && (stdout_flag || fn_count == 0) && isatty(fileno(stdout))) {
         fprintf(stderr,
             "%s: refusing to write compressed data to your terminal screen.\n\n"
@@ -184,7 +193,6 @@ static int quip_compress(char** fns, size_t fn_count)
             prog_name);
         return EXIT_FAILURE;
     }
-#endif
 
     const char* fn;
     char* out_fn;
@@ -218,7 +226,7 @@ static int quip_compress(char** fns, size_t fn_count)
             else {
                 out_fn = malloc_or_die((strlen(fn) + 4) * sizeof(char));
                 sprintf(out_fn, "%s.qp", fn);
-                fout = open_fout(out_fn, force_flag);
+                fout = open_fout(out_fn);
                 free(out_fn);
 
                 if (fout == NULL) {
@@ -300,7 +308,7 @@ static int quip_decompress(char** fns, size_t fn_count)
                 out_fn = malloc_or_die((fn_len - 2) * sizeof(char));
                 memcpy(out_fn, fn, fn_len - 3);
                 out_fn[fn_len - 2] = '\0';
-                fout = open_fout(out_fn, force_flag);
+                fout = open_fout(out_fn);
                 free(out_fn);
 
                 if (fout == NULL) {
