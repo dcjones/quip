@@ -463,7 +463,7 @@ decode_loop_end:
 
     } while (i == 0 || id->s[i - 1] != '\0');
 
-    id->n = i;
+    id->n = i - 1;
 
 
     if (E->lastid_size < id->n + 1) {

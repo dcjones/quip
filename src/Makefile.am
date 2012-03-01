@@ -1,5 +1,5 @@
 
-bin_PROGRAMS=quip
+bin_PROGRAMS = quip
 
 quip_SOURCES = quip.c version.h \
                ac.h            ac.c \
@@ -23,6 +23,5 @@ quip_SOURCES = quip.c version.h \
 
 noinst_HEADERS = dist_impl.h dist_impl.c \
                  dist_template_on.h dist_template_off.h \
-                 crc64_table_be.h \
-                 crc64_table_le.h
+                 crc64_table_be.h crc64_table_le.h
 

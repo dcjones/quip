@@ -499,6 +499,7 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
     }
 
     x->seq.s[n] = '\0';
+    x->seq.n = n;
 }
 
 
@@ -604,6 +605,7 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
     }
 
     x->seq.s[n] = '\0';
+    x->seq.n = n;
 }
 
 

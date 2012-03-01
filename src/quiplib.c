@@ -4,6 +4,7 @@
 #include "misc.h"
 #include "qualenc.h"
 #include "idenc.h"
+#include "crc64.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -15,7 +16,7 @@ const uint8_t quip_header_version = 0x01;
 const size_t assembler_k = 30;
 const size_t aligner_k = 16;
 
-/* approximate number of bases per block */
+/* maximum number of bases per block */
 const size_t block_size = 50000000;
 
 bool quip_verbose = false;
@@ -63,6 +64,26 @@ static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
 }
 
 
+static uint64_t read_uint64(quip_reader_t reader, void* reader_data)
+{
+    uint8_t bytes[8];
+    size_t cnt = reader(reader_data, bytes, 8);
+
+    if (cnt < 8) {
+        fprintf(stderr, "Unexpected end of file.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return ((uint64_t) bytes[0] << 56) |
+           ((uint64_t) bytes[1] << 48) |
+           ((uint64_t) bytes[2] << 40) |
+           ((uint64_t) bytes[3] << 32) |
+           ((uint64_t) bytes[4] << 24) |
+           ((uint64_t) bytes[5] << 16) |
+           ((uint64_t) bytes[6] << 8) |
+           ((uint64_t) bytes[7]);
+}
+
 struct quip_compressor_t_
 {
     /* function for writing compressed data */
@@ -89,6 +110,11 @@ struct quip_compressor_t_
     /* number of bases encoded in the current block */
     size_t buffered_reads;
     size_t buffered_bases;
+
+    /* block specific checksums */
+    uint64_t id_crc;
+    uint64_t seq_crc;
+    uint64_t qual_crc;
 
     /* for compression statistics */
     size_t id_bytes;
@@ -179,6 +205,10 @@ quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool
     C->buffered_reads = 0;
     C->buffered_bases = 0;
 
+    C->id_crc   = 0;
+    C->seq_crc  = 0;
+    C->qual_crc = 0;
+
     C->id_bytes   = 0;
     C->qual_bytes = 0;
     C->seq_bytes  = 0;
@@ -228,8 +258,9 @@ void quip_comp_flush_block(quip_compressor_t* C)
         fprintf(stderr, "writing a block of %zu compressed bases...\n", C->buffered_bases);
     }
 
-    /* write the number of encoded reads in the block */
+    /* write the number of encoded reads and bases in the block */
     write_uint32(C->writer, C->writer_data, C->buffered_reads);
+    write_uint32(C->writer, C->writer_data, C->buffered_bases);
 
     /* write the (run length encoded) read lengths. */
     size_t i;
@@ -243,10 +274,15 @@ void quip_comp_flush_block(quip_compressor_t* C)
     assembler_assemble(C->assembler);
     qualenc_flush(C->qualenc);
 
-    /* write the size of each chunk about to be written */
+    /* write the size of each chunk and its checksum */
     write_uint32(C->writer, C->writer_data, C->idbuf_len);
+    write_uint64(C->writer, C->writer_data, C->id_crc);
+
     write_uint32(C->writer, C->writer_data, C->seqbuf_len);
+    write_uint64(C->writer, C->writer_data, C->seq_crc);
+
     write_uint32(C->writer, C->writer_data, C->qualbuf_len);
+    write_uint64(C->writer, C->writer_data, C->qual_crc);
 
     /* write compressed ids */
     C->writer(C->writer_data, C->idbuf, C->idbuf_len);
@@ -279,18 +315,25 @@ void quip_comp_flush_block(quip_compressor_t* C)
     /* reset */
     C->buffered_reads = 0;
     C->buffered_bases = 0;
-    C->id_bytes   = 0;
-    C->qual_bytes = 0;
-    C->seq_bytes  = 0;
-    C->readlen_count = 0;
+    C->id_bytes       = 0;
+    C->qual_bytes     = 0;
+    C->seq_bytes      = 0;
+    C->id_crc         = 0;
+    C->seq_crc        = 0;
+    C->qual_crc       = 0;
+    C->readlen_count  = 0;
 }
 
 
 void quip_comp_addseq(quip_compressor_t* C, seq_t* seq)
 {
-    if (C->buffered_bases > block_size) {
+    if (C->buffered_bases + seq->seq.n > block_size) {
         quip_comp_flush_block(C);
     }
+
+    C->id_crc   = crc64_update((uint8_t*) seq->id1.s,  seq->id1.n,  C->id_crc);
+    C->seq_crc  = crc64_update((uint8_t*) seq->seq.s,  seq->seq.n,  C->seq_crc);
+    C->qual_crc = crc64_update((uint8_t*) seq->qual.s, seq->qual.n, C->qual_crc);
 
     qualenc_encode(C->qualenc, seq);
     idenc_encode(C->idenc, seq);
@@ -315,15 +358,8 @@ void quip_comp_flush(quip_compressor_t* C)
 
     /* write an empty header to signify the end of the stream */
     write_uint32(C->writer, C->writer_data, 0);
-    write_uint32(C->writer, C->writer_data, 0);
-    write_uint32(C->writer, C->writer_data, 0);
-    write_uint32(C->writer, C->writer_data, 0);
-
-    /* write the total number of bases */
-    write_uint64(C->writer, C->writer_data, C->total_bases);
-
-    /* write the total number of reads */
     write_uint64(C->writer, C->writer_data, C->total_reads);
+    write_uint64(C->writer, C->writer_data, C->total_bases);
 }
 
 
@@ -367,7 +403,20 @@ struct quip_decompressor_t_
     size_t seqbuf_size, seqbuf_len, seqbuf_pos;
 
     /* number of reads encoded in the buffers */
-    size_t pending_reads;
+    uint32_t pending_reads;
+
+    /* current block number */
+    uint32_t block_num;
+
+    /* expected block checksums */
+    uint64_t exp_id_crc;
+    uint64_t exp_seq_crc;
+    uint64_t exp_qual_crc;
+
+    /* observed block checksums */
+    uint64_t id_crc;
+    uint64_t seq_crc;
+    uint64_t qual_crc;
 
     /* run length encoded read lengths */
     uint32_t* readlen_vals;
@@ -445,6 +494,7 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
     D->seqbuf_pos  = 0;
 
     D->pending_reads = 0;
+    D->block_num = 0;
 
     D->readlen_size  = 1;
     D->readlen_count = 0;
@@ -484,6 +534,10 @@ void quip_decomp_free(quip_decompressor_t* D)
 static void quip_decomp_read_block_header(quip_decompressor_t* D)
 {
     D->pending_reads = read_uint32(D->reader, D->reader_data);
+    if (D->pending_reads == 0) return;
+
+    /* pending bases, which we don't need to know. */
+    read_uint32(D->reader, D->reader_data);
 
     /* read run length encoded read lengths */
     uint32_t cnt = 0;
@@ -515,6 +569,7 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
         free(D->idbuf);
         D->idbuf = malloc_or_die(D->idbuf_size * sizeof(uint8_t));
     }
+    D->exp_id_crc = read_uint64(D->reader, D->reader_data);
 
     /* read seq byte count */
     uint32_t seq_byte_cnt = read_uint32(D->reader, D->reader_data);
@@ -523,6 +578,7 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
         free(D->seqbuf);
         D->seqbuf = malloc_or_die(D->seqbuf_size * sizeof(uint8_t));
     }
+    D->exp_seq_crc = read_uint64(D->reader, D->reader_data);
 
     /* read qual byte count */
     uint32_t qual_byte_cnt = read_uint32(D->reader, D->reader_data);
@@ -531,6 +587,7 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
         free(D->qualbuf);
         D->qualbuf = malloc_or_die(D->qualbuf_size * sizeof(uint8_t));
     }
+    D->exp_qual_crc = read_uint64(D->reader, D->reader_data);
 
     if (D->pending_reads == 0 &&
              id_byte_cnt == 0 &&
@@ -565,6 +622,11 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
 
     D->readlen_idx = 0;
     D->readlen_off = 0;
+
+    D->id_crc   = 0;
+    D->seq_crc  = 0;
+    D->qual_crc = 0;
+    ++D->block_num;
 }
 
 
@@ -573,6 +635,24 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
     if (D->end_of_stream) return false;
 
     if (D->pending_reads == 0) {
+        if (D->id_crc != D->exp_id_crc) {
+            fprintf(stderr,
+                "Warning: ID checksums in block %u do not match. "
+                "ID data may be corrupt.\n", D->block_num);
+        }
+
+        if (D->seq_crc != D->exp_seq_crc) {
+             fprintf(stderr,
+                "Warning: Sequence checksums in block %u do not match. "
+                "Sequence data may be corrupt.\n", D->block_num);
+        }
+
+        if (D->qual_crc != D->exp_qual_crc) {
+              fprintf(stderr,
+                "Warning: Quality checksums in block %u do not match. "
+                "Quality data may be corrupt.\n", D->block_num);
+        }
+
         quip_decomp_read_block_header(D);
         if (D->pending_reads == 0) return false;
 
@@ -596,6 +676,10 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
     qualenc_decode(D->qualenc, seq, n);
     disassembler_read(D->disassembler, seq, n);
     idenc_decode(D->idenc, seq);
+
+    D->id_crc   = crc64_update((uint8_t*) seq->id1.s,  seq->id1.n,  D->id_crc);
+    D->seq_crc  = crc64_update((uint8_t*) seq->seq.s,  seq->seq.n,  D->seq_crc);
+    D->qual_crc = crc64_update((uint8_t*) seq->qual.s, seq->qual.n, D->qual_crc);
 
     D->pending_reads--;
 

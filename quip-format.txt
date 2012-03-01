@@ -42,11 +42,41 @@ of the file format.
 Block Header
 ------------
 
+    Compressed reads are split into blocks, each block beginning with the
+    following header.
+
+    +---+---+---+---+---+---+---+---+
+    |  Read Count   |   Base Count  |
+    +---+---+---+---+---+---+---+---+
+
+    +---+---+---+---+---+---+---+---+
+    |    Read Len.  |    Run Len.   |  ...
+    +---+---+---+---+---+---+---+---+
+
+    +---+---+---+---+---+---+---+---+---+---+---+---+
+    |  ID Byte Cnt  |       CRC64 ID Checksum       |
+    +---+---+---+---+---+---+---+---+---+---+---+---+
+
+    +---+---+---+---+---+---+---+---+---+---+---+---+
+    | Seq Byte Cnt  |    CRC64 Sequence Checksum    |
+    +---+---+---+---+---+---+---+---+---+---+---+---+
+
+    +---+---+---+---+---+---+---+---+---+---+---+---+
+    | Qual Byte Cnt |    CRC64 Quality Checksum     |
+    +---+---+---+---+---+---+---+---+---+---+---+---+
+
+    A block header consists of a 4-byte integer giving the number of reads in
+    the block, followed by a 
+
+    Following this, 4-byte compressed byte counts and 8-byte checksums are
+    given for read IDs, sequences, and quality scores, respectively.
+
+
+
+OLD FORMAT:
     +---+---+---+---+---+ ... +---+---+---+---+---+---+---+---+---+---+---+---+---+
     |   Read Count  |  Read Lens  |  Id Byte Cnt  | Seq Byte Cnt  | Qual Byte Cnt |
     +---+---+---+---+---+ ... +---+---+---+---+---+---+---+---+---+---+---+---+---+
-
-Following the header is zero or more blocks of compressed reads.
 
 
 
@@ -95,30 +125,23 @@ Compressed qualities are also pure arithmetic coded data.
 Quip Footer
 -----------
 
-The sequence of blocks is terminated by a block header of all zeros:
+The sequence of blocks is terminated by four zero bytes, indicating
+an empty block and the end of the stream.
+
+    +---+---+---+---+
+    |       0       |
+    +---+---+---+---+
 
     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-    |       0       |       0       |       0       |       0       |
+    |       Total Read Count        |        Total Base Count       |
     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
 
-This followed by an eight byte integer giving the total number of bases in the
-file.
+SPECULATIVE:
+We could add an overall checksum at the end that would facilitate rapidly
+checking the equality of a compressed and uncompressed file. It wouldn't
+add any safety, but might be helpful in quickly matching files.
 
-
-    +---+---+---+---+---+---+---+---+
-    |       Total Base Count        |                                  
-    +---+---+---+---+---+---+---+---+
-
-
-And finally, another eight byte integer giving the total number of reads in the
-file.
-
-    +---+---+---+---+---+---+---+---+
-    |       Total Read Count        |                                  
-    +---+---+---+---+---+---+---+---+
-
-
-These two fields allow one to quickly answer the oft-asked question: "how much
-data do I have?"
-
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    |                          CRC64 Checksum                       |
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
