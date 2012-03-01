@@ -23,7 +23,6 @@
 #define O_BINARY 0
 #endif 
 
-
 static const char qual_first = 33;
 
 const char* prog_name;
@@ -248,7 +247,7 @@ static int quip_compress(char** fns, size_t fn_count)
                 quip_comp_addseq(C, r);
             }
 
-            quip_comp_flush(C);
+            quip_comp_finish(C);
 
             fastq_close(fq);
             fclose(fin);
@@ -372,15 +371,24 @@ int main(int argc, char* argv[])
 
     int opt, opt_idx;
 
+    /* determine the base program name */
     prog_name = argv[0];
+    char* p;
+    if ((p = strrchr(argv[0], '/')) != NULL) prog_name = p;
+#if defined(WIN32) || defined(MSDOS)
+    if ((p = strrchr(argv[0], '\\')) != NULL) prog_name = p;
+#endif
 
-    size_t prog_name_len = strlen(prog_name);
 
     /* default to decompress when invoked under the name 'unquip' */
-    if (prog_name_len >= 6 && strcmp(argv[0] + (prog_name_len - 6), "unquip") == 0) {
+    if (strcmp(prog_name, "unquip") == 0) {
         decompress_flag = true;
     }
-
+    else if (strcmp(prog_name, "quipcat") == 0) {
+        decompress_flag = true;
+        stdout_flag = true;
+    }
+    
     while (1) {
         opt = getopt_long(argc, argv, "qcdfvhV", long_options, &opt_idx);
 

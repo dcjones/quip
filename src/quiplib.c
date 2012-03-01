@@ -129,6 +129,9 @@ struct quip_compressor_t_
     /* general statistics */
     uint64_t total_reads;
     uint64_t total_bases;
+
+    /* Have all the reads been written? */
+    bool finished;
 };
 
 
@@ -228,6 +231,8 @@ quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool
     /* write header */
     C->writer(C->writer_data, quip_header_magic, 6);
     C->writer(C->writer_data, &quip_header_version, 1);
+
+    C->finished = false;
 
     return C;
 }
@@ -352,20 +357,24 @@ void quip_comp_addseq(quip_compressor_t* C, seq_t* seq)
 }
 
 
-void quip_comp_flush(quip_compressor_t* C)
+void quip_comp_finish(quip_compressor_t* C)
 {
+    if (C->finished) return;
     if (C->buffered_bases > 0) quip_comp_flush_block(C);
 
     /* write an empty header to signify the end of the stream */
     write_uint32(C->writer, C->writer_data, 0);
     write_uint64(C->writer, C->writer_data, C->total_reads);
     write_uint64(C->writer, C->writer_data, C->total_bases);
-}
 
+    C->finished = true;
+}
 
 
 void quip_comp_free(quip_compressor_t* C)
 {
+    if (!C->finished) quip_comp_finish(C);
+
     idenc_free(C->idenc);
     qualenc_free(C->qualenc);
     assembler_free(C->assembler);
@@ -376,7 +385,6 @@ void quip_comp_free(quip_compressor_t* C)
     free(C->readlen_lens);
     free(C);
 }
-
 
 
 struct quip_decompressor_t_

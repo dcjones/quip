@@ -25,3 +25,15 @@ noinst_HEADERS = dist_impl.h dist_impl.c \
                  dist_template_on.h dist_template_off.h \
                  crc64_table_be.h crc64_table_le.h
 
+quiplinks = unquip quipcat
+
+install-exec-hook :
+	cd $(DESTDIR)$(bindir) && \
+	target=`echo quip | sed '$(transform)'`$(EXEEXT) && \
+	for name in $(quiplinks); do \
+		link=`echo $$name | sed '$(transform)'`$(LN_EXEEXT) && \
+		rm -f $$link && \
+		$(LN_S) $$target $$link; \
+	done
+
+
