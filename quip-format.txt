@@ -4,14 +4,14 @@ The Quip File Format
 
 Quip compresses FASTQ files with extreme prejudice. This document gives a brief
 overview of the file format that it outputs. This is not information that any
-user needs or would want to know, but will be useful for anyone indending to
+user needs or would want to know, but will be useful for anyone intending to
 hack on the quip source code.
 
 Conventions
 
 
 The Quip format consists of a file header, zero or more blocks of compressed
-reads, and a footer. Seperating the reads into blocks may seem a bit old
+reads, and a footer. Separating the reads into blocks may seem a bit old
 fashioned, but it allows us to do fancy things to subsets of the data (e.g., try
 to assembly the reads).
 

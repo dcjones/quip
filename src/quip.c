@@ -291,7 +291,7 @@ static int quip_cmd_compress(char** fns, size_t fn_count)
 }
 
 
-static int quip_cmd_decompress(char** fns, size_t fn_count)
+static int quip_cmd_decompress(char** fns, size_t fn_count, bool dryrun)
 {
     const char* fn;
     FILE* fin;
@@ -310,7 +310,7 @@ static int quip_cmd_decompress(char** fns, size_t fn_count)
         D = quip_decomp_alloc(block_reader, stdin);
 
         while (quip_decomp_read(D, r)) {
-            fastq_print(stdout, r);
+            if (!dryrun) fastq_print(stdout, r);
         }
 
         quip_decomp_free(D);
@@ -330,7 +330,8 @@ static int quip_cmd_decompress(char** fns, size_t fn_count)
             fin = open_fin(fn);
             if (!fin) continue;
 
-            if (stdout_flag) fout = stdout;
+            if (dryrun) fout = NULL;
+            else if (stdout_flag) fout = stdout;
             else {
                 out_fn = malloc_or_die((fn_len - 2) * sizeof(char));
                 memcpy(out_fn, fn, fn_len - 3);
@@ -354,20 +355,20 @@ static int quip_cmd_decompress(char** fns, size_t fn_count)
              * We use a very large to hopefully improve the
              * throughput of many small writes.
              */
-            setvbuf(fin, outbuf, _IOFBF, outbuf_size);
+            if (!dryrun) setvbuf(fout, outbuf, _IOFBF, outbuf_size);
 
 
             D = quip_decomp_alloc(block_reader, fin);
 
             while (quip_decomp_read(D, r)) {
-                fastq_print(fout, r);
+                if(!dryrun) fastq_print(fout, r);
             }
 
             fclose(fin);
 
             quip_decomp_free(D);
 
-            if (!stdout_flag) fclose(fout);
+            if (!stdout_flag && !dryrun) fclose(fout);
 
         }
     }
@@ -436,14 +437,6 @@ static int quip_cmd_list(char** fns, size_t fn_count)
 
     return EXIT_SUCCESS;
 }
-
-
-static int quip_cmd_test(__unused char** fns, __unused size_t fn_count)
-{
-    /* TODO */
-    return EXIT_SUCCESS;
-}
-
 
 
 int main(int argc, char* argv[])
@@ -543,7 +536,7 @@ int main(int argc, char* argv[])
             break;
 
         case QUIP_CMD_DECOMPRESS:
-            ret = quip_cmd_decompress(argv + optind, argc - optind);
+            ret = quip_cmd_decompress(argv + optind, argc - optind, false);
             break;
 
         case QUIP_CMD_LIST:
@@ -551,7 +544,7 @@ int main(int argc, char* argv[])
             break;
 
         case QUIP_CMD_TEST:
-            ret = quip_cmd_list(argv + optind, argc - optind);
+            ret = quip_cmd_decompress(argv + optind, argc - optind, true);
             break;
     }
 
