@@ -61,8 +61,8 @@ static const score_t score_s_gap    = 3;
 static const score_t score_match    = 1;
 static const score_t score_mismatch = 3;
 
-static const int band_width = 1;
-static const int colsize = 3; /* 1 + 2 * band_width */
+const int sw_band_width = 1;
+static const int colsize = 3; /* 1 + 2 * sw_band_width */
 
 
 
@@ -72,14 +72,14 @@ sw_t* sw_alloc(const twobit_t* subject)
 
     sw->n = (int) twobit_len(subject);
 
-    sw->subject = malloc_or_die((sw->n + 2 * band_width) * sizeof(uint8_t));
+    sw->subject = malloc_or_die((sw->n + 2 * sw_band_width) * sizeof(uint8_t));
 
     int i;
     /* the lead of the subject sequence is padded to slightly simplify the
      * alignment */
-    for (i = 0; i < band_width; ++i) sw->subject[i] = 5; /* '5' to ensure mismatches */
-    for (i = 0; i < sw->n; ++i) sw->subject[band_width + i] = twobit_get(subject, i);
-    for (i = 0; i < band_width; ++i) sw->subject[sw->n + i] = 5;
+    for (i = 0; i < sw_band_width; ++i) sw->subject[i] = 5; /* '5' to ensure mismatches */
+    for (i = 0; i < sw->n; ++i) sw->subject[sw_band_width + i] = twobit_get(subject, i);
+    for (i = 0; i < sw_band_width; ++i) sw->subject[sw->n + i] = 5;
 
     /* We don't know the query length in advance, so these are all allocated
      * and/or expanded when needed. */
@@ -97,15 +97,15 @@ void sw_set_subject(sw_t* sw, const twobit_t* subject)
 
     if (len != sw->n) {
         free(sw->subject);
-        sw->subject = malloc_or_die((len + band_width) * sizeof(uint8_t));
+        sw->subject = malloc_or_die((len + sw_band_width) * sizeof(uint8_t));
         sw->n = len;
     }
 
     int i;
     /* the lead of the subject sequence is padded to slightly simplify the
      * alignment */
-    for (i = 0; i < band_width; ++i) sw->subject[i] = 5; /* '5' to ensure mismatches */
-    for (i = 0; i < sw->n; ++i) sw->subject[band_width + i] = twobit_get(subject, i);
+    for (i = 0; i < sw_band_width; ++i) sw->subject[i] = 5; /* '5' to ensure mismatches */
+    for (i = 0; i < sw->n; ++i) sw->subject[sw_band_width + i] = twobit_get(subject, i);
 }
 
 
@@ -202,8 +202,8 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
 
     /* account for the case in which we are aligning right at the start of the
      * contig */
-    if (sw->spos < band_width) {
-        for (i = 0; i < band_width - sw->spos; ++i) sw->F[i] = score_inf;
+    if (sw->spos < sw_band_width) {
+        for (i = 0; i < sw_band_width - sw->spos; ++i) sw->F[i] = score_inf;
     }
 
     sw_align_sub(sw, 0, qpos);
@@ -217,9 +217,9 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
             sw->F[j] = score_inf;
         }
 
-        assert(sw->query[i] == sw->subject[sw->spos + i + band_width]);
+        assert(sw->query[i] == sw->subject[sw->spos + i + sw_band_width]);
 
-        j = (i + 1) * colsize + band_width;
+        j = (i + 1) * colsize + sw_band_width;
         sw->F[j] = sw->F[j - colsize] + score_match;
     }
 
@@ -233,8 +233,8 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
     score_t s = score_inf;
     j_end = (qlen + 1) * colsize;
 
-    if (spos + (qlen - qpos) + band_width >= sw->n) {
-        j_end -= (spos + (qlen - qpos) + band_width) - sw->n;
+    if (spos + (qlen - qpos) + sw_band_width >= sw->n) {
+        j_end -= (spos + (qlen - qpos) + sw_band_width) - sw->n;
     }
 
     for (j = qlen * colsize; j < j_end; ++j) {
@@ -300,7 +300,7 @@ void sw_trace(sw_t* sw, sw_alignment_t* aln)
         aln->ops[aln->len++] = op;
     }
 
-    aln->spos = sw->spos + j - band_width;
+    aln->spos = sw->spos + j - sw_band_width;
 
     /* reverse the order of edit operations */
     i = 0;

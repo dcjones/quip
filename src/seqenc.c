@@ -8,10 +8,6 @@
 #include <string.h>
 
 
-/* Number of mismatchisg reads before a contig position is flipped. */
-const uint16_t mismatch_patch_factor = 5;
-const uint16_t mismatch_patch_cutoff = 5;
-
 /* Order of the markov chain assigning probabilities to dinucleotides. */
 static const size_t k = 11;
 
@@ -31,6 +27,13 @@ static const size_t edit_op_k = 6;
 /* The rate at which the nucleotide markov chain is updated. */
 static const size_t seq_update_rate = 2;
 
+/* Initial pseudocount biasing contig motifs towards the consensus sequence.  */
+static const uint16_t contig_motif_prior = 100;
+
+enum {
+    SEQENC_TYPE_SEQUENCE = 0,
+    SEQENC_TYPE_ALIGNMENT
+};
 
 
 struct seqenc_t_
@@ -42,17 +45,17 @@ struct seqenc_t_
     uint32_t ctx_mask;
     uint32_t ctx0_mask;
 
-    /* nucelotide probability given the last k nucleotides */
+    /* nucleotide probability given the last k nucleotides */
     cond_dist16_t cs;
 
     /* special case models for the first 2 * prefix_les positions. */
     cond_dist16_t cs0[5];
 
     /* binary distribution of unique (0) / match (1) */
-    dist2_t ms;
+    dist2_t d_type;
 
     /* distribution over match strand */
-    dist2_t ss;
+    dist2_t d_aln_strand;
 
     /* distribution over contig number */
     dist4_t        d_contig_idx_bytes;
@@ -66,15 +69,14 @@ struct seqenc_t_
     cond_dist4_t d_ins_nuc;
     uint32_t ins_ctx_mask;
 
-    /* distribution of edit operations, given the previous operation and
-     * position within the read */
-    cond_dist4_t d_edit_op;
+    /* distribution of edit operations, given the previous operation */
+    cond_dist3_t d_edit_op;
     uint32_t edit_op_mask;
 
-    /* contig set, used in calls to seqenc_decode_alignment */
-    twobit_t** contigs;
+    /* contig motifs used to compress nucleotides in alignments */
+    cond_dist4_t* contig_motifs;
 
-    /* number of contigs read so far */
+    /* number of contigs alignment may originate from */
     uint32_t contig_count;
 
     /* how many of the leading sequences are contigs */
@@ -82,9 +84,6 @@ struct seqenc_t_
 
     /* lengths of the expected contigs */
     uint32_t* contig_lens;
-
-    /* tallies of mismatches */
-    uint16_t** mismatch_tally;
 };
 
 
@@ -128,8 +127,8 @@ static void seqenc_init(seqenc_t* E)
      * uniform */
     seqenc_setprior(E);
 
-    dist2_init(&E->ms);
-    dist2_init(&E->ss);
+    dist2_init(&E->d_type);
+    dist2_init(&E->d_aln_strand);
 
     dist4_init(&E->d_contig_idx_bytes);
     cond_dist256_init(&E->d_contig_idx, 4);
@@ -143,17 +142,16 @@ static void seqenc_init(seqenc_t* E)
 
     cond_dist4_init(&E->d_ins_nuc, N);
 
+    N = 1;
+    for (i = 0; i < edit_op_k; ++i) N *= 3;
+    E->edit_op_mask = N;
 
-    N = 1 << (2 * edit_op_k);
-    E->edit_op_mask = N - 1;
+    cond_dist3_init(&E->d_edit_op, N);
 
-    cond_dist4_init(&E->d_edit_op, N);
-
-    E->contigs          = NULL;
+    E->contig_motifs    = NULL;
     E->contig_lens      = NULL;
     E->contig_count     = 0;
     E->expected_contigs = 0;
-    E->mismatch_tally   = NULL;
 }
 
 
@@ -197,15 +195,13 @@ void seqenc_free(seqenc_t* E)
     cond_dist256_free(&E->d_contig_off);
 
     cond_dist4_free(&E->d_ins_nuc);
-    cond_dist4_free(&E->d_edit_op);
+    cond_dist3_free(&E->d_edit_op);
 
     for (i = 0; i < E->contig_count; ++i) {
-        twobit_free(E->contigs[i]);
-        free(E->mismatch_tally[i]);
+        cond_dist4_free(&E->contig_motifs[i]);
     }
-    free(E->contigs);
+    free(E->contig_motifs);
     free(E->contig_lens);
-    free(E->mismatch_tally);
 
     free(E);
 }
@@ -214,7 +210,7 @@ void seqenc_free(seqenc_t* E)
 
 void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 {
-    dist2_encode(E->ac, &E->ms, 0);
+    dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_SEQUENCE);
 
     kmer_t uv;
     size_t n = twobit_len(x);
@@ -244,7 +240,7 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 
 void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
 {
-    dist2_encode(E->ac, &E->ms, 0);
+    dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_SEQUENCE);
 
     kmer_t uv;
     uint32_t ctx = 0;
@@ -302,14 +298,12 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
 }
 
 
-
-void seqenc_encode_alignment(seqenc_t* E,
-        size_t contig_idx, uint8_t strand,
-        const sw_alignment_t* aln, const twobit_t* query)
+void seqenc_encode_alignment(
+            seqenc_t* E, size_t contig_idx, uint8_t strand,
+            const sw_alignment_t* aln,
+            const twobit_t* query)
 {
-    /*print_alignment(stderr, aln);*/
-
-    dist2_encode(E->ac, &E->ms, 1);
+    dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_ALIGNMENT);
 
     uint32_t bytes;
     uint32_t z;
@@ -334,7 +328,7 @@ void seqenc_encode_alignment(seqenc_t* E,
 
 
     /* encode strand */
-    dist2_encode(E->ac, &E->ss, strand);
+    dist2_encode(E->ac, &E->d_aln_strand, strand);
 
 
     /* encode contig offset */
@@ -358,57 +352,119 @@ void seqenc_encode_alignment(seqenc_t* E,
     /* encode edit operations */
     kmer_t u = twobit_get(query, 0);
     uint32_t last_op = EDIT_MATCH;
-    kmer_t ctx = 0;
+    cond_dist4_t* motif = &E->contig_motifs[contig_idx];
+    size_t contig_len = motif->n - 2 * sw_band_width;
+    size_t contig_pos;
     size_t i; /* position within the alignment */
     size_t j; /* position within the read sequence */
-    for (i = 0, j = 0; i < aln->len; ++i) {
-        switch (aln->ops[i]) {
-            case EDIT_MATCH:
-                cond_dist4_encode(E->ac, &E->d_edit_op, last_op, EDIT_MATCH);
+    size_t c; /* position within the contig */
+    for (i = 0, j = 0, c = aln->spos; i < aln->len; ++i) {
 
-                ++j;
-                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
-                u = twobit_get(query, j);
-                break;
+        if (aln->ops[i] == EDIT_MATCH || aln->ops[i] == EDIT_MISMATCH) {
+            cond_dist3_encode(E->ac, &E->d_edit_op, last_op, EDIT_MATCH);
 
-            case EDIT_MISMATCH:
-                cond_dist4_encode(E->ac, &E->d_edit_op, last_op, EDIT_MISMATCH);
-                cond_dist4_encode(E->ac, &E->d_ins_nuc, ctx, u);
+            if (strand) {
+                contig_pos = sw_band_width + contig_len - c - 1;
+                u = kmer_comp1(u);
+            }
+            else contig_pos = sw_band_width + c;
 
-                ++j;
-                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
-                u = twobit_get(query, j);
-                break;
+            cond_dist4_encode(E->ac, motif, contig_pos, u);
 
-            case EDIT_Q_GAP:
-                cond_dist4_encode(E->ac, &E->d_edit_op, last_op, EDIT_Q_GAP);
-                break;
+            ++j;
+            ++c;
+            u = twobit_get(query, j);
+        }
+        else if (aln->ops[i] == EDIT_Q_GAP) {
+            cond_dist3_encode(E->ac, &E->d_edit_op, last_op, EDIT_Q_GAP);
+            ++c;
+        }
+        else if (aln->ops[i] == EDIT_S_GAP) {
+            cond_dist3_encode(E->ac, &E->d_edit_op, last_op, EDIT_S_GAP);
 
-            case EDIT_S_GAP:
-                cond_dist4_encode(E->ac, &E->d_edit_op, last_op, EDIT_S_GAP);
-                cond_dist4_encode(E->ac, &E->d_ins_nuc, ctx, u);
+            if (strand) {
+                contig_pos = sw_band_width + contig_len - c - 1;
+                u = kmer_comp1(u);
+            }
+            else contig_pos = sw_band_width + c;
+            
+            cond_dist4_encode(E->ac, motif, contig_pos, u);
 
-                ++j;
-                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
-                u = twobit_get(query, j);
-                break;
+            ++j;
+            u = twobit_get(query, j);
         }
 
-        last_op = ((last_op << 2) | aln->ops[i]) & E->edit_op_mask;
+        last_op = ((3 * last_op) + aln->ops[i]) & E->edit_op_mask;
     }
 
     assert(j == twobit_len(query));
 }
 
 
+void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
+{
+    size_t i, j, k;
+    for (i = 0; i < E->contig_count; ++i) {
+        cond_dist4_free(&E->contig_motifs[i]);
+    }
+    free(E->contig_motifs);
+
+    twobit_t*     contig;
+    cond_dist4_t* motif;
+    size_t len;
+
+    E->contig_count = n;
+    E->contig_motifs = malloc_or_die(n * sizeof(cond_dist4_t));
+    for (i = 0; i < E->contig_count; ++i) {
+        contig = contigs[i];
+        motif  = &E->contig_motifs[i];
+        len    = twobit_len(contig);
+
+        /* alignments are allowed to overhang by
+         * sw_band_width nucleotides */
+        cond_dist4_init(motif, len + 2 * sw_band_width);
+        for (j = 0; j < len; ++j) {
+            k = j + sw_band_width;
+            motif->xss[k].xs[twobit_get(contig, j)].count =
+                contig_motif_prior;
+            dist4_update(&motif->xss[k]);
+        }
+    }
+}
+
+
+void seqenc_get_contig_consensus(seqenc_t* E, twobit_t** contigs)
+{
+    size_t i, j, k;
+    twobit_t*     contig;
+    cond_dist4_t* motif;
+    size_t len;
+    kmer_t u;
+
+    for (i = 0; i < E->contig_count; ++i) {
+        contig = contigs[i];
+        motif  = &E->contig_motifs[i];
+        len    = twobit_len(contig);;
+
+        for (j = 0; j < len; ++j) {
+            u = 0;
+            k = j + sw_band_width;
+            if (motif->xss[k].xs[1].count >
+                motif->xss[k].xs[u].count) u = 1;
+            if (motif->xss[k].xs[2].count >
+                motif->xss[k].xs[u].count) u = 2;
+            if (motif->xss[k].xs[3].count >
+                motif->xss[k].xs[u].count) u = 3;
+
+            twobit_set(contig, j, u);
+        }
+    }
+}
+
+
 void seqenc_prepare_decoder(seqenc_t* E, uint32_t n, const uint32_t* lens)
 {
     size_t i;
-    for (i = 0; i < E->contig_count; ++i) {
-        twobit_free(E->contigs[i]);
-    }
-    free(E->contigs);
-    E->contigs = NULL;
 
     free(E->contig_lens);
     E->contig_lens = NULL;
@@ -416,18 +472,9 @@ void seqenc_prepare_decoder(seqenc_t* E, uint32_t n, const uint32_t* lens)
     E->contig_count = 0;
     E->expected_contigs = n;
 
-    E->contigs     = malloc_or_die(n * sizeof(twobit_t*));
-    memset(E->contigs, 0, n * sizeof(twobit_t*));
-
     E->contig_lens = malloc_or_die(n * sizeof(uint32_t));
 
     for (i = 0; i < n; ++i) E->contig_lens[i] = lens[i];
-
-    E->mismatch_tally = malloc_or_die(n * sizeof(uint16_t*));
-    for (i = 0; i < n; ++i) {
-        E->mismatch_tally[i] = malloc_or_die(4 * E->contig_lens[i] * sizeof(uint16_t));
-        memset(E->mismatch_tally[i], 0, 4 * E->contig_lens[i] * sizeof(uint16_t));
-    }
 }
 
 
@@ -510,7 +557,6 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
 
     while (n >= x->seq.size) fastq_expand_str(&x->seq);
 
-
     uint32_t contig_idx, spos;
     uint32_t bytes;
     uint32_t b;
@@ -526,12 +572,8 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
 
     assert(contig_idx < E->contig_count);
 
-    const twobit_t* contig = E->contigs[contig_idx];
-    size_t contig_len = twobit_len(contig);
-
-
     /* decode strand */
-    uint8_t strand = dist2_decode(E->ac, &E->ss);
+    uint8_t strand = dist2_decode(E->ac, &E->d_aln_strand);
 
 
     /* decode offset */
@@ -542,66 +584,51 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
     }
     spos = z;
 
+    /* contig motif */
+    if (contig_idx >= E->contig_count) {
+        fprintf(stderr, "Error: contig index out of bounds.\n");
+        exit(EXIT_FAILURE);
+    }
+    cond_dist4_t* motif = &E->contig_motifs[contig_idx];
+    size_t contig_len = motif->n - 2 * sw_band_width;
 
     /* decoded edit operations */
     edit_op_t op, last_op = EDIT_MATCH;
 
-    kmer_t u, v, ctx = 0; /* nucleotide context */
+    kmer_t u; /* nucleotide */
 
     size_t i; /* position within the read */
     size_t j; /* position within the contig */
 
-    size_t contig_pos;
-
     for (i = 0, j = spos; i < n;) {
-        op = cond_dist4_decode(E->ac, &E->d_edit_op, last_op);
+        op = cond_dist3_decode(E->ac, &E->d_edit_op, last_op);
 
-        switch (op) {
-            case EDIT_MATCH:
-                if (strand) u = kmer_comp1(twobit_get(contig, contig_len - j - 1));
-                else        u = twobit_get(contig, j);
-                x->seq.s[i] = kmertochar[u];
+        if (op == EDIT_MATCH) {
+            if (strand) {
+                u = kmer_comp1(cond_dist4_decode(
+                        E->ac, motif, contig_len - j - 1));
+            }
+            else u = cond_dist4_decode(E->ac, motif, j);
 
-                if (strand) contig_pos = contig_len - j - 1;
-                else        contig_pos = j;
+            x->seq.s[i] = kmertochar[u];
+            ++i;
+            ++j;
+        }
+        else if (op == EDIT_Q_GAP) {
+            ++j;
+        }
+        else if (op == EDIT_S_GAP) {
+            if (strand) {
+                u = kmer_comp1(cond_dist4_decode(
+                        E->ac, motif, contig_len - j - 1));
+            }
+            else u = cond_dist4_decode(E->ac, motif, j);
 
-                v = strand ? kmer_comp1(u) : u;
-                E->mismatch_tally[contig_idx][4 * contig_pos + v]++;
-
-                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
-                ++i;
-                ++j;
-                break;
-
-            case EDIT_MISMATCH:
-                u = cond_dist4_decode(E->ac, &E->d_ins_nuc, ctx);
-                x->seq.s[i] = kmertochar[u];
-
-                if (strand) contig_pos = contig_len - j - 1;
-                else        contig_pos = j;
-
-                v = strand ? kmer_comp1(u) : u;
-                E->mismatch_tally[contig_idx][4 * contig_pos + v]++;
-
-                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
-                ++i;
-                ++j;
-                break;
-
-            case EDIT_Q_GAP:
-                ++j;
-                break;
-
-            case EDIT_S_GAP:
-                u = cond_dist4_decode(E->ac, &E->d_ins_nuc, ctx);
-                x->seq.s[i] = kmertochar[u];
-
-                ctx = ((ctx << 2) | u) & E->ins_ctx_mask;
-                ++i;
-                break;
+            x->seq.s[i] = kmertochar[u];
+            ++i;
         }
 
-        last_op = ((last_op << 2) | op) & E->edit_op_mask;
+        last_op = ((3 * last_op) + op) & E->edit_op_mask;
     }
 
     x->seq.s[n] = '\0';
@@ -616,22 +643,37 @@ static void seqenc_decode_contigs(seqenc_t* E)
     uint32_t type;
     size_t len;
 
-    while (E->contig_count < E->expected_contigs) {
-        type = dist2_decode(E->ac, &E->ms);
+    twobit_t** contigs = NULL;
+    contigs = malloc_or_die(E->expected_contigs * sizeof(twobit_t*));
+    memset(contigs, 0, E->expected_contigs * sizeof(twobit_t*));
+
+    uint32_t cnt = 0;
+
+    while (cnt < E->expected_contigs) {
+        type = dist2_decode(E->ac, &E->d_type);
 
         /* contigs aligned to prior contigs is not currently supported. */
-        assert(type == 0);
+        assert(type == SEQENC_TYPE_SEQUENCE);
 
         len = E->contig_lens[E->contig_count];
 
         seqenc_decode_seq(E, seq, len);
-        E->contigs[E->contig_count] = twobit_alloc_n(len);
-        twobit_copy_n(E->contigs[E->contig_count], seq->seq.s, len);
+        contigs[cnt] = twobit_alloc_n(len);
+        twobit_copy_n(contigs[cnt], seq->seq.s, len);
 
-        E->contig_count++;
+        cnt++;
     }
 
     fastq_free_seq(seq);
+
+    /* initialize contig motifs */
+    seqenc_set_contigs(E, contigs, cnt);
+
+    uint32_t i;
+    for (i = 0; i < cnt; ++i) {
+        twobit_free(contigs[i]);
+    }
+    free(contigs);
 }
 
 
@@ -642,10 +684,10 @@ void seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
         seqenc_decode_contigs(E);
     }
 
-    uint32_t type = dist2_decode(E->ac, &E->ms);
+    uint32_t type = dist2_decode(E->ac, &E->d_type);
 
-    if (type == 0) seqenc_decode_seq(E, x, n);
-    else           seqenc_decode_alignment(E, x, n);
+    if (type == SEQENC_TYPE_SEQUENCE) seqenc_decode_seq(E, x, n);
+    else                              seqenc_decode_alignment(E, x, n);
 }
 
 
@@ -653,48 +695,6 @@ void seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
 void seqenc_flush(seqenc_t* E)
 {
     ac_flush_encoder(E->ac);
-}
-
-
-static void patch_mismatches(seqenc_t* E)
-{
-    size_t len;
-    size_t i, j, k;
-
-    kmer_t u;
-    uint16_t max_k;
-
-    size_t flip_cnt = 0;
-
-    for (i = 0; i < E->contig_count; ++i) {
-        len = twobit_len(E->contigs[i]);
-        for (j = 0; j < len; ++j) {
-            if (* (uint64_t*) (E->mismatch_tally[i] + 4 * j) > 0) {
-
-                for (k = 0, max_k = 0; k < 4; ++k) {
-                    if (E->mismatch_tally[i][4 * j + k] > 
-                        E->mismatch_tally[i][4 * j + max_k])
-                    {
-                        max_k = k;
-                    }
-                }
-
-                u = twobit_get(E->contigs[i], j);
-
-                if (E->mismatch_tally[i][4 * j + max_k] > mismatch_patch_cutoff &&
-                    E->mismatch_tally[i][4 * j + max_k] > 
-                    mismatch_patch_factor * E->mismatch_tally[i][4 * j + u])
-                {
-                    twobit_set(E->contigs[i], j, max_k);
-                    ++flip_cnt;
-                }
-            }
-        }
-
-        memset(E->mismatch_tally[i], 0, 4 * len * sizeof(uint16_t));
-    }
-
-    if (quip_verbose) fprintf(stderr, "\t%zu mismatches flipped.\n", flip_cnt);
 }
 
 
@@ -706,7 +706,6 @@ void seqenc_start_decoder(seqenc_t* E)
 
 void seqenc_reset_decoder(seqenc_t* E)
 {
-    patch_mismatches(E);
     ac_reset_decoder(E->ac);
 }
 

@@ -17,6 +17,7 @@
 #include "quip.h"
 #include "twobit.h"
 #include "sw.h"
+#include "dist.h"
 #include <stdlib.h>
 
 typedef struct seqenc_t_ seqenc_t;
@@ -25,11 +26,22 @@ seqenc_t* seqenc_alloc_encoder(quip_writer_t writer, void* writer_data);
 seqenc_t* seqenc_alloc_decoder(quip_reader_t writer, void* reader_data);
 void      seqenc_free(seqenc_t*);
 
+/* This is called to initialized the sequence motifs used when
+ * encoding alignment. This must be called prior to any
+ * calls to seqenc_encode_alignment. */
+void seqenc_set_contigs(seqenc_t*, twobit_t** contigs, size_t n);
+
+/* Update the contig sequences to the current maximum-likelihood
+ * consensus sequence. */
+void seqenc_get_contig_consensus(seqenc_t*, twobit_t** contigs);
+
 void seqenc_encode_char_seq(seqenc_t*, const char*, size_t len);
 void seqenc_encode_twobit_seq(seqenc_t*, const twobit_t*);
-void seqenc_encode_alignment(seqenc_t* E,
+void seqenc_encode_alignment(
+        seqenc_t* E,
         size_t contig_idx, uint8_t strand,
-        const sw_alignment_t* aln, const twobit_t* query);
+        const sw_alignment_t* aln,
+        const twobit_t* query);
 void seqenc_flush(seqenc_t* E);
 
 /* Optionally called to inform the decoder that the next n sequences should be

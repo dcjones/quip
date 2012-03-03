@@ -23,9 +23,9 @@ typedef struct sw_t_ sw_t;
 typedef enum edit_op_t_
 {
     EDIT_MATCH = 0,
-    EDIT_MISMATCH,
     EDIT_Q_GAP,
-    EDIT_S_GAP
+    EDIT_S_GAP,
+    EDIT_MISMATCH
 } edit_op_t;
 
 typedef struct sw_alignment_t_
@@ -48,6 +48,9 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
 
 /* Store the alignment found in the last call to sw_seeded_align. */
 void sw_trace(sw_t* sw, sw_alignment_t* aln);
+
+/* Band size used by the striped smith-waterman approach */
+extern const int sw_band_width;
 
 #endif
 
