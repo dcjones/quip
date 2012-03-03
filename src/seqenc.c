@@ -15,10 +15,6 @@ static const size_t k = 11;
  * account for positional sequence bias that is sommon in short read sequencing.  */
 static const size_t prefix_len = 4;
 
-/* Order of the markov chain assigning probabilities to inserted nucleotides in
- * alignments. */
-static const size_t insert_nuc_k = 4;
-
 /* order of the markov-chain assigning probabilities to edit operations in
  * encoded alignment.s
  */
@@ -64,10 +60,6 @@ struct seqenc_t_
     /* distribution over the offset into the contig */
     dist4_t        d_contig_off_bytes;
     cond_dist256_t d_contig_off;
-
-    /* distribution over inserted nucleotides */
-    cond_dist4_t d_ins_nuc;
-    uint32_t ins_ctx_mask;
 
     /* distribution of edit operations, given the previous operation */
     cond_dist3_t d_edit_op;
@@ -136,12 +128,6 @@ static void seqenc_init(seqenc_t* E)
     dist4_init(&E->d_contig_off_bytes);
     cond_dist256_init(&E->d_contig_off, 4);
 
-
-    N = 1 << (2 * insert_nuc_k);
-    E->ins_ctx_mask = N -1;
-
-    cond_dist4_init(&E->d_ins_nuc, N);
-
     N = 1;
     for (i = 0; i < edit_op_k; ++i) N *= 3;
     E->edit_op_mask = N;
@@ -194,7 +180,6 @@ void seqenc_free(seqenc_t* E)
     cond_dist256_free(&E->d_contig_idx);
     cond_dist256_free(&E->d_contig_off);
 
-    cond_dist4_free(&E->d_ins_nuc);
     cond_dist3_free(&E->d_edit_op);
 
     for (i = 0; i < E->contig_count; ++i) {
@@ -351,7 +336,7 @@ void seqenc_encode_alignment(
 
     /* encode edit operations */
     kmer_t u = twobit_get(query, 0);
-    uint32_t last_op = EDIT_MATCH;
+    uint32_t op, last_op = EDIT_MATCH;
     cond_dist4_t* motif = &E->contig_motifs[contig_idx];
     size_t contig_len = motif->n - 2 * sw_band_width;
     size_t contig_pos;
@@ -373,10 +358,12 @@ void seqenc_encode_alignment(
 
             ++j;
             ++c;
+            op = EDIT_MATCH;
             u = twobit_get(query, j);
         }
         else if (aln->ops[i] == EDIT_Q_GAP) {
             cond_dist3_encode(E->ac, &E->d_edit_op, last_op, EDIT_Q_GAP);
+            op = EDIT_Q_GAP;
             ++c;
         }
         else if (aln->ops[i] == EDIT_S_GAP) {
@@ -391,10 +378,11 @@ void seqenc_encode_alignment(
             cond_dist4_encode(E->ac, motif, contig_pos, u);
 
             ++j;
+            op = EDIT_S_GAP;
             u = twobit_get(query, j);
         }
 
-        last_op = ((3 * last_op) + aln->ops[i]) & E->edit_op_mask;
+        last_op = ((3 * last_op) + op) % E->edit_op_mask;
     }
 
     assert(j == twobit_len(query));
@@ -596,7 +584,7 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
     edit_op_t op, last_op = EDIT_MATCH;
 
     kmer_t u; /* nucleotide */
-
+    size_t contig_pos;
     size_t i; /* position within the read */
     size_t j; /* position within the contig */
 
@@ -605,10 +593,12 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
 
         if (op == EDIT_MATCH) {
             if (strand) {
+                contig_pos = sw_band_width + contig_len - j - 1;
+
                 u = kmer_comp1(cond_dist4_decode(
-                        E->ac, motif, contig_len - j - 1));
+                        E->ac, motif, contig_pos));
             }
-            else u = cond_dist4_decode(E->ac, motif, j);
+            else u = cond_dist4_decode(E->ac, motif, sw_band_width + j);
 
             x->seq.s[i] = kmertochar[u];
             ++i;
@@ -619,16 +609,18 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
         }
         else if (op == EDIT_S_GAP) {
             if (strand) {
+                contig_pos = sw_band_width + contig_len - j - 1;
+
                 u = kmer_comp1(cond_dist4_decode(
-                        E->ac, motif, contig_len - j - 1));
+                        E->ac, motif, contig_pos));
             }
-            else u = cond_dist4_decode(E->ac, motif, j);
+            else u = cond_dist4_decode(E->ac, motif, sw_band_width + j);
 
             x->seq.s[i] = kmertochar[u];
             ++i;
         }
 
-        last_op = ((3 * last_op) + op) & E->edit_op_mask;
+        last_op = ((3 * last_op) + op) % E->edit_op_mask;
     }
 
     x->seq.s[n] = '\0';
@@ -655,7 +647,7 @@ static void seqenc_decode_contigs(seqenc_t* E)
         /* contigs aligned to prior contigs is not currently supported. */
         assert(type == SEQENC_TYPE_SEQUENCE);
 
-        len = E->contig_lens[E->contig_count];
+        len = E->contig_lens[cnt];
 
         seqenc_decode_seq(E, seq, len);
         contigs[cnt] = twobit_alloc_n(len);
@@ -674,6 +666,8 @@ static void seqenc_decode_contigs(seqenc_t* E)
         twobit_free(contigs[i]);
     }
     free(contigs);
+
+    if (quip_verbose) fprintf(stderr, "read %u contigs\n", (unsigned int) cnt);
 }
 
 
