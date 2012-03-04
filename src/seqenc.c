@@ -20,6 +20,9 @@ static const size_t prefix_len = 4;
  */
 static const size_t edit_op_k = 6;
 
+/* order of the binary markov-chain used to encode contig offsets */
+static const size_t contig_off_k = 8;
+
 /* The rate at which the nucleotide markov chain is updated. */
 static const size_t seq_update_rate = 2;
 
@@ -53,13 +56,8 @@ struct seqenc_t_
     /* distribution over match strand */
     dist2_t d_aln_strand;
 
-    /* distribution over contig number */
-    dist4_t        d_contig_idx_bytes;
-    cond_dist256_t d_contig_idx;
-
     /* distribution over the offset into the contig */
-    dist4_t        d_contig_off_bytes;
-    cond_dist256_t d_contig_off;
+    cond_dist2_t d_contig_off;
 
     /* distribution of edit operations, given the previous operation */
     cond_dist3_t d_edit_op;
@@ -127,11 +125,7 @@ static void seqenc_init(seqenc_t* E)
     dist2_init(&E->d_type);
     dist2_init(&E->d_aln_strand);
 
-    dist4_init(&E->d_contig_idx_bytes);
-    cond_dist256_init(&E->d_contig_idx, 4);
-
-    dist4_init(&E->d_contig_off_bytes);
-    cond_dist256_init(&E->d_contig_off, 4);
+    cond_dist2_init(&E->d_contig_off, 32 * (1 << contig_off_k));
 
     N = 1;
     for (i = 0; i < edit_op_k; ++i) N *= 3;
@@ -183,8 +177,7 @@ void seqenc_free(seqenc_t* E)
         cond_dist16_free(&E->cs0[i]);
     }
 
-    cond_dist256_free(&E->d_contig_idx);
-    cond_dist256_free(&E->d_contig_off);
+    cond_dist2_free(&E->d_contig_off);
 
     cond_dist3_free(&E->d_edit_op);
 
@@ -297,15 +290,19 @@ void seqenc_encode_alignment(
 {
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_ALIGNMENT);
 
-    uint32_t bytes;
-    uint32_t z;
+    // uint32_t bytes;
+    // uint32_t z;
 
 
     /* encode strand */
     dist2_encode(E->ac, &E->d_aln_strand, strand);
 
+    dist_encode_uint32(E->ac, &E->d_contig_off,
+        contig_off_k,
+        E->cum_contig_lens[contig_idx] + aln->spos);
 
     /* encode contig offset */
+    #if 0
     bytes = 0;
     z = aln->spos + E->cum_contig_lens[contig_idx];
     while (z > 0) {
@@ -321,6 +318,7 @@ void seqenc_encode_alignment(
         cond_dist256_encode(E->ac, &E->d_contig_off, bytes, z & 0xff);
         z >>= 8;
     }
+    #endif
 
 
     /* encode edit operations */
@@ -567,19 +565,22 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
     while (n >= x->seq.size) fastq_expand_str(&x->seq);
 
     uint32_t contig_idx, spos;
-    uint32_t bytes;
-    uint32_t b;
+    // uint32_t bytes;
+    // uint32_t b;
     uint32_t z;
 
     /* decode strand */
     uint8_t strand = dist2_decode(E->ac, &E->d_aln_strand);
 
     /* decode offset */
+    /*
     bytes = 1 + dist4_decode(E->ac, &E->d_contig_off_bytes);
     z = 0;
     for (b = 0; b < bytes; ++b) {
         z |= cond_dist256_decode(E->ac, &E->d_contig_off, bytes - b - 1) << (8 * b);
     }
+    */
+    z = dist_decode_uint32(E->ac,&E->d_contig_off, contig_off_k);
 
     contig_idx = decode_contig_idx(E, z);
     spos = z - E->cum_contig_lens[contig_idx];

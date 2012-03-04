@@ -121,3 +121,37 @@ static const size_t max_count = 1 << 15;
 #include "dist_template_off.h"
 
 
+/* Functions for general-purpose markov-chain
+ * encoding of unsigned integers.
+ */
+void dist_encode_uint32(ac_t* ac, cond_dist2_t* d, uint32_t k, uint32_t x)
+{
+    uint32_t N = 1 << k;
+    uint32_t mask = N - 1;
+
+    uint32_t y, ctx = 0;
+    size_t i;
+    for (i = 32; i > 0; --i) {
+        y = (x >> (i - 1)) & 0x1;
+        cond_dist2_encode(ac, d,
+            ((i - 1) * N) + ctx, y);
+        ctx = ((ctx << 1) | y) & mask;
+    }
+}
+
+
+uint32_t dist_decode_uint32(ac_t* ac, cond_dist2_t* d, uint32_t k)
+{
+    uint32_t N = 1 << k;
+    uint32_t mask = N - 1;
+    
+    uint32_t ctx = 0, x = 0;
+    size_t i;
+    for (i = 32; i > 0; --i) {
+        x = (x << 1) | cond_dist2_decode(ac, d, ((i - 1) * N) + ctx);
+        ctx = ((ctx << 1) | x) & mask;
+    }
+
+    return x;
+}
+
