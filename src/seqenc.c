@@ -24,7 +24,7 @@ static const size_t edit_op_k = 6;
 static const size_t seq_update_rate = 2;
 
 /* Initial pseudocount biasing contig motifs towards the consensus sequence.  */
-static const uint16_t contig_motif_prior = 100;
+static const uint16_t contig_motif_prior = 50;
 
 enum {
     SEQENC_TYPE_SEQUENCE = 0,
@@ -76,6 +76,11 @@ struct seqenc_t_
 
     /* lengths of the expected contigs */
     uint32_t* contig_lens;
+
+    /* cumulative contig lengths
+     * We encode a position of an alignment as an offset into a
+     * super-contig formed by laying the contigs end-to-end. */
+    uint32_t* cum_contig_lens;
 };
 
 
@@ -136,6 +141,7 @@ static void seqenc_init(seqenc_t* E)
 
     E->contig_motifs    = NULL;
     E->contig_lens      = NULL;
+    E->cum_contig_lens  = NULL;
     E->contig_count     = 0;
     E->expected_contigs = 0;
 }
@@ -187,6 +193,7 @@ void seqenc_free(seqenc_t* E)
     }
     free(E->contig_motifs);
     free(E->contig_lens);
+    free(E->cum_contig_lens);
 
     free(E);
 }
@@ -294,31 +301,13 @@ void seqenc_encode_alignment(
     uint32_t z;
 
 
-    /* encode contig index */
-    bytes = 0;
-    z = contig_idx;
-    while (z > 0) {
-        z >>= 8;
-        ++bytes;
-    }
-    if (bytes == 0) bytes = 1;
-
-    dist4_encode(E->ac, &E->d_contig_idx_bytes, bytes - 1);
-
-    z = contig_idx;
-    while (bytes--) {
-        cond_dist256_encode(E->ac, &E->d_contig_idx, bytes, z & 0xff);
-        z >>= 8;
-    }
-
-
     /* encode strand */
     dist2_encode(E->ac, &E->d_aln_strand, strand);
 
 
     /* encode contig offset */
     bytes = 0;
-    z = aln->spos;
+    z = aln->spos + E->cum_contig_lens[contig_idx];
     while (z > 0) {
         z >>= 8;
         ++bytes;
@@ -327,7 +316,7 @@ void seqenc_encode_alignment(
 
     dist4_encode(E->ac, &E->d_contig_off_bytes, bytes - 1);
 
-    z = aln->spos;
+    z = aln->spos + E->cum_contig_lens[contig_idx];
     while (bytes--) {
         cond_dist256_encode(E->ac, &E->d_contig_off, bytes, z & 0xff);
         z >>= 8;
@@ -396,6 +385,9 @@ void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
         cond_dist4_free(&E->contig_motifs[i]);
     }
     free(E->contig_motifs);
+    free(E->cum_contig_lens);
+
+    E->cum_contig_lens = malloc_or_die(n * sizeof(uint32_t));
 
     twobit_t*     contig;
     cond_dist4_t* motif;
@@ -403,6 +395,9 @@ void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
 
     E->contig_count = n;
     E->contig_motifs = malloc_or_die(n * sizeof(cond_dist4_t));
+
+    if (n > 0) E->cum_contig_lens[0] = 0;
+
     for (i = 0; i < E->contig_count; ++i) {
         contig = contigs[i];
         motif  = &E->contig_motifs[i];
@@ -416,6 +411,10 @@ void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
             motif->xss[k].xs[twobit_get(contig, j)].count =
                 contig_motif_prior;
             dist4_update(&motif->xss[k]);
+        }
+
+        if (i + 1 < E->contig_count) {
+            E->cum_contig_lens[i + 1] = E->cum_contig_lens[i] + len;
         }
     }
 }
@@ -462,7 +461,9 @@ void seqenc_prepare_decoder(seqenc_t* E, uint32_t n, const uint32_t* lens)
 
     E->contig_lens = malloc_or_die(n * sizeof(uint32_t));
 
-    for (i = 0; i < n; ++i) E->contig_lens[i] = lens[i];
+    for (i = 0; i < n; ++i) {
+        E->contig_lens[i] = lens[i];
+    } 
 }
 
 
@@ -538,6 +539,26 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 }
 
 
+static uint32_t decode_contig_idx(seqenc_t* E, uint32_t supercontig_off)
+{
+    /* find the contig index by binary search */
+    int i, j, k;
+    i = 0;
+    j = E->contig_count;
+
+    do {
+        k = (i + j) / 2;
+        if (supercontig_off < E->cum_contig_lens[k]) j = k;
+        else i = k;
+    } while (i + 1 < j);
+
+    assert(i == (int) E->contig_count - 1 || supercontig_off < E->cum_contig_lens[i + 1]);
+    assert(supercontig_off >= E->cum_contig_lens[i]);
+
+    return i;
+}
+
+
 static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
 {
     static size_t N = 0;
@@ -550,19 +571,8 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
     uint32_t b;
     uint32_t z;
 
-    /* decode contig index */
-    bytes = 1 + dist4_decode(E->ac, &E->d_contig_idx_bytes);
-    z = 0;
-    for (b = 0; b < bytes; ++b) {
-        z |= cond_dist256_decode(E->ac, &E->d_contig_idx, bytes - b - 1) << (8 * b);
-    }
-    contig_idx = z;
-
-    assert(contig_idx < E->contig_count);
-
     /* decode strand */
     uint8_t strand = dist2_decode(E->ac, &E->d_aln_strand);
-
 
     /* decode offset */
     bytes = 1 + dist4_decode(E->ac, &E->d_contig_off_bytes);
@@ -570,7 +580,9 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
     for (b = 0; b < bytes; ++b) {
         z |= cond_dist256_decode(E->ac, &E->d_contig_off, bytes - b - 1) << (8 * b);
     }
-    spos = z;
+
+    contig_idx = decode_contig_idx(E, z);
+    spos = z - E->cum_contig_lens[contig_idx];
 
     /* contig motif */
     if (contig_idx >= E->contig_count) {
@@ -579,6 +591,10 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
     }
     cond_dist4_t* motif = &E->contig_motifs[contig_idx];
     size_t contig_len = motif->n - 2 * sw_band_width;
+
+    assert(contig_idx == E->contig_count - 1 ||
+           contig_len == E->cum_contig_lens[contig_idx + 1] - E->cum_contig_lens[contig_idx]);
+    assert(contig_len > spos);
 
     /* decoded edit operations */
     edit_op_t op, last_op = EDIT_MATCH;

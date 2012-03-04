@@ -14,10 +14,11 @@ const uint8_t quip_header_magic[6] =
 const uint8_t quip_header_version = 0x01;
 
 const size_t assembler_k = 30;
-const size_t aligner_k = 16;
+const size_t aligner_k = 12;
 
 /* maximum number of bases per block */
-const size_t block_size = 50000000;
+// const size_t block_size = 50000000;
+const size_t block_size = 75000000;
 
 bool quip_verbose = false;
 
