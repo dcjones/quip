@@ -11,7 +11,7 @@
  * Efficient representation of discrete probability distributions for arithmetic
  * coding.
  *
- * I do some truely unspeakable things with the proprocessor in order to
+ * I do some truly unspeakable things with the preprocessor in order to
  * slightly improve the caching behavior of the arithmetic coder. This is
  * basically C++ template metagrogramming but in C. I use defines to declare
  * several distribution objects of fixed size.
@@ -94,9 +94,9 @@ static const size_t max_count = 1 << 15;
 #include "dist_template_off.h"
 
 
-#define DISTSIZE 100
-#define dist_t dist100_t
-#define cond_dist_t cond_dist100_t
+#define DISTSIZE 50
+#define dist_t dist50_t
+#define cond_dist_t cond_dist50_t
 
 #include "dist_template_on.h"
 #include "dist_impl.c"
