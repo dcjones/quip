@@ -124,33 +124,123 @@ static const size_t max_count = 1 << 15;
 /* Functions for general-purpose markov-chain
  * encoding of unsigned integers.
  */
-void dist_encode_uint32(ac_t* ac, cond_dist2_t* d, uint32_t k, uint32_t x)
-{
-    uint32_t N = 1 << k;
-    uint32_t mask = N - 1;
 
-    uint32_t y, ctx = 0;
-    size_t i;
-    for (i = 32; i > 0; --i) {
-        y = (x >> (i - 1)) & 0x1;
-        cond_dist2_encode(ac, d,
-            ((i - 1) * N) + ctx, y);
-        ctx = ((ctx << 1) | y) & mask;
-    }
+void dist_encode_uint32(ac_t* ac, cond_dist256_t* d, uint32_t x)
+{
+    uint32_t y, y0;
+
+    y0 = 0;
+    y = x >> 24;
+    cond_dist256_encode(ac, d, y0, y);
+
+    y0 = y;
+    y = (x >> 16) & 0xff;
+    cond_dist256_encode(ac, d, 0x100 | y0, y);
+
+    y0 = y;
+    y = (x >> 8) & 0xff;
+    cond_dist256_encode(ac, d, 0x200 | y0, y);
+
+    y0 = y;
+    y = x & 0xff;
+    cond_dist256_encode(ac, d, 0x300 | y0, y);
+}
+
+uint32_t dist_decode_uint32(ac_t* ac, cond_dist256_t* d)
+{
+    uint32_t y, y0, x;
+
+    y0 = 0;
+    x = cond_dist256_decode(ac, d, y0);
+
+    y0 = x;
+    y = cond_dist256_decode(ac, d, 0x100 | y0);
+    x = (x << 8) | y;
+
+    y0 = y;
+    y = cond_dist256_decode(ac, d, 0x200 | y0);
+    x = (x << 8) | y;
+
+    y0 = y;
+    y = cond_dist256_decode(ac, d, 0x300 | y0);
+    x = (x << 8) | y;
+
+    return x;
 }
 
 
-uint32_t dist_decode_uint32(ac_t* ac, cond_dist2_t* d, uint32_t k)
+void dist_encode_uint64(ac_t* ac, cond_dist256_t* d, uint64_t x)
 {
-    uint32_t N = 1 << k;
-    uint32_t mask = N - 1;
-    
-    uint32_t ctx = 0, x = 0;
-    size_t i;
-    for (i = 32; i > 0; --i) {
-        x = (x << 1) | cond_dist2_decode(ac, d, ((i - 1) * N) + ctx);
-        ctx = ((ctx << 1) | x) & mask;
-    }
+    uint64_t y, y0;
+
+    y0 = 0;
+    y = x >> 56;
+    cond_dist256_encode(ac, d, y0, y);
+
+    y0 = y;
+    y = (x >> 48) & 0xff;
+    cond_dist256_encode(ac, d, 0x100 | y0, y);
+
+    y0 = y;
+    y = (x >> 40) & 0xff;
+    cond_dist256_encode(ac, d, 0x200 | y0, y);
+
+    y0 = y;
+    y = (x >> 32) & 0xff;
+    cond_dist256_encode(ac, d, 0x300 | y0, y);
+
+    y0 = y;
+    y = (x >> 24) & 0xff;
+    cond_dist256_encode(ac, d, 0x400 | y0, y);
+
+    y0 = y;
+    y = (x >> 16) & 0xff;
+    cond_dist256_encode(ac, d, 0x500 | y0, y);
+
+    y0 = y;
+    y = (x >> 8) & 0xff;
+    cond_dist256_encode(ac, d, 0x600 | y0, y);
+
+    y0 = y;
+    y = (x >> 8) & 0xff;
+    cond_dist256_encode(ac, d, 0x700 | y0, y);
+}
+
+
+uint64_t dist_decode_uint64(ac_t* ac, cond_dist256_t* d)
+{
+    uint64_t y, y0, x;
+
+    y0 = 0;
+    x = cond_dist256_decode(ac, d, y0);
+
+    y0 = x;
+    y = cond_dist256_decode(ac, d, 0x100 | y0);
+    x = (x << 8) | y;
+
+    y0 = y;
+    y = cond_dist256_decode(ac, d, 0x200 | y0);
+    x = (x << 8) | y;
+
+    y0 = y;
+    y = cond_dist256_decode(ac, d, 0x300 | y0);
+    x = (x << 8) | y;
+
+    y0 = x;
+    y = cond_dist256_decode(ac, d, 0x400 | y0);
+    x = (x << 8) | y;
+
+    y0 = y;
+    y = cond_dist256_decode(ac, d, 0x500 | y0);
+    x = (x << 8) | y;
+
+    y0 = y;
+    y = cond_dist256_decode(ac, d, 0x600 | y0);
+    x = (x << 8) | y;
+
+    y0 = y;
+    y = cond_dist256_decode(ac, d, 0x700 | y0);
+    x = (x << 8) | y;
 
     return x;
 }

@@ -57,7 +57,7 @@ struct seqenc_t_
     dist2_t d_aln_strand;
 
     /* distribution over the offset into the contig */
-    cond_dist2_t d_contig_off;
+    cond_dist256_t d_contig_off;
 
     /* distribution of edit operations, given the previous operation */
     cond_dist3_t d_edit_op;
@@ -125,7 +125,7 @@ static void seqenc_init(seqenc_t* E)
     dist2_init(&E->d_type);
     dist2_init(&E->d_aln_strand);
 
-    cond_dist2_init(&E->d_contig_off, 32 * (1 << contig_off_k));
+    cond_dist256_init(&E->d_contig_off, 4 * 256);
 
     N = 1;
     for (i = 0; i < edit_op_k; ++i) N *= 3;
@@ -177,7 +177,7 @@ void seqenc_free(seqenc_t* E)
         cond_dist16_free(&E->cs0[i]);
     }
 
-    cond_dist2_free(&E->d_contig_off);
+    cond_dist256_free(&E->d_contig_off);
 
     cond_dist3_free(&E->d_edit_op);
 
@@ -290,36 +290,12 @@ void seqenc_encode_alignment(
 {
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_ALIGNMENT);
 
-    // uint32_t bytes;
-    // uint32_t z;
-
-
     /* encode strand */
     dist2_encode(E->ac, &E->d_aln_strand, strand);
 
+    /* encode super-contig offset */
     dist_encode_uint32(E->ac, &E->d_contig_off,
-        contig_off_k,
         E->cum_contig_lens[contig_idx] + aln->spos);
-
-    /* encode contig offset */
-    #if 0
-    bytes = 0;
-    z = aln->spos + E->cum_contig_lens[contig_idx];
-    while (z > 0) {
-        z >>= 8;
-        ++bytes;
-    }
-    if (bytes == 0) bytes = 1;
-
-    dist4_encode(E->ac, &E->d_contig_off_bytes, bytes - 1);
-
-    z = aln->spos + E->cum_contig_lens[contig_idx];
-    while (bytes--) {
-        cond_dist256_encode(E->ac, &E->d_contig_off, bytes, z & 0xff);
-        z >>= 8;
-    }
-    #endif
-
 
     /* encode edit operations */
     kmer_t u = twobit_get(query, 0);
@@ -580,7 +556,7 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
         z |= cond_dist256_decode(E->ac, &E->d_contig_off, bytes - b - 1) << (8 * b);
     }
     */
-    z = dist_decode_uint32(E->ac,&E->d_contig_off, contig_off_k);
+    z = dist_decode_uint32(E->ac, &E->d_contig_off);
 
     contig_idx = decode_contig_idx(E, z);
     spos = z - E->cum_contig_lens[contig_idx];
