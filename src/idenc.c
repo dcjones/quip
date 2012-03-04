@@ -33,8 +33,7 @@ typedef enum {
 
 /* token type */
 typedef enum {
-    ID_TOK_END = 0,
-    ID_TOK_STR,
+    ID_TOK_STR = 0,
     ID_TOK_NUM
 } tok_type_t;
 
@@ -56,7 +55,7 @@ const char* next_id_token(const char* id, tok_type_t* t)
 
     if (*s == '\0') {
         ++s;
-        *t = ID_TOK_END;
+        *t = ID_TOK_STR;
     }
     else if (issep[(uint8_t) *s]) {
         ++s;
@@ -292,13 +291,14 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
 
         if      (tok.type == ID_TOK_STR) encode_str(E, i, seq->id1.s, &tok);
         else if (tok.type == ID_TOK_NUM) encode_num(E, i, seq->id1.s, &tok);
-        else    break;
 
         if (E->toks_size <= i) {
             E->toks_size += 1;
             E->toks = realloc_or_die(E->toks, E->toks_size * sizeof(tok_t));
         }
         memcpy(E->toks + i, &tok, sizeof(tok_t));
+
+        if (*s == '\0') break;
     }
 
 
@@ -314,19 +314,100 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
 }
 
 
+void idenc_decode(idenc_t* E, seq_t* seq)
+{
+    str_t* id = &seq->id1; /* for convenience */
+    size_t i; /* token number */
+    size_t j; /* offset into id */
+    uint32_t matches, mismatches;
+    enc_t type;
+    tok_t tok;
+    uint64_t off;
+
+    for (i = 0, j = 0; true; ++i) {
+        if (i + 1 > E->max_group_cnt) idenc_add_group(E);
+
+        type = dist4_decode(E->ac, &E->d_type[i]);
+
+        if (type == ID_GROUP_MATCH) {
+            while (id->size <= j + E->toks[i].len) fastq_expand_str(id);
+            memcpy(id->s + j, E->lastid + E->toks[i].pos, E->toks[i].len);
+
+            tok.type = ID_TOK_STR;
+            tok.pos  = j;
+            tok.len  = E->toks[i].len;
+        }
+        else if (type == ID_GROUP_STR) {
+            matches    = dist50_decode(E->ac, &E->d_str_matches[i]);
+            mismatches = dist50_decode(E->ac, &E->d_str_len[i]);
+
+            tok.type = ID_TOK_STR;
+            tok.pos  = j;
+            tok.len  = matches + mismatches;;
+
+            while (id->size <= j + matches + mismatches) fastq_expand_str(id);
+            memcpy(id->s + j, E->lastid + E->toks[i].pos, matches);
+            j += matches;
+
+            /* lazy initialization of d_str_char */
+            if (E->d_str_char[i].n == 0) {
+                cond_dist128_init(&E->d_str_char[i], 128);
+            }
+
+            char c = 0;
+            while (mismatches--) {
+                c = id->s[j++] = cond_dist128_decode(E->ac, &E->d_str_char[i], c);
+            }
+        }
+        else if (type == ID_GROUP_OFF) {
+            off = dist16_decode(E->ac, &E->d_off[i]);
+
+            tok.type = ID_TOK_NUM;
+            tok.pos  = j;
+            tok.num  = E->toks[i].num + off;
+            tok.len  = snprintf(id->s + j, 20, "%llu", tok.num);
+        }
+        else if (type == ID_GROUP_NUM) {
+
+            /* lazy initialization of d_num */
+            if (E->d_num[i].n == 0) {
+                cond_dist256_init(&E->d_num[i], 8 * 256);
+            }
+
+            tok.type = ID_TOK_NUM;
+            tok.pos  = j;
+            tok.num  = dist_decode_uint64(E->ac, &E->d_num[i]);
+            tok.len  = snprintf(id->s + j, 20, "%llu", tok.num);
+        }
+
+        if (E->toks_size <= i) {
+            E->toks_size += 1;
+            E->toks = realloc_or_die(E->toks, E->toks_size * sizeof(tok_t));
+        }
+        memcpy(E->toks + i, &tok, sizeof(tok_t));
+
+        if (id->s[tok.pos] == '\0') break;
+
+        j += tok.len;
+    }
+    
+    if (E->lastid_size < seq->id1.n + 1) {
+        E->lastid_size = seq->id1.n + 1;
+        free(E->lastid);
+        E->lastid = malloc_or_die((seq->id1.n + 1) * sizeof(char));
+    }
+    memcpy(E->lastid, seq->id1.s, (seq->id1.n + 1) * sizeof(char));
+    E->lastid_len = seq->id1.n + 1;
+
+    E->toks_len = i - 1;
+}
+
 
 void idenc_flush(idenc_t* E)
 {
     ac_flush_encoder(E->ac);
 }
 
-
-void idenc_decode(idenc_t* E, seq_t* seq)
-{
-    str_t* id = &seq->id1; /* for convenience */
-
-    /* TODO */
-}
 
 
 void idenc_start_decoder(idenc_t* E)
