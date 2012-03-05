@@ -27,8 +27,8 @@ static const size_t max_offset     = 16;
 typedef enum {
     ID_GROUP_MATCH = 0,
     ID_GROUP_STR,
-    ID_GROUP_OFF,
-    ID_GROUP_NUM
+    ID_GROUP_NUM,
+    ID_GROUP_NUM_OFF
 } enc_t;
 
 /* token type */
@@ -249,14 +249,26 @@ static void encode_num(idenc_t* E, size_t i, const  char* str, tok_t* tok)
 {
     const char* s = str + tok->pos;
     char* last;
-    uint64_t off, x = strtoull(s, &last, 10);
 
+    /* is this the same the number that was previously encoded:
+        avoid relatively expensive to strtoull when we can */
+    if (i < E->toks_len && E->toks[i].type == ID_TOK_NUM &&
+        tok->len == E->toks[i].len && memcmp(str, E->lastid + E->toks[i].pos, tok->len) == 0) {
+
+        dist4_encode(E->ac, &E->d_type[i], ID_GROUP_NUM_OFF);
+        dist16_encode(E->ac, &E->d_off[i], 0);
+        tok->num = E->toks[i].num;
+        return;
+    }
+
+    uint64_t off, x = strtoull(s, &last, 10);
 
     /* if conversion to 64-bit unsigned int was not possible,
        encode the number as as string. */
     if (x == ULLONG_MAX || last != s + tok->len) {
         tok->type = ID_TOK_STR;
         encode_str(E, i, str, tok);
+        return;
     }
 
     tok->num = x;
@@ -270,7 +282,7 @@ static void encode_num(idenc_t* E, size_t i, const  char* str, tok_t* tok)
     if (i < E->toks_len && E->toks[i].type == ID_TOK_NUM &&
         x >= E->toks[i].num && (off = x - E->toks[i].num) < max_offset) {
 
-        dist4_encode(E->ac, &E->d_type[i], ID_GROUP_OFF);
+        dist4_encode(E->ac, &E->d_type[i], ID_GROUP_NUM_OFF);
         dist16_encode(E->ac, &E->d_off[i], off);
 
     }
@@ -369,7 +381,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
                 c = id->s[j++] = cond_dist128_decode(E->ac, &E->d_str_char[i], c);
             }
         }
-        else if (type == ID_GROUP_OFF) {
+        else if (type == ID_GROUP_NUM_OFF) {
             off = dist16_decode(E->ac, &E->d_off[i]);
 
             tok.type = ID_TOK_NUM;

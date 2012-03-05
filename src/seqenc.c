@@ -125,7 +125,7 @@ static void seqenc_init(seqenc_t* E)
     dist2_init(&E->d_type);
     dist2_init(&E->d_aln_strand);
 
-    cond_dist256_init(&E->d_contig_off, 4 * 256);
+    cond_dist256_init(&E->d_contig_off, 9 * 256);
 
     N = 1;
     for (i = 0; i < edit_op_k; ++i) N *= 3;
@@ -386,6 +386,7 @@ void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
                 contig_motif_prior;
             dist4_update(&motif->xss[k]);
         }
+        cond_dist4_set_update_rate(motif, 4);
 
         if (i + 1 < E->contig_count) {
             E->cum_contig_lens[i + 1] = E->cum_contig_lens[i] + len;
@@ -541,21 +542,12 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
     while (n >= x->seq.size) fastq_expand_str(&x->seq);
 
     uint32_t contig_idx, spos;
-    // uint32_t bytes;
-    // uint32_t b;
     uint32_t z;
 
     /* decode strand */
     uint8_t strand = dist2_decode(E->ac, &E->d_aln_strand);
 
     /* decode offset */
-    /*
-    bytes = 1 + dist4_decode(E->ac, &E->d_contig_off_bytes);
-    z = 0;
-    for (b = 0; b < bytes; ++b) {
-        z |= cond_dist256_decode(E->ac, &E->d_contig_off, bytes - b - 1) << (8 * b);
-    }
-    */
     z = dist_decode_uint32(E->ac, &E->d_contig_off);
 
     contig_idx = decode_contig_idx(E, z);
