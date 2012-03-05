@@ -56,10 +56,6 @@ de novo assembler. The latter required new techniques that to our knowledge have
 not been previously explored. We describe our secret to efficient assemble in
 the following section.
 
-(NOTE: In this submission we have disabled the de novo assembly step with the
-'-q' option, as we are still working on tuning it. It will be enabled in future
-submissions.)
-
 
 Probabilistic De Bruijn Graphs
 ------------------------------
