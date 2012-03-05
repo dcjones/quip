@@ -11,7 +11,7 @@
 
 /* does a particular character constitute a separator */
 static const bool issep[256] =
-  { 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  { 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -60,6 +60,12 @@ const char* next_id_token(const char* id, tok_type_t* t)
     else if (issep[(uint8_t) *s]) {
         ++s;
         while ((size_t) (s - id) < max_group_len && issep[(uint8_t) *s]) ++s;
+
+        if ((size_t) (s - id) < max_group_len && !('1' <= *s && *s <= '9')) {
+            while ((size_t) (s - id) < max_group_len &&
+                   *s != '\0' && !issep[(uint8_t) *s]) ++s;
+        }
+
         *t = ID_TOK_STR;
     }
     else if ('1' <= *s && *s <= '9') {
@@ -210,11 +216,12 @@ static void idenc_add_group(idenc_t* E)
 static void encode_str(idenc_t* E, size_t i, const char* str, tok_t* tok)
 {
     /* previous id string */
-    const char* t = E->toks_len > i ? E->lastid + E->toks[i].pos : "\0";
+    size_t prev_tok_len = E->toks_len > i ? E->toks[i].len : 0;
+    const char* t = E->toks_len > i ? E->lastid + E->toks[i].pos : NULL;
     const char* s = str + tok->pos;
 
     size_t j = 0; /* string offset */
-    while (j < tok->len && s[j] != '\0' && t[j] != '\0' && s[j] == t[j]) ++j;
+    while (j < tok->len && j < prev_tok_len && s[j] == t[j]) ++j;
 
     /* lazy initialization of d_str_char */
     if (E->d_str_char[i].n == 0) {
@@ -256,7 +263,7 @@ static void encode_num(idenc_t* E, size_t i, const  char* str, tok_t* tok)
 
     /* lazy initialization of d_num */
     if (E->d_num[i].n == 0) {
-        cond_dist256_init(&E->d_num[i], 8 * 256);
+        cond_dist256_init(&E->d_num[i], 9 * 256);
     }
 
     /* Encode numbers as offsets from a previous number when possible. */
@@ -375,7 +382,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
 
             /* lazy initialization of d_num */
             if (E->d_num[i].n == 0) {
-                cond_dist256_init(&E->d_num[i], 8 * 256);
+                cond_dist256_init(&E->d_num[i], 9 * 256);
             }
 
             tok.type = ID_TOK_NUM;

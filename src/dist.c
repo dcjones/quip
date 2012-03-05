@@ -171,76 +171,32 @@ uint32_t dist_decode_uint32(ac_t* ac, cond_dist256_t* d)
 
 void dist_encode_uint64(ac_t* ac, cond_dist256_t* d, uint64_t x)
 {
-    uint64_t y, y0;
+    uint64_t y0 = 0, y;
+    size_t k = 0;
+    while (x >= 0x80) {
+        y  = (uint8_t) x | 0x80;
+        cond_dist256_encode(ac, d, (k << 8) | y0, y);
+        x >>= 7;
+        ++k;
+        y0 = y;
+    }
 
-    y0 = 0;
-    y = x >> 56;
-    cond_dist256_encode(ac, d, y0, y);
-
-    y0 = y;
-    y = (x >> 48) & 0xff;
-    cond_dist256_encode(ac, d, 0x100 | y0, y);
-
-    y0 = y;
-    y = (x >> 40) & 0xff;
-    cond_dist256_encode(ac, d, 0x200 | y0, y);
-
-    y0 = y;
-    y = (x >> 32) & 0xff;
-    cond_dist256_encode(ac, d, 0x300 | y0, y);
-
-    y0 = y;
-    y = (x >> 24) & 0xff;
-    cond_dist256_encode(ac, d, 0x400 | y0, y);
-
-    y0 = y;
-    y = (x >> 16) & 0xff;
-    cond_dist256_encode(ac, d, 0x500 | y0, y);
-
-    y0 = y;
-    y = (x >> 8) & 0xff;
-    cond_dist256_encode(ac, d, 0x600 | y0, y);
-
-    y0 = y;
-    y = x & 0xff;
-    cond_dist256_encode(ac, d, 0x700 | y0, y);
+    cond_dist256_encode(ac, d, (k << 8) | y0, x);
 }
 
 
 uint64_t dist_decode_uint64(ac_t* ac, cond_dist256_t* d)
 {
-    uint64_t y, y0, x;
+    uint64_t x, y0;
 
+    x = 0;
     y0 = 0;
-    x = cond_dist256_decode(ac, d, y0);
-
-    y0 = x;
-    y = cond_dist256_decode(ac, d, 0x100 | y0);
-    x = (x << 8) | y;
-
-    y0 = y;
-    y = cond_dist256_decode(ac, d, 0x200 | y0);
-    x = (x << 8) | y;
-
-    y0 = y;
-    y = cond_dist256_decode(ac, d, 0x300 | y0);
-    x = (x << 8) | y;
-
-    y0 = x;
-    y = cond_dist256_decode(ac, d, 0x400 | y0);
-    x = (x << 8) | y;
-
-    y0 = y;
-    y = cond_dist256_decode(ac, d, 0x500 | y0);
-    x = (x << 8) | y;
-
-    y0 = y;
-    y = cond_dist256_decode(ac, d, 0x600 | y0);
-    x = (x << 8) | y;
-
-    y0 = y;
-    y = cond_dist256_decode(ac, d, 0x700 | y0);
-    x = (x << 8) | y;
+    size_t k = 0;
+    do {
+        y0 = cond_dist256_decode(ac, d, (k << 8) | y0);
+        x |= (y0 & 0x7f) << (k * 7);
+        ++k;
+    } while (y0 & 0x80);
 
     return x;
 }
