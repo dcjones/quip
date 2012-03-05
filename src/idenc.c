@@ -231,8 +231,8 @@ static void encode_str(idenc_t* E, size_t i, const char* str, tok_t* tok)
 
         char c = 0;
         for (; j < tok->len; ++j) {
-            cond_dist128_encode(E->ac, &E->d_str_char[i], c, s[i]);
-            c = s[i];
+            cond_dist128_encode(E->ac, &E->d_str_char[i], c, s[j]);
+            c = s[j];
         }
     }
 }
@@ -336,6 +336,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             tok.type = ID_TOK_STR;
             tok.pos  = j;
             tok.len  = E->toks[i].len;
+            j += tok.len;
         }
         else if (type == ID_GROUP_STR) {
             matches    = dist50_decode(E->ac, &E->d_str_matches[i]);
@@ -346,8 +347,10 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             tok.len  = matches + mismatches;;
 
             while (id->size <= j + matches + mismatches) fastq_expand_str(id);
-            memcpy(id->s + j, E->lastid + E->toks[i].pos, matches);
-            j += matches;
+            if (matches > 0) {
+                memcpy(id->s + j, E->lastid + E->toks[i].pos, matches);
+                j += matches;
+            }
 
             /* lazy initialization of d_str_char */
             if (E->d_str_char[i].n == 0) {
@@ -366,6 +369,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             tok.pos  = j;
             tok.num  = E->toks[i].num + off;
             tok.len  = snprintf(id->s + j, 20, "%llu", tok.num);
+            j += tok.len;
         }
         else if (type == ID_GROUP_NUM) {
 
@@ -378,6 +382,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             tok.pos  = j;
             tok.num  = dist_decode_uint64(E->ac, &E->d_num[i]);
             tok.len  = snprintf(id->s + j, 20, "%llu", tok.num);
+            j += tok.len;
         }
 
         if (E->toks_size <= i) {
@@ -387,10 +392,10 @@ void idenc_decode(idenc_t* E, seq_t* seq)
         memcpy(E->toks + i, &tok, sizeof(tok_t));
 
         if (id->s[tok.pos] == '\0') break;
-
-        j += tok.len;
     }
-    
+
+    seq->id1.n = j - 1;
+
     if (E->lastid_size < seq->id1.n + 1) {
         E->lastid_size = seq->id1.n + 1;
         free(E->lastid);

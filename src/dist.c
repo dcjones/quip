@@ -202,7 +202,7 @@ void dist_encode_uint64(ac_t* ac, cond_dist256_t* d, uint64_t x)
     cond_dist256_encode(ac, d, 0x600 | y0, y);
 
     y0 = y;
-    y = (x >> 8) & 0xff;
+    y = x & 0xff;
     cond_dist256_encode(ac, d, 0x700 | y0, y);
 }
 
