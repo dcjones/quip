@@ -48,20 +48,24 @@ seq_t* fastq_alloc_seq()
 void fastq_copy_seq(seq_t* dest, const seq_t* src)
 {
     while (dest->id1.size  < src->id1.n + 1)  fastq_expand_str(&dest->id1);
-    memcpy(dest->id1.s, src->id1.s, src->id1.n + 1);
+    memcpy(dest->id1.s, src->id1.s, src->id1.n);
     dest->id1.n = src->id1.n;
+    dest->id1.s[dest->id1.n] = '\0';
 
     while (dest->seq.size  < src->seq.n + 1)  fastq_expand_str(&dest->seq);
-    memcpy(dest->seq.s, src->seq.s, src->seq.n + 1);
+    memcpy(dest->seq.s, src->seq.s, src->seq.n);
     dest->seq.n = src->seq.n;
+    dest->seq.s[dest->seq.n] = '\0';
 
     while (dest->id2.size  < src->id2.n + 1)  fastq_expand_str(&dest->id2);
-    memcpy(dest->id2.s, src->id2.s, src->id2.n + 1);
+    memcpy(dest->id2.s, src->id2.s, src->id2.n);
     dest->id2.n = src->id2.n;
+    dest->id2.s[dest->id2.n] = '\0';
 
     while (dest->qual.size < src->qual.n + 1) fastq_expand_str(&dest->qual);
-    memcpy(dest->qual.s, src->qual.s, src->qual.n + 1);
+    memcpy(dest->qual.s, src->qual.s, src->qual.n);
     dest->qual.n = src->qual.n;
+    dest->qual.s[dest->qual.n] = '\0';
 }
 
 

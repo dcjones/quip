@@ -154,6 +154,9 @@ static void* id_compressor_thread(void* ctx)
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
         idenc_encode(C->idenc, C->chunk[i]);
+        C->id_crc = crc64_update(
+            (uint8_t*) C->chunk[i]->id1.s,
+            C->chunk[i]->id1.n, C->id_crc);
     }
 
     return NULL;
@@ -166,6 +169,9 @@ static void* seq_compressor_thread(void* ctx)
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
         assembler_add_seq(C->assembler, C->chunk[i]->seq.s, C->chunk[i]->seq.n);
+        C->seq_crc = crc64_update(
+            (uint8_t*) C->chunk[i]->seq.s,
+            C->chunk[i]->seq.n, C->seq_crc);
     }
 
     return NULL;
@@ -178,6 +184,9 @@ static void* qual_compressor_thread(void* ctx)
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
         qualenc_encode(C->qualenc, C->chunk[i]);
+        C->qual_crc = crc64_update(
+            (uint8_t*) C->chunk[i]->qual.s,
+            C->chunk[i]->qual.n, C->qual_crc);
     }
 
     return NULL;

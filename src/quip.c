@@ -227,7 +227,6 @@ static int quip_cmd_compress(char** fns, size_t fn_count)
     FILE *fin, *fout;
     size_t i;
 
-    seq_t* r = fastq_alloc_seq();
     fastq_t* fq;
 
     quip_compressor_t* C;
@@ -237,9 +236,7 @@ static int quip_cmd_compress(char** fns, size_t fn_count)
 
         fq = fastq_open(stdin);
 
-        while (fastq_next(fq, r)) {
-            quip_comp_addseq(C, r);
-        }
+        while (quip_comp_readseq(C, fq));
 
         fastq_close(fq);
         quip_comp_free(C);
@@ -272,9 +269,7 @@ static int quip_cmd_compress(char** fns, size_t fn_count)
 
             fq = fastq_open(fin);
 
-            while (fastq_next(fq, r)) {
-                quip_comp_addseq(C, r);
-            }
+            while (quip_comp_readseq(C, fq));
 
             quip_comp_finish(C);
 
@@ -285,8 +280,6 @@ static int quip_cmd_compress(char** fns, size_t fn_count)
             if (!stdout_flag) fclose(fout);
         }
     }
-
-    fastq_free_seq(r);
 
     return EXIT_SUCCESS;
 }
