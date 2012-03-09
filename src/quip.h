@@ -52,6 +52,9 @@ void quip_comp_free(quip_compressor_t*);
 /* Compress a single read. */
 void quip_comp_addseq(quip_compressor_t*, seq_t*);
 
+/* Compress a single read, read from a parser (slightly more efficient than addseq) */
+int quip_comp_readseq(quip_compressor_t*, fastq_t*);
+
 /* Finish compressing reads, flushing all buffered data,
  * and writing a end of stream marker. */
 void quip_comp_finish(quip_compressor_t*);

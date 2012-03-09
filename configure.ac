@@ -47,6 +47,10 @@ AS_IF([test "x$enable_debug" = xyes],
       [CFLAGS="$dbg_CFLAGS"],
       [CFLAGS="$opt_CFLAGS"])
 
+ACX_PTHREAD()
+LIBS="$PTHREAD_LIBS $LIBS"
+CFLAGS="$CFLAGS $PTHREAD_CFLAGS"
+CC="$PTHREAD_CC"
 
 AC_DEFINE([_FILE_OFFSET_BITS], [64],
           [Do not crash on >4GB files on 32bit machines.])

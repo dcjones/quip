@@ -34,6 +34,7 @@ typedef struct
 
 
 seq_t* fastq_alloc_seq();
+void fastq_copy_seq(seq_t* dest, const seq_t* src);
 void fastq_free_seq(seq_t*);
 
 
