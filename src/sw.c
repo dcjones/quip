@@ -59,7 +59,7 @@ static const score_t score_inf      = UINT16_MAX / 2;
 static const score_t score_q_gap    = 2;
 static const score_t score_s_gap    = 3;
 static const score_t score_match    = 1;
-static const score_t score_mismatch = 3;
+static const score_t score_mismatch = 2;
 
 const int sw_band_width = 1;
 static const int colsize = 3; /* 1 + 2 * sw_band_width */

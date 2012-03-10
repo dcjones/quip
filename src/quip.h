@@ -68,10 +68,13 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t, void* reader_data);
 /* Deallocate a decompressor, once finished with it. */
 void quip_decomp_free(quip_decompressor_t*);
 
-/* Decompress one read from the stream. If the end of the stream is
- * reached, this function returns false, and the sequence is not
- * modified. */
-bool quip_decomp_read(quip_decompressor_t*, seq_t*);
+/* Decompress one read from the stream. The pointer returned
+ * should not be freed and is not guaranteed to be valid after
+ * subsequent calls to quip_decomp_read, or calls to quip_decomp_free.
+ *
+ * If there are no more reads in the stream, NULL is returned.
+ */
+seq_t* quip_decomp_read(quip_decompressor_t*);
 
 /* Efficiently determine the number of reads summary information
    about a compressed stream. */
@@ -92,7 +95,7 @@ typedef struct quip_list_t_
 void quip_list(quip_reader_t, void* reader_data, quip_list_t*);
 
 /* Test the integrity of a stream. */
- void quip_test(quip_reader_t, void* reader_data); 
+void quip_test(quip_reader_t, void* reader_data); 
 
 /* Print a great deal of useless information while running. */
 extern bool quip_verbose;

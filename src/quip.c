@@ -297,18 +297,17 @@ static int quip_cmd_decompress(char** fns, size_t fn_count, bool dryrun)
     const size_t outbuf_size = 1048576;
     char* outbuf = malloc_or_die(outbuf_size * sizeof(char));
 
-    seq_t* r = fastq_alloc_seq();
+    seq_t* r;
     quip_decompressor_t* D;
 
     if (fn_count == 0) {
         D = quip_decomp_alloc(block_reader, stdin);
 
-        while (quip_decomp_read(D, r)) {
+        while ((r = quip_decomp_read(D))) {
             if (!dryrun) fastq_print(stdout, r);
         }
 
         quip_decomp_free(D);
-
     }
     else {
         for (i = 0; i < fn_count; ++i) {
@@ -354,8 +353,8 @@ static int quip_cmd_decompress(char** fns, size_t fn_count, bool dryrun)
 
             D = quip_decomp_alloc(block_reader, fin);
 
-            while (quip_decomp_read(D, r)) {
-                if(!dryrun) fastq_print(fout, r);
+            while ((r = quip_decomp_read(D))) {
+                if (!dryrun) fastq_print(stdout, r);
             }
 
             fclose(fin);
@@ -363,12 +362,10 @@ static int quip_cmd_decompress(char** fns, size_t fn_count, bool dryrun)
             quip_decomp_free(D);
 
             if (!stdout_flag && !dryrun) fclose(fout);
-
         }
     }
 
 
-    fastq_free_seq(r);
     free(outbuf);
 
     return EXIT_SUCCESS;

@@ -665,6 +665,7 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
     if (quip_verbose) fprintf(stderr, "assembling contigs ... ");
 
     twobit_t* contig = twobit_alloc();
+    twobit_t* padded_contig = twobit_alloc();
     kmer_t x, y;
     size_t len;
 

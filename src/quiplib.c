@@ -21,7 +21,7 @@ static const size_t aligner_k   = 12;
 static const size_t block_size = 70000000;
 
 /* Maximum number of sequences to read before they are compressed. */
-#define chunk_size 1000
+#define chunk_size 5000 
 
 
 bool quip_verbose = false;
@@ -855,14 +855,13 @@ static void quip_decomp_read_block_header(quip_decompressor_t* D)
 }
 
 
-bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
+seq_t* quip_decomp_read(quip_decompressor_t* D)
 {
     if (D->chunk_pos < D->chunk_len) {
-        fastq_copy_seq(seq, D->chunk[D->chunk_pos++]);
-        return true;
+        return D->chunk[D->chunk_pos++];
     }
 
-    if (D->end_of_stream) return false;
+    if (D->end_of_stream) return NULL;
 
     if (D->pending_reads == 0) {
         if (D->id_crc != D->exp_id_crc) {
@@ -884,7 +883,7 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
         }
 
         quip_decomp_read_block_header(D);
-        if (D->pending_reads == 0) return false;
+        if (D->pending_reads == 0) return NULL;
 
         /* reset decoders */
         idenc_reset_decoder(D->idenc);
@@ -922,8 +921,7 @@ bool quip_decomp_read(quip_decompressor_t* D, seq_t* seq)
         }
     }
     
-    fastq_copy_seq(seq, D->chunk[D->chunk_pos++]);
-    return true;
+    return D->chunk[D->chunk_pos++];
 }
 
 
