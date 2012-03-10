@@ -42,8 +42,8 @@ sw_t* sw_alloc(const twobit_t* subject);
 void  sw_set_subject(sw_t*, const twobit_t* subject);
 void  sw_free(sw_t*);
 
-int sw_seeded_align(sw_t* sw, const twobit_t* query,
-                    int spos, int qpos, int seedlen);
+double sw_seeded_align(sw_t* sw, const twobit_t* query,
+                       int spos, int qpos, int seedlen);
 
 
 /* Store the alignment found in the last call to sw_seeded_align. */

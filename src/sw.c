@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <limits.h>
+#include <math.h>
 
 
 void print_alignment(FILE* fout, const sw_alignment_t* aln)
@@ -183,12 +184,12 @@ static void sw_ensure_query_len(sw_t* sw, int m)
 
 
 
-int sw_seeded_align(sw_t* sw, const twobit_t* query,
-                    int spos, int qpos, int seedlen)
+double sw_seeded_align(sw_t* sw, const twobit_t* query,
+                       int spos, int qpos, int seedlen)
 {
     int qlen = sw->qlen = (int) twobit_len(query);
 
-    if (qpos > spos || (qlen - qpos) > (sw->n - spos)) return score_inf;
+    if (qpos > spos || (qlen - qpos) > (sw->n - spos)) return HUGE_VAL;
 
 
     sw_ensure_query_len(sw, qlen);
@@ -245,7 +246,7 @@ int sw_seeded_align(sw_t* sw, const twobit_t* query,
         }
     }
 
-    return s;
+    return (double) s / (double) qlen;
 }
 
 

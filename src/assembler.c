@@ -11,15 +11,21 @@
 #include <assert.h>
 #include <limits.h>
 #include <string.h>
+#include <math.h>
 
 
+/* Contigs are padded on both sides by this many As. */
+static const size_t contig_padding = 50;
+
+/* Maximum score for an alignment to be reported. */
+static const double max_align_score = 1.25;
 
 /* alignments */
 typedef struct align_t_
 {
     uint32_t contig_idx;
     uint8_t  strand;
-    int      aln_score;
+    double   aln_score;
     sw_alignment_t a;
 } align_t;
 
@@ -257,8 +263,8 @@ static int align_read(assembler_t* A, const twobit_t* seq)
     size_t skipped;
 
     /* */
-    int aln_score;
-    A->aln.aln_score = INT_MAX;
+    double aln_score;
+    A->aln.aln_score = HUGE_VAL;
 
     /* Don't try to align any reads that are shorer than the seed length */
     qlen = twobit_len(seq);
@@ -331,9 +337,8 @@ static int align_read(assembler_t* A, const twobit_t* seq)
                     A->align_k);
 
             if (aln_score >= 0 &&
-                    aln_score < A->aln.aln_score &&
-                    /* crude cutoff for what an acceptable alignment is */
-                    aln_score < 13 * (int) qlen / 10)
+                aln_score < A->aln.aln_score &&
+                aln_score <= max_align_score)
             {
                 A->aln.contig_idx = pos->contig_idx;
                 A->aln.strand     = strand;
@@ -695,16 +700,27 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
             continue;
         }
 
+        twobit_clear(padded_contig);
+        for (j = 0; j < contig_padding; ++j) {
+            twobit_append_kmer(padded_contig, 0, 1);
+        }
+
+        twobit_append_twobit(padded_contig, contig);
+
+        for (j = 0; j < contig_padding; ++j) {
+            twobit_append_kmer(padded_contig, 0, 1);
+        }
 
         if (A->contigs_len == A->contigs_size) {
             A->contigs_size *= 2;
             A->contigs = realloc_or_die(A->contigs, A->contigs_size * sizeof(twobit_t*));
         }
 
-        A->contigs[A->contigs_len++] = twobit_dup(contig);
+        A->contigs[A->contigs_len++] = twobit_dup(padded_contig);
     }
 
     twobit_free(contig);
+    twobit_free(padded_contig);
 
     if (quip_verbose) fprintf(stderr, "done. (%zu contigs)\n", A->contigs_len);
 }

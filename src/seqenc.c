@@ -298,6 +298,7 @@ void seqenc_encode_alignment(
         E->cum_contig_lens[contig_idx] + aln->spos);
 
     /* encode edit operations */
+    size_t qlen = twobit_len(query);
     kmer_t u = twobit_get(query, 0);
     uint32_t op, last_op = EDIT_MATCH;
     cond_dist4_t* motif = &E->contig_motifs[contig_idx];
@@ -306,7 +307,7 @@ void seqenc_encode_alignment(
     size_t i; /* position within the alignment */
     size_t j; /* position within the read sequence */
     size_t c; /* position within the contig */
-    for (i = 0, j = 0, c = aln->spos; i < aln->len; ++i) {
+    for (i = 0, j = 0, c = aln->spos; i < aln->len && j < qlen; ++i) {
 
         if (aln->ops[i] == EDIT_MATCH || aln->ops[i] == EDIT_MISMATCH) {
             cond_dist3_encode(E->ac, &E->d_edit_op, last_op, EDIT_MATCH);
