@@ -800,10 +800,10 @@ void assembler_assemble(assembler_t* A)
 
     seqenc_flush(A->seqenc);
 
-    // if (!A->quick) {
-    //     seqenc_get_contig_consensus(A->seqenc, A->contigs);
-    //     reindex_contigs(A);
-    // }
+    if (!A->quick) {
+        seqenc_get_contig_consensus(A->seqenc, A->contigs);
+        reindex_contigs(A);
+    }
 
     A->initial_state = true;
 }
