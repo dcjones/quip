@@ -155,7 +155,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
         qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
         qprev.ui8[0] = qs[i];
 
-        if (qdiff < 0 || qdiff > 0) {
+        if (qdiff != 0) {
             delta += 1;
             if (delta >= delta_max) {
                 delta = delta_max - 1;
@@ -220,8 +220,8 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
         qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
         qprev.ui8[0] = qs[i];
 
-        if (qdiff > 0) {
-            delta += qdiff;
+        if (qdiff != 0) {
+            delta += 1;
             if (delta >= delta_max) {
                 delta = delta_max - 1;
                 ++i;

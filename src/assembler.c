@@ -18,7 +18,7 @@
 static const size_t contig_padding = 50;
 
 /* Maximum score for an alignment to be reported. */
-static const double max_align_score = 1.25;
+static const double max_align_score = 1.20;
 
 /* alignments */
 typedef struct align_t_
@@ -445,11 +445,13 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
 
 
     /* expand the contig as far left as possible */
-    unsigned int cnt, cnt_best = 0;
+    unsigned int cnt, cnt2, cnt_best, cnt2_best;
 
-    kmer_t nt, nt_best = 0, xc, y;
+    kmer_t nt, nt2, nt_best = 0, xc, y, z;
 
 
+    /* Greedily append nucleotides to the contig using 
+     * approximate k-mer counts stored in the bloom filter. */
     x = twobit_get_kmer(seed, 0, A->assemble_k);
     while (true) {
         bloom_ldec(A->B, kmer_canonical(x, A->assemble_k));
@@ -461,8 +463,20 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
             xc = kmer_canonical(x | y, A->assemble_k);
             cnt = bloom_get(A->B, xc);
 
-            if (cnt > cnt_best) {
-                cnt_best = cnt;
+            /* Look ahead two k-mers for a somewhat better
+             * greedy choice. */
+            cnt2_best = 0;
+            for (nt2 = 0; nt2 < 4; ++nt2) {
+                z = (nt2 << (2 * (A->assemble_k - 1))) |
+                    (nt  << (2 * (A->assemble_k - 2))) |
+                    (x >> 2);
+                z &= A->assemble_kmer_mask; 
+                cnt2 = bloom_get(A->B, kmer_canonical(z, A->assemble_k));
+                if (cnt2 > cnt2_best) cnt2_best = cnt2;
+            }
+
+            if (cnt + cnt2_best > cnt_best) {
+                cnt_best = cnt + cnt2_best;
                 nt_best  = nt;
             }
         }
@@ -488,8 +502,16 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
             xc = kmer_canonical(x | nt, A->assemble_k);
             cnt = bloom_get(A->B, xc);
 
-            if (cnt > cnt_best) {
-                cnt_best = cnt;
+            cnt2_best = 0;
+            for (nt2 = 0; nt2 < 4; ++nt2) {
+                z = (x << 2) | (nt << 2) | nt2;
+                z &= A->assemble_kmer_mask;
+                cnt2 = bloom_get(A->B, kmer_canonical(z, A->assemble_k));
+                if (cnt2 > cnt2_best) cnt2_best = cnt2;
+            }
+
+            if (cnt + cnt2_best > cnt_best) {
+                cnt_best = cnt + cnt2_best;
                 nt_best  = nt;
             }
         }
@@ -680,9 +702,9 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
         make_contig(A, xs[i].seq.tb, contig);
 
-        /* skip over terribly short contigs */
+        /* reject over terribly short contigs */
         len = twobit_len(contig);
-        if (len < twobit_len(xs[i].seq.tb) + A->assemble_k) {
+        if (len < twobit_len(xs[i].seq.tb) + 4 * A->assemble_k) {
             
             /* reclaim k-mers from the failed contig */
             x = 0;
@@ -693,7 +715,7 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
                     y = kmer_canonical(x, A->assemble_k);
                     /* ideally we would add the k-mer back with its original
                      * count, but that information is lost. */
-                    bloom_add(A->B, y, 1);
+                    bloom_add(A->B, y, xs[i].cnt);
                 }
             }
 

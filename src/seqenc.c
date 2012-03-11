@@ -18,10 +18,7 @@ static const size_t prefix_len = 4;
 /* order of the markov-chain assigning probabilities to edit operations in
  * encoded alignment.s
  */
-static const size_t edit_op_k = 6;
-
-/* order of the binary markov-chain used to encode contig offsets */
-static const size_t contig_off_k = 8;
+static const size_t edit_op_k = 3;
 
 /* The rate at which the nucleotide markov chain is updated. */
 static const size_t seq_update_rate = 2;
