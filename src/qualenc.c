@@ -16,21 +16,21 @@ static const char   qual_last  = 40;
 static const size_t qual_size  = 41;
 static const size_t pos_bins   = 4;
 static const size_t q_bins     = 16;
-static const size_t delta_bins = 8;
+static const size_t delta_bins = 9;
 static const int    delta_max  = 41;
 
 /* Map quality scores to a smaller alphabet size. */
 static const uint8_t q_bin_map[41] =
-  {  15, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
-     14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 13, 12, 11, 10,
+  {  15, 15, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
+     13, 13, 13, 13, 13, 13, 13, 13, 12, 12, 12, 12, 12, 12, 11, 10,
       9,  8,  7,  6,  5,  4,  3,  2,  1 };
 
 
 /* Map running deltas to a smaller alphabet size. */
 static const uint8_t delta_bin_map[41] =
   {   0,  1,  2,  3,  3,  4,  4,  4,  4,  5,  5,  5,  5,  5,  5,  6,
-      6,  6,  6,  6,  6,  6,  7,  7,  7,  7,  7,  7,  7,  7,  7,  7,
-      7,  7,  7,  7,  7,  7,  7,  7,  7 };
+      6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  7,  7,  7,  7,
+      7,  7,  7,  7,  7,  7,  7,  7,  8 };
 
 
 struct qualenc_t_
