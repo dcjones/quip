@@ -38,7 +38,8 @@ void dfun(update)(dist_t* D)
     if (z > max_count) {
         z = 0;
         for (i = 0; i < DISTSIZE; ++i) {
-            D->xs[i].count = D->xs[i].count / 2 + 1;
+            D->xs[i].count /= 2;
+            if (D->xs[i].count == 0) D->xs[i].count = 1;
             z += D->xs[i].count;
         }
     }

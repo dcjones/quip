@@ -9,15 +9,15 @@
 #include <assert.h>
 
 /* The rate at which the quality markov chain is updated. */
-static const size_t qual_update_rate = 5;
+static const size_t qual_update_rate = 4;
 
 /* Every quality encoding scheme uses ASCII charocters in [33, 104] */
 static const char   qual_last  = 40;
 static const size_t qual_size  = 41;
 static const size_t pos_bins   = 4;
 static const size_t q_bins     = 16;
-static const size_t delta_bins = 9;
-static const int    delta_max  = 41;
+static const size_t delta_bins = 10;
+static const int    delta_max  = 50;
 
 /* Map quality scores to a smaller alphabet size. */
 static const uint8_t q_bin_map[41] =
@@ -27,10 +27,12 @@ static const uint8_t q_bin_map[41] =
 
 
 /* Map running deltas to a smaller alphabet size. */
-static const uint8_t delta_bin_map[41] =
-  {   0,  1,  2,  3,  3,  4,  4,  4,  4,  5,  5,  5,  5,  5,  5,  6,
-      6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  6,  7,  7,  7,  7,
-      7,  7,  7,  7,  7,  7,  7,  7,  8 };
+static const uint8_t delta_bin_map[50] =
+  {   0,  1,  2,  3,  3,  4,  4,  4,  4,  5,
+      5,  5,  5,  5,  5,  6,  6,  6,  6,  6,
+      6,  6,  6,  7,  7,  7,  7,  7,  7,  7,
+      7,  7,  7,  8,  8,  8,  8,  8,  8,  8,
+      8,  8,  8,  8,  8,  8,  8,  8,  8,  9 };
 
 
 struct qualenc_t_
@@ -153,8 +155,8 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
         qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
         qprev.ui8[0] = qs[i];
 
-        if (qdiff > 0) {
-            delta += qdiff;
+        if (qdiff < 0 || qdiff > 0) {
+            delta += 1;
             if (delta >= delta_max) {
                 delta = delta_max - 1;
                 ++i;
