@@ -34,44 +34,24 @@ void dfun(update)(dist_t* D)
 
     /* rescale when we have exceeded the maximum count */
     uint32_t z = 0;
-    uint32_t zeros = 0;
-    for (i = 0; i < DISTSIZE; ++i) {
-        if (D->xs[i].count == 0) zeros++;
-        else z += D->xs[i].count;
-    } 
-
+    for (i = 0; i < DISTSIZE; ++i) z += D->xs[i].count;
     if (z > max_count) {
         z = 0;
         for (i = 0; i < DISTSIZE; ++i) {
-            D->xs[i].count /= 2;
-            if (D->xs[i].count == 0) zeros++;
-            else z += D->xs[i].count;
+            D->xs[i].count = D->xs[i].count / 2 + 1;
+            z += D->xs[i].count;
         }
     }
 
 
     /* update frequencies */
+    const uint32_t scale = 0x80000000U / z;
     const uint32_t shift = 31 - dist_length_shift;
-    uint32_t scale;
-    if (zeros == DISTSIZE) {
-        scale = 0x80000000U / zeros;
-        uint32_t c = 0;
-        for (i = 0; i < DISTSIZE; ++i) {
-            D->xs[i].freq = c >> shift;
-            c += 1 * scale;
-        }
-    }
-    else {
-        /* When zero counts are mixed with non-zero counts, we assign
-         * the lowest representable probability to the zero count symbols. */
-        scale = (0x80000000U - zeros * (1 << shift)) / z;
-        uint32_t c = 0;
-        for (i = 0; i < DISTSIZE; ++i) {
-            D->xs[i].freq = c >> shift;
-            assert(D->xs[i].freq < (1 << 15));
-            if (D->xs[i].count == 0) c += (1 << shift);
-            else c += scale * D->xs[i].count;
-        }
+    uint32_t c = 0;
+
+    for (i = 0; i < DISTSIZE; ++i) {
+        D->xs[i].freq = (uint16_t) ((scale * c) >> shift);
+        c += D->xs[i].count;
     }
 
     D->update_delay = DISTSIZE * update_delay_factor;
