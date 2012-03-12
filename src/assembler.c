@@ -6,7 +6,6 @@
 #include "misc.h"
 #include "seqenc.h"
 #include "seqset.h"
-#include "sw.h"
 #include "twobit.h"
 #include <assert.h>
 #include <limits.h>
@@ -163,7 +162,7 @@ assembler_t* assembler_alloc(
 
         A->N = 0;
 
-        A->B = bloom_alloc(2097152, 8);
+        A->B = bloom_alloc(3097152, 8);
 
         A->x = twobit_alloc();
 
@@ -222,7 +221,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 {
     /* We only consider the first few seed hits found in the hash table. The
      * should be in an approximately random order. */
-    static const size_t max_seeds = 5;
+    static const size_t max_seeds = 10;
 
     /* position of the seed with the subject and query sequecne, resp. */
     int spos, qpos;
@@ -547,7 +546,7 @@ static void index_contigs(assembler_t* A)
 
     build_kmer_hash(A);
 
-    A->contigs_rc = malloc_or_die(A->contigs_len * sizeof(sw_t*));
+    A->contigs_rc = malloc_or_die(A->contigs_len * sizeof(twobit_t*));
 
     size_t i;
     for (i = 0; i < A->contigs_len; ++i) {

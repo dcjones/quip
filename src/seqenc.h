@@ -16,7 +16,6 @@
 
 #include "quip.h"
 #include "twobit.h"
-#include "sw.h"
 #include "dist.h"
 #include <stdlib.h>
 

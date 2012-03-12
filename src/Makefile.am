@@ -14,7 +14,6 @@ quip_SOURCES = quip.c version.h \
                seqenc.h        seqenc.c \
                seqenc_prior.h  seqenc_prior.c \
                seqset.h        seqset.c \
-               sw.h            sw.c \
                twobit.h        twobit.c \
                parse.h         parse.c \
                qualenc.h       qualenc.c \

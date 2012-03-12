@@ -49,27 +49,9 @@ static const size_t max_count = 1 << 15;
 #include "dist_template_off.h"
 
  
-#define DISTSIZE 3
-#define dist_t dist3_t
-#define cond_dist_t cond_dist3_t
-
-#include "dist_template_on.h"
-#include "dist_impl.c"
-#include "dist_template_off.h"
-
-
 #define DISTSIZE 4
 #define dist_t dist4_t
 #define cond_dist_t cond_dist4_t
-
-#include "dist_template_on.h"
-#include "dist_impl.c"
-#include "dist_template_off.h"
-
-
-#define DISTSIZE 8
-#define dist_t dist8_t
-#define cond_dist_t cond_dist8_t
 
 #include "dist_template_on.h"
 #include "dist_impl.c"

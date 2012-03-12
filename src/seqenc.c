@@ -15,11 +15,6 @@ static const size_t k = 11;
  * account for positional sequence bias that is sommon in short read sequencing.  */
 static const size_t prefix_len = 4;
 
-/* order of the markov-chain assigning probabilities to edit operations in
- * encoded alignment.s
- */
-static const size_t edit_op_k = 3;
-
 /* The rate at which the nucleotide markov chain is updated. */
 static const size_t seq_update_rate = 2;
 
@@ -55,10 +50,6 @@ struct seqenc_t_
 
     /* distribution over the offset into the contig */
     cond_dist256_t d_contig_off;
-
-    /* distribution of edit operations, given the previous operation */
-    cond_dist3_t d_edit_op;
-    uint32_t edit_op_mask;
 
     /* contig motifs used to compress nucleotides in alignments */
     cond_dist4_t* contig_motifs;
@@ -124,12 +115,6 @@ static void seqenc_init(seqenc_t* E)
 
     cond_dist256_init(&E->d_contig_off, 9 * 256);
 
-    N = 1;
-    for (i = 0; i < edit_op_k; ++i) N *= 3;
-    E->edit_op_mask = N;
-
-    cond_dist3_init(&E->d_edit_op, N);
-
     E->contig_motifs    = NULL;
     E->contig_lens      = NULL;
     E->cum_contig_lens  = NULL;
@@ -175,8 +160,6 @@ void seqenc_free(seqenc_t* E)
     }
 
     cond_dist256_free(&E->d_contig_off);
-
-    cond_dist3_free(&E->d_edit_op);
 
     for (i = 0; i < E->contig_count; ++i) {
         cond_dist4_free(&E->contig_motifs[i]);
@@ -300,17 +283,19 @@ void seqenc_encode_alignment(
         E->cum_contig_lens[contig_idx] + spos);
 
 
-    size_t i, j;
     kmer_t u;
-    for (i = 0; i < qlen; ++i) {
-        u = twobit_get(query, i);
-        if (strand) {
-            u = kmer_comp1(u);
-            j = slen - (spos + i) - 1;
+    size_t i;
+    if (strand) {
+        for (i = 0; i < qlen; ++i) {
+            u = kmer_comp1(twobit_get(query, i));
+            cond_dist4_encode(E->ac, motif, slen - (spos + i) - 1, u);
         }
-        else j = spos + i;
-
-        cond_dist4_encode(E->ac, motif, j, u);
+    }
+    else {
+        for (i = 0; i < qlen; ++i) {
+            u = twobit_get(query, i);
+            cond_dist4_encode(E->ac, motif, spos + i, u);
+        }
     }
 }
 
@@ -340,8 +325,6 @@ void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
         motif  = &E->contig_motifs[i];
         len    = twobit_len(contig);
 
-        /* alignments are allowed to overhang by
-         * sw_band_width nucleotides */
         cond_dist4_init(motif, len);
         for (j = 0; j < len; ++j) {
             motif->xss[j].xs[twobit_get(contig, j)].count =
@@ -495,22 +478,17 @@ static uint32_t decode_contig_idx(seqenc_t* E, uint32_t supercontig_off)
 }
 
 
-static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
+static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t qlen)
 {
-    static size_t N = 0;
-    ++N;
-
-    while (n >= x->seq.size) fastq_expand_str(&x->seq);
+    while (qlen >= x->seq.size) fastq_expand_str(&x->seq);
 
     uint32_t contig_idx, spos;
     uint32_t z;
 
-    /* decode strand */
     uint8_t strand = dist2_decode(E->ac, &E->d_aln_strand);
 
-    /* decode offset */
+    /* contig index and offset */
     z = dist_decode_uint32(E->ac, &E->d_contig_off);
-
     contig_idx = decode_contig_idx(E, z);
     spos = z - E->cum_contig_lens[contig_idx];
 
@@ -520,57 +498,25 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t n)
         exit(EXIT_FAILURE);
     }
     cond_dist4_t* motif = &E->contig_motifs[contig_idx];
-    size_t contig_len = motif->n - 2 * sw_band_width;
+    size_t slen = motif->n;
 
-    assert(contig_idx == E->contig_count - 1 ||
-           contig_len == E->cum_contig_lens[contig_idx + 1] - E->cum_contig_lens[contig_idx]);
-    assert(contig_len > spos);
-
-    /* decoded edit operations */
-    edit_op_t op, last_op = EDIT_MATCH;
-
-    kmer_t u; /* nucleotide */
-    size_t contig_pos;
-    size_t i; /* position within the read */
-    size_t j; /* position within the contig */
-
-    for (i = 0, j = spos; i < n;) {
-        op = cond_dist3_decode(E->ac, &E->d_edit_op, last_op);
-
-        if (op == EDIT_MATCH) {
-            if (strand) {
-                contig_pos = sw_band_width + contig_len - j - 1;
-
-                u = kmer_comp1(cond_dist4_decode(
-                        E->ac, motif, contig_pos));
-            }
-            else u = cond_dist4_decode(E->ac, motif, sw_band_width + j);
-
+    kmer_t u;
+    size_t i;
+    if (strand) {
+        for (i = 0; i < qlen; ++i) {
+            u = cond_dist4_decode(E->ac, motif, slen - (spos + i) - 1);
+            x->seq.s[i] = kmertochar[kmer_comp1(u)];
+        }
+    }
+    else {
+        for (i = 0; i < qlen; ++i) {
+            u = cond_dist4_decode(E->ac, motif, spos + i);
             x->seq.s[i] = kmertochar[u];
-            ++i;
-            ++j;
         }
-        else if (op == EDIT_Q_GAP) {
-            ++j;
-        }
-        else if (op == EDIT_S_GAP) {
-            if (strand) {
-                contig_pos = sw_band_width + contig_len - j - 1;
-
-                u = kmer_comp1(cond_dist4_decode(
-                        E->ac, motif, contig_pos));
-            }
-            else u = cond_dist4_decode(E->ac, motif, sw_band_width + j);
-
-            x->seq.s[i] = kmertochar[u];
-            ++i;
-        }
-
-        last_op = ((3 * last_op) + op) % E->edit_op_mask;
     }
 
-    x->seq.s[n] = '\0';
-    x->seq.n = n;
+    x->seq.s[qlen] = '\0';
+    x->seq.n = qlen;
 }
 
 
