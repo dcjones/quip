@@ -12,7 +12,6 @@
 #include <limits.h>
 #include <string.h>
 #include <math.h>
-#include <pthread.h>
 
 
 /* Contigs are padded on both sides by this many As. */
@@ -20,10 +19,6 @@ static const size_t contig_padding = 50;
 
 /* Maximum score for an alignment to be reported. */
 static const double max_align_score = 1.20;
-
-/* Number of alignment threads to use. */
-static const size_t num_aln_threads = 2;
-
 
 /* alignments */
 typedef struct align_t_
@@ -117,29 +112,8 @@ struct assembler_t_
     sw_t** contig_aligners;
     sw_t** contig_rc_aligners;
 
-    /* read being aligned */
-    const twobit_t* query_seq;
-
-    /* alignment threads */
-    pthread_t*     aln_threads;
-    pthread_cond_t aln_thread_cond;
-    pthread_cond_t  seeds_aligned_cond;
-    pthread_mutex_t seeds_aligned_mut;
-    size_t threads_running;
-
-    /* alignment seeds */
-    kmer_pos_t* seeds;
-    size_t seed_cnt;
-    kmer_t seed_kmer, seed_kmer_c;
-    int seed_qpos;
-
-    /* next seed to try aligning the read to */
-    size_t seed_idx;
-    pthread_mutex_t seed_idx_mut;
-
     /* an alignment */
     align_t aln;
-    pthread_mutex_t aln_mut;
 
     /* allocated size of the contigs array */
     size_t contigs_size;
@@ -157,7 +131,6 @@ struct assembler_t_
 
 
 static void build_kmer_hash(assembler_t* A);
-static void* aligner_thread(void*);
 
 
 assembler_t* assembler_alloc(
@@ -220,24 +193,6 @@ assembler_t* assembler_alloc(
         A->contig_rc_aligners = NULL;
 
         A->aln.a.ops = NULL;
-
-        A->query_seq = NULL;
-        A->seeds = NULL;
-        A->seed_cnt = 0;
-        A->seed_idx = 0;
-
-        pthread_mutex_init(&A->seed_idx_mut, NULL);
-        pthread_mutex_init(&A->aln_mut, NULL);
-        pthread_cond_init(&A->aln_thread_cond, NULL);
-
-        pthread_cond_init(&A->seeds_aligned_cond, NULL);
-        pthread_mutex_init(&A->seeds_aligned_mut, NULL);
-        pthread_mutex_lock(&A->seeds_aligned_mut);
-
-        A->aln_threads = malloc_or_die(num_aln_threads * sizeof(pthread_t));
-        for (i = 0; i < num_aln_threads; ++i) {
-            pthread_create(&A->aln_threads[i], NULL, aligner_thread, (void*) A);
-        }
     }
     else {
         A->seqenc = seqenc_alloc_encoder(writer, writer_data);
@@ -249,26 +204,6 @@ assembler_t* assembler_alloc(
 
 void assembler_free(assembler_t* A)
 {
-    size_t i;
-    if (!A->quick) {
-        A->query_seq = NULL;
-        pthread_cond_broadcast(&A->aln_thread_cond);
-
-        void* val;
-        for (i = 0; i < num_aln_threads; ++i) {
-            pthread_join(A->aln_threads[i], &val);
-        }
-        free(A->aln_threads);
-
-        pthread_mutex_destroy(&A->seed_idx_mut);
-        pthread_mutex_destroy(&A->aln_mut);
-        pthread_cond_destroy(&A->aln_thread_cond);
-
-        pthread_cond_destroy(&A->seeds_aligned_cond);
-        pthread_mutex_destroy(&A->seeds_aligned_mut);
-
-    }
-
     seqset_free(A->S);
     free(A->ord);
     bloom_free(A->B);
@@ -276,6 +211,7 @@ void assembler_free(assembler_t* A)
     twobit_free(A->x);
     seqenc_free(A->seqenc);
 
+    size_t i;
     for (i = 0; i < A->contigs_len; ++i) {
         twobit_free(A->contigs[i]);
         sw_free(A->contig_aligners[i]);
@@ -300,158 +236,9 @@ void assembler_clear_contigs(assembler_t* A)
 }
 
 
-static void* aligner_thread(void* arg)
-{
-    assembler_t* A = (assembler_t*) arg;
-
-    int qlen, spos, slen;
-    uint8_t strand;
-    kmer_pos_t* seed;
-    sw_t* aligner;
-    double aln_score;
-
-    pthread_mutex_t wait_mut;
-    pthread_mutex_init(&wait_mut, NULL);
-    pthread_mutex_lock(&wait_mut);
-
-    size_t i;
-    while (true) {
-        pthread_mutex_lock(&A->seeds_aligned_mut);
-        i = A->seed_idx;
-        A->seed_idx++;
-
-        if (i >= A->seed_cnt) {
-            if (--A->threads_running == 0) pthread_cond_signal(&A->seeds_aligned_cond);
-            pthread_cond_wait(&A->aln_thread_cond, &A->seeds_aligned_mut);
-            pthread_mutex_unlock(&A->seeds_aligned_mut);
-
-            if (A->query_seq == NULL) break;
-            continue;
-        }
-        else {
-            pthread_mutex_unlock(&A->seeds_aligned_mut);
-
-            seed = &A->seeds[i];
-            slen = twobit_len(A->contigs[seed->contig_idx]);
-            qlen = twobit_len(A->query_seq);
-
-            if (seed->contig_pos >= 0) {
-                if (A->seed_kmer == A->seed_kmer_c) {
-                    spos = seed->contig_pos;
-                    strand = 0;
-                }
-                else {
-                    spos = slen - seed->contig_pos - A->align_k;
-                    strand = 1;
-                }
-            }
-            else {
-                if (A->seed_kmer == A->seed_kmer_c) {
-                    spos = slen + seed->contig_pos - A->align_k + 1;
-                    strand = 1;
-                }
-                else {
-                    spos = -seed->contig_pos - 1;
-                    strand = 0;
-                }
-            }
-
-            /* Is a full alignment possible with this seed? */
-            if ((strand == 0 && (spos < A->seed_qpos || slen - spos < qlen - A->seed_qpos)) ||
-                (strand == 1 && (spos < qlen - A->seed_qpos || slen - spos < A->seed_qpos))) {
-                continue;
-            }
-
-            if (strand == 0) {
-                aligner = A->contig_aligners[seed->contig_idx];
-            }
-            else {
-                aligner = A->contig_rc_aligners[seed->contig_idx];
-            }
-
-            sw_lock(aligner);
-
-            aln_score = sw_seeded_align(
-                    aligner,
-                    A->query_seq,
-                    spos,
-                    A->seed_qpos,
-                    A->align_k);
-
-            pthread_mutex_lock(&A->aln_mut);
-            if (aln_score >= 0 &&
-                aln_score <= max_align_score &&
-                aln_score < A->aln.aln_score)
-            {
-                A->aln.contig_idx = seed->contig_idx;
-                A->aln.strand     = strand;
-                A->aln.aln_score  = aln_score;
-                sw_trace(aligner, &A->aln.a);
-            }
-
-            sw_unlock(aligner);
-            pthread_mutex_unlock(&A->aln_mut);
-        }
-    }
-
-    pthread_mutex_destroy(&wait_mut);
-    return NULL;
-}
-
-
-static int align_read(assembler_t* A, const twobit_t* seq)
-{
-    int qlen = twobit_len(seq);
-    A->query_seq = seq;
-    A->aln.aln_score = HUGE_VAL;
-
-    size_t i;
-    for (i = 0; i < 3; ++i) {
-        if      (i == 0) A->seed_qpos = 0;
-        else if (i == 1) A->seed_qpos = (qlen - A->align_k) / 2;
-        else if (i == 2) A->seed_qpos = qlen - A->align_k - 1;
-
-        A->seed_kmer = twobit_get_kmer(
-                            seq,
-                            A->seed_qpos,
-                            A->align_k);
-        A->seed_kmer_c = kmer_canonical(A->seed_kmer, A->align_k);
-
-        A->seed_cnt = kmerhash_get(A->H, A->seed_kmer_c, &A->seeds);
-        A->seed_idx = 0;
-
-        if (A->seed_cnt > 0) {
-
-            // use this, if runtime is still an issue
-            // poslen = poslen > max_seeds ? max_seeds : poslen;
-     
-            A->threads_running = num_aln_threads; 
-            pthread_cond_broadcast(&A->aln_thread_cond);
-
-            while (A->threads_running > 0) {
-                pthread_cond_wait(&A->seeds_aligned_cond, &A->seeds_aligned_mut);
-            }
-        }
-   }
-
-    if (A->aln.aln_score < HUGE_VAL) {
-        seqenc_encode_alignment(A->seqenc,
-                A->aln.contig_idx, A->aln.strand, &A->aln.a, seq);
-
-        return 1;
-    }
-    else {
-        seqenc_encode_twobit_seq(A->seqenc, seq);
-        return 0;
-    }
-}
-
-
 /* Try desperately to align the given read. If no good alignment is found, just
  * encode the sequence. Return 0 if no alignment was found, 1 if a seed was
  * found but no good alignment, and 2 if a good alignment was found. */
-
- #if 0
 static int align_read(assembler_t* A, const twobit_t* seq)
 {
     /* We only consider the first few seed hits found in the hash table. The
@@ -575,7 +362,7 @@ static int align_read(assembler_t* A, const twobit_t* seq)
         return ret;
     }
 }
-#endif
+
 
 
 void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
@@ -849,7 +636,8 @@ static void align_to_contigs(assembler_t* A,
     for (i = 0; i < A->N; ++i) {
         if (xs[A->ord[i]].is_twobit) {
             ret = align_read(A, xs[A->ord[i]].seq.tb);
-            if (ret == 1)      ++aln_count;
+            if (ret == 2)      ++aln_count;
+            else if (ret == 1) ++aborted_aln_count;
         }
         else {
             ebseq = xs[A->ord[i]].seq.eb;
