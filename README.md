@@ -6,8 +6,11 @@ Algorithms used in Quip
 
 Primarily Quip works by building statistical models of the read ids, nucleotide
 sequences, and quality scores which are then compressed using arithmetic coding.
-In the following sections we give specific details. These details may change as
-the program is refined.
+In addition, we use a highly efficient de novo assembler, to assemble contiguous
+regions and store nucleotide sequences as positions within these contigs.
+
+In the following sections we give specific details. 
+
 
 Read IDs
 --------
@@ -53,8 +56,7 @@ obvious targets.
 
 To undertake this, we implemented our own specially tuned short read aligner and
 de novo assembler. The latter required new techniques that to our knowledge have
-not been previously explored. We describe our secret to efficient assemble in
-the following section.
+not been previously explored. 
 
 
 Probabilistic De Bruijn Graphs
@@ -85,4 +87,16 @@ practical option for compression: we can assemble one million 100nt reads in
 seconds with a few hundred of megabyte, rather than several gigabytes that would
 otherwise be needed.
 
+
+Additional Features
+-------------------
+
+To ensure data integrity, quip attaches independent CRC64 checksums to each block
+of IDs, sequences, and quality scores. This way, any data corruption can be
+not just detected, but localized. The integrity a compressed FASTQ file
+can be checked with the 'quip --test' command.
+
+Quip also stores summary information about the compressed reads. With the
+'quip --list' command, the number of compressed reads and bases is listed
+without needing to decompress the file or count lines.
 
