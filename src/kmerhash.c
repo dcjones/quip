@@ -254,3 +254,38 @@ size_t kmerhash_get(kmerhash_t* H, kmer_t x, kmer_pos_t** pos)
     return 0;
 }
 
+
+/* Approximately shuffle the k-mer positions. */
+static void fisher_yates(kmer_pos_t* xs, size_t n)
+{
+    kmer_pos_t x;
+    unsigned long i, j;
+    for (i = n - 1; i > 0; --i) {
+        j = rand() % n; /* (here's where the 'approximate' comes in) */
+
+        memcpy(&x, xs + j,     sizeof(kmer_pos_t));
+        memcpy(xs + j, xs + i, sizeof(kmer_pos_t));
+        memcpy(xs + i, &x,     sizeof(kmer_pos_t));
+    }
+}
+
+
+void kmerhash_shuffle_slots(kmerhash_t* H)
+{
+    uint8_t len;
+    size_t i;
+    slot_t c0, c;
+    for (i = 0; i < H->n; ++i) {
+        c0 = H->slots[i]; 
+        for (c = c0; (size_t) (c - c0) < H->slot_sizes[i]; ) {
+            c += sizeof(kmer_t);  /* skip over key */
+
+            len = *(uint8_t*) c;
+            c += sizeof(uint8_t);
+
+            fisher_yates((kmer_pos_t*) c, len);
+            c += len * sizeof(kmer_pos_t);
+        }
+    }
+}
+

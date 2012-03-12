@@ -24,6 +24,9 @@ static const double max_align_score = 1.20;
 /* Number of alignment threads to use. */
 static const size_t num_aln_threads = 2;
 
+/* Maximum number of seeds to try to align. */
+static const size_t max_seeds = 5;
+
 
 /* alignments */
 typedef struct align_t_
@@ -121,8 +124,10 @@ struct assembler_t_
     const twobit_t* query_seq;
 
     /* alignment threads */
-    pthread_t*     aln_threads;
-    pthread_cond_t aln_thread_cond;
+    pthread_t*       aln_threads;
+    pthread_cond_t*  aln_wait_cond;
+    pthread_mutex_t* aln_wait_mut;
+
     pthread_cond_t  seeds_aligned_cond;
     pthread_mutex_t seeds_aligned_mut;
     size_t threads_running;
@@ -228,16 +233,26 @@ assembler_t* assembler_alloc(
 
         pthread_mutex_init(&A->seed_idx_mut, NULL);
         pthread_mutex_init(&A->aln_mut, NULL);
-        pthread_cond_init(&A->aln_thread_cond, NULL);
 
         pthread_cond_init(&A->seeds_aligned_cond, NULL);
         pthread_mutex_init(&A->seeds_aligned_mut, NULL);
-        pthread_mutex_lock(&A->seeds_aligned_mut);
 
-        A->aln_threads = malloc_or_die(num_aln_threads * sizeof(pthread_t));
+
+        A->aln_wait_mut  = malloc_or_die(num_aln_threads * sizeof(pthread_mutex_t));
+        A->aln_wait_cond = malloc_or_die(num_aln_threads * sizeof(pthread_cond_t));
+        for (i = 0; i < num_aln_threads; ++i) {
+            pthread_mutex_init(&A->aln_wait_mut[i], NULL);
+            pthread_cond_init(&A->aln_wait_cond[i], NULL);
+        }
+
+
+        pthread_mutex_lock(&A->seeds_aligned_mut);
+        A->aln_threads   = malloc_or_die(num_aln_threads * sizeof(pthread_t));
+        A->threads_running = num_aln_threads; 
         for (i = 0; i < num_aln_threads; ++i) {
             pthread_create(&A->aln_threads[i], NULL, aligner_thread, (void*) A);
         }
+        pthread_mutex_unlock(&A->seeds_aligned_mut);
     }
     else {
         A->seqenc = seqenc_alloc_encoder(writer, writer_data);
@@ -254,17 +269,20 @@ void assembler_free(assembler_t* A)
         A->query_seq = NULL;
 
         pthread_mutex_unlock(&A->seeds_aligned_mut);
-        pthread_cond_broadcast(&A->aln_thread_cond);
 
         void* val;
         for (i = 0; i < num_aln_threads; ++i) {
+            pthread_cond_signal(&A->aln_wait_cond[i]);
             pthread_join(A->aln_threads[i], &val);
+            pthread_mutex_destroy(&A->aln_wait_mut[i]);
+            pthread_cond_destroy(&A->aln_wait_cond[i]);
         }
         free(A->aln_threads);
+        free(A->aln_wait_mut);
+        free(A->aln_wait_cond);
 
         pthread_mutex_destroy(&A->seed_idx_mut);
         pthread_mutex_destroy(&A->aln_mut);
-        pthread_cond_destroy(&A->aln_thread_cond);
 
         pthread_cond_destroy(&A->seeds_aligned_cond);
         pthread_mutex_destroy(&A->seeds_aligned_mut);
@@ -306,33 +324,49 @@ static void* aligner_thread(void* arg)
 {
     assembler_t* A = (assembler_t*) arg;
 
+    /* figure out this thread's index */
+    pthread_mutex_lock(&A->seeds_aligned_mut);
+    pthread_t self = pthread_self();
+    size_t i;
+    size_t thread_idx;
+    for (i = 0; i < num_aln_threads; ++i) {
+        if (pthread_equal(self, A->aln_threads[i])) {
+            thread_idx = i;
+            break;
+        }
+    }
+    pthread_mutex_lock(&A->aln_wait_mut[thread_idx]);
+    pthread_mutex_unlock(&A->seeds_aligned_mut);
+
     int qlen, spos, slen;
     uint8_t strand;
     kmer_pos_t* seed;
     sw_t* aligner;
     double aln_score;
 
-    pthread_mutex_t wait_mut;
-    pthread_mutex_init(&wait_mut, NULL);
-    pthread_mutex_lock(&wait_mut);
-
-    size_t i;
     while (true) {
-        pthread_mutex_lock(&A->seeds_aligned_mut);
+        pthread_mutex_lock(&A->seed_idx_mut);
         i = A->seed_idx;
         A->seed_idx++;
+        pthread_mutex_unlock(&A->seed_idx_mut);
 
         if (i >= A->seed_cnt) {
+            pthread_mutex_lock(&A->seeds_aligned_mut);
             if (--A->threads_running == 0) pthread_cond_signal(&A->seeds_aligned_cond);
-            pthread_cond_wait(&A->aln_thread_cond, &A->seeds_aligned_mut);
             pthread_mutex_unlock(&A->seeds_aligned_mut);
 
-            if (A->query_seq == NULL) break;
+            int ret = 
+            pthread_cond_wait(&A->aln_wait_cond[thread_idx],
+                              &A->aln_wait_mut[thread_idx]);
+
+            if (A->query_seq == NULL) {
+                fprintf(stderr, "leaving thread %zu (return: %d)...\n",
+                    thread_idx, ret);
+               break;
+            }
             continue;
         }
         else {
-            pthread_mutex_unlock(&A->seeds_aligned_mut);
-
             seed = &A->seeds[i];
             slen = twobit_len(A->contigs[seed->contig_idx]);
             qlen = twobit_len(A->query_seq);
@@ -396,7 +430,6 @@ static void* aligner_thread(void* arg)
         }
     }
 
-    pthread_mutex_destroy(&wait_mut);
     return NULL;
 }
 
@@ -406,11 +439,15 @@ static void* aligner_thread(void* arg)
  * alignment was found. */
 static bool align_read(assembler_t* A, const twobit_t* seq)
 {
+    // if (0 != pthread_mutex_lock(&A->seeds_aligned_mut)) abort();
+
+    size_t i, j;
+    for (j = 0; j < num_aln_threads; ++j) pthread_mutex_lock(&A->aln_wait_mut[j]);
+
     int qlen = twobit_len(seq);
     A->query_seq = seq;
     A->aln.aln_score = HUGE_VAL;
 
-    size_t i;
     for (i = 0; i < 3; ++i) {
         if      (i == 0) A->seed_qpos = 0;
         else if (i == 1) A->seed_qpos = (qlen - A->align_k) / 2;
@@ -423,21 +460,27 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
         A->seed_kmer_c = kmer_canonical(A->seed_kmer, A->align_k);
 
         A->seed_cnt = kmerhash_get(A->H, A->seed_kmer_c, &A->seeds);
+        if (A->seed_cnt > max_seeds) A->seed_cnt = max_seeds;
         A->seed_idx = 0;
 
         if (A->seed_cnt > 0) {
-
-            // use this, if runtime is still an issue
-            // poslen = poslen > max_seeds ? max_seeds : poslen;
-     
             A->threads_running = num_aln_threads; 
-            pthread_cond_broadcast(&A->aln_thread_cond);
+            for (j = 0; j < num_aln_threads; ++j) {
+                pthread_mutex_unlock(&A->aln_wait_mut[j]);
+                pthread_cond_signal(&A->aln_wait_cond[j]);
+            }
 
             while (A->threads_running > 0) {
-                pthread_cond_wait(&A->seeds_aligned_cond, &A->seeds_aligned_mut);
+                if (0 != pthread_cond_wait(&A->seeds_aligned_cond, &A->seeds_aligned_mut)) {
+                    abort();
+                }
             }
+
+            for (j = 0; j < num_aln_threads; ++j) pthread_mutex_lock(&A->aln_wait_mut[j]);
         }
-   }
+    }
+
+    for (j = 0; j < num_aln_threads; ++j) pthread_mutex_unlock(&A->aln_wait_mut[j]);
 
     if (A->aln.aln_score < HUGE_VAL) {
         seqenc_encode_alignment(A->seqenc,
@@ -449,6 +492,8 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
         seqenc_encode_twobit_seq(A->seqenc, seq);
         return false;
     }
+
+    // if (0 != pthread_mutex_unlock(&A->seeds_aligned_mut)) abort();
 }
 
 
@@ -660,6 +705,7 @@ static void build_kmer_hash(assembler_t* A)
         }
     }
 
+    kmerhash_shuffle_slots(A->H);
 }
 
 
