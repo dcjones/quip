@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include <math.h>
+#include <pthread.h>
 
 
 void print_alignment(FILE* fout, const sw_alignment_t* aln)
@@ -48,10 +49,10 @@ struct sw_t_
 
     int last_spos;
 
-    /* start within the subject sequence of the alignment */
-
     /* overall minimum cost alignment */
     score_t* F;
+
+    pthread_mutex_t mut;
 };
 
 
@@ -88,6 +89,8 @@ sw_t* sw_alloc(const twobit_t* subject)
     sw->query = NULL;
     sw->F = NULL;
 
+    pthread_mutex_init(&sw->mut, NULL);
+
     return sw;
 }
 
@@ -115,7 +118,19 @@ void sw_free(sw_t* sw)
     free(sw->subject);
     free(sw->query);
     free(sw->F);
+    pthread_mutex_destroy(&sw->mut);
     free(sw);
+}
+
+void sw_lock(sw_t* sw)
+{
+    pthread_mutex_lock(&sw->mut);
+}
+
+
+void sw_unlock(sw_t* sw)
+{
+    pthread_mutex_unlock(&sw->mut);
 }
 
 
