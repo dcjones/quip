@@ -221,7 +221,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 {
     /* We only consider the first few seed hits found in the hash table. The
      * should be in an approximately random order. */
-    static const size_t max_seeds = 10;
+    static const size_t max_seeds = 100;
 
     /* position of the seed with the subject and query sequecne, resp. */
     int spos, qpos;
@@ -258,7 +258,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
         else if (i == 1) qpos = (qlen - A->align_k) / 2;
         else if (i == 2) qpos = qlen - A->align_k - 1;
 
-        x = twobit_get_kmer(
+        x = twobit_get_kmer_rev(
                 seq,
                 qpos,
                 A->align_k);
@@ -402,7 +402,7 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
 
 
     /* delete all kmers in the seed */
-    kmer_t x = twobit_get_kmer(seed, 0, A->assemble_k);
+    kmer_t x = twobit_get_kmer_rev(seed, 0, A->assemble_k);
     size_t i;
     for (i = A->assemble_k; i < twobit_len(seed); ++i) {
         bloom_ldec(A->B, kmer_canonical((x << 2) | twobit_get(seed, i), A->assemble_k));
@@ -417,7 +417,7 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
 
     /* Greedily append nucleotides to the contig using 
      * approximate k-mer counts stored in the bloom filter. */
-    x = twobit_get_kmer(seed, 0, A->assemble_k);
+    x = twobit_get_kmer_rev(seed, 0, A->assemble_k);
     while (true) {
         bloom_ldec(A->B, kmer_canonical(x, A->assemble_k));
 
@@ -457,7 +457,7 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
     twobit_reverse(contig);
     twobit_append_twobit(contig, seed);
 
-    x = twobit_get_kmer(seed, twobit_len(seed) - A->assemble_k, A->assemble_k);
+    x = twobit_get_kmer_rev(seed, twobit_len(seed) - A->assemble_k, A->assemble_k);
     while (true) {
         bloom_ldec(A->B, kmer_canonical(x, A->assemble_k));
 

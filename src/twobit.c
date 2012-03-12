@@ -216,8 +216,7 @@ kmer_t twobit_get(const twobit_t* s, size_t i)
     return (s->seq[idx] >> (2 * off)) & 0x3;
 }
 
-
-kmer_t twobit_get_kmer(const twobit_t* s, size_t i, size_t k)
+kmer_t twobit_get_kmer_rev(const twobit_t* s, size_t i, size_t k)
 {
     kmer_t x = 0;
     size_t j;
@@ -228,6 +227,16 @@ kmer_t twobit_get_kmer(const twobit_t* s, size_t i, size_t k)
     return x;
 }
 
+kmer_t twobit_get_kmer(const twobit_t* s, size_t i, size_t k)
+{
+    kmer_t x = 0;
+    size_t j;
+    for (j = 0; j < k; ++j) {
+        x |= twobit_get(s, i + j) << (2 * j);
+    }
+
+    return x;
+}
 
 
 void twobit_print(const twobit_t* s, FILE* fout)
@@ -340,22 +349,70 @@ uint32_t twobit_hash(const twobit_t* s)
 }
 
 
+/* This table gives the number of mismatches between
+   two 4-mers that have been XOR-ed together. */
+static const uint8_t mismatch_count_4mer[256] =
+  {  0, 1, 1, 1, 1, 2, 2, 2, 1, 2, 2, 2, 1, 2, 2, 2,
+     1, 2, 2, 2, 2, 3, 3, 3, 2, 3, 3, 3, 2, 3, 3, 3,
+     1, 2, 2, 2, 2, 3, 3, 3, 2, 3, 3, 3, 2, 3, 3, 3,
+     1, 2, 2, 2, 2, 3, 3, 3, 2, 3, 3, 3, 2, 3, 3, 3,
+     1, 2, 2, 2, 2, 3, 3, 3, 2, 3, 3, 3, 2, 3, 3, 3,
+     2, 3, 3, 3, 3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4,
+     2, 3, 3, 3, 3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4,
+     2, 3, 3, 3, 3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4,
+     1, 2, 2, 2, 2, 3, 3, 3, 2, 3, 3, 3, 2, 3, 3, 3,
+     2, 3, 3, 3, 3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4,
+     2, 3, 3, 3, 3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4,
+     2, 3, 3, 3, 3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4,
+     1, 2, 2, 2, 2, 3, 3, 3, 2, 3, 3, 3, 2, 3, 3, 3,
+     2, 3, 3, 3, 3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4,
+     2, 3, 3, 3, 3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4,
+     2, 3, 3, 3, 3, 4, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4 };
+
+
 uint32_t twobit_mismatch_count(const twobit_t* subject,
                                const twobit_t* query,
                                size_t spos)
 {
-    size_t n = subject->len;
     size_t m = query->len;
     uint32_t mismatches = 0;
 
+    kmer_t x, y;
     size_t i;
-    for (i = 0; i < m && spos + i < n; ++i) {
-        if (twobit_get(subject, spos + i) != twobit_get(query, i)) {
-            ++mismatches;
-        }
+    for (i = 0; i + 32 <= m; i += 32) {
+
+        x = query->seq[i >> 5];
+        y = twobit_get_kmer(subject, spos + i, 32);
+
+        x = x ^ y;
+        mismatches += mismatch_count_4mer[x & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 8) & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 16) & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 24) & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 32) & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 40) & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 48) & 0xff];
+        mismatches += mismatch_count_4mer[x >> 56];
     }
+
+    if (i < m) {
+        size_t k = m - i;
+        kmer_t mask = (1 << (2 * k)) - 1;
+
+        x = query->seq[i >> 5] & mask;
+        y = twobit_get_kmer(subject, spos + i, k) & mask;
+
+        x = x ^ y;
+        mismatches += mismatch_count_4mer[x & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 8) & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 16) & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 24) & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 32) & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 40) & 0xff];
+        mismatches += mismatch_count_4mer[(x >> 48) & 0xff];
+        mismatches += mismatch_count_4mer[x >> 56];
+    }
+
 
     return mismatches;
 }
-
-
