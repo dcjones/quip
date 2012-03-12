@@ -39,11 +39,6 @@ size_t kmerhash_size(kmerhash_t*);
 void   kmerhash_put(kmerhash_t*, kmer_t, uint32_t contig_idx, int32_t contig_pos);
 size_t kmerhash_get(kmerhash_t*, kmer_t, kmer_pos_t**);
 
-/* Multi-threaded read alignment works somewhat better if each
- * slot is shuffled, preventing kmers from the same contig from
- * being grouped together. */
-void kmerhash_shuffle_slots(kmerhash_t*);
-
 #endif
 
 
