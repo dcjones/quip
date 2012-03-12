@@ -282,79 +282,42 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
 }
 
 
+
 void seqenc_encode_alignment(
-            seqenc_t* E, size_t contig_idx, uint8_t strand,
-            const sw_alignment_t* aln,
-            const twobit_t* query)
+        seqenc_t* E,
+        uint32_t contig_idx, uint32_t spos, uint8_t strand,
+        const twobit_t* query)
 {
+    cond_dist4_t* motif = &E->contig_motifs[contig_idx];
+    size_t qlen = twobit_len(query);
+    size_t slen = motif->n;
+
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_ALIGNMENT);
 
-    /* encode strand */
     dist2_encode(E->ac, &E->d_aln_strand, strand);
 
-    /* encode super-contig offset */
     dist_encode_uint32(E->ac, &E->d_contig_off,
-        E->cum_contig_lens[contig_idx] + aln->spos);
+        E->cum_contig_lens[contig_idx] + spos);
 
-    /* encode edit operations */
-    size_t qlen = twobit_len(query);
-    kmer_t u = twobit_get(query, 0);
-    uint32_t op, last_op = EDIT_MATCH;
-    cond_dist4_t* motif = &E->contig_motifs[contig_idx];
-    size_t contig_len = motif->n - 2 * sw_band_width;
-    size_t contig_pos;
-    size_t i; /* position within the alignment */
-    size_t j; /* position within the read sequence */
-    size_t c; /* position within the contig */
-    for (i = 0, j = 0, c = aln->spos; i < aln->len && j < qlen; ++i) {
 
-        if (aln->ops[i] == EDIT_MATCH || aln->ops[i] == EDIT_MISMATCH) {
-            cond_dist3_encode(E->ac, &E->d_edit_op, last_op, EDIT_MATCH);
-
-            if (strand) {
-                contig_pos = sw_band_width + contig_len - c - 1;
-                u = kmer_comp1(u);
-            }
-            else contig_pos = sw_band_width + c;
-
-            cond_dist4_encode(E->ac, motif, contig_pos, u);
-
-            ++j;
-            ++c;
-            op = EDIT_MATCH;
-            u = twobit_get(query, j);
+    size_t i, j;
+    kmer_t u;
+    for (i = 0; i < qlen; ++i) {
+        u = twobit_get(query, i);
+        if (strand) {
+            u = kmer_comp1(u);
+            j = slen - (spos + i) - 1;
         }
-        else if (aln->ops[i] == EDIT_Q_GAP) {
-            cond_dist3_encode(E->ac, &E->d_edit_op, last_op, EDIT_Q_GAP);
-            op = EDIT_Q_GAP;
-            ++c;
-        }
-        else if (aln->ops[i] == EDIT_S_GAP) {
-            cond_dist3_encode(E->ac, &E->d_edit_op, last_op, EDIT_S_GAP);
+        else j = spos + i;
 
-            if (strand) {
-                contig_pos = sw_band_width + contig_len - c - 1;
-                u = kmer_comp1(u);
-            }
-            else contig_pos = sw_band_width + c;
-            
-            cond_dist4_encode(E->ac, motif, contig_pos, u);
-
-            ++j;
-            op = EDIT_S_GAP;
-            u = twobit_get(query, j);
-        }
-
-        last_op = ((3 * last_op) + op) % E->edit_op_mask;
+        cond_dist4_encode(E->ac, motif, j, u);
     }
-
-    assert(j == twobit_len(query));
 }
 
 
 void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
 {
-    size_t i, j, k;
+    size_t i, j;
     for (i = 0; i < E->contig_count; ++i) {
         cond_dist4_free(&E->contig_motifs[i]);
     }
@@ -379,12 +342,11 @@ void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
 
         /* alignments are allowed to overhang by
          * sw_band_width nucleotides */
-        cond_dist4_init(motif, len + 2 * sw_band_width);
+        cond_dist4_init(motif, len);
         for (j = 0; j < len; ++j) {
-            k = j + sw_band_width;
-            motif->xss[k].xs[twobit_get(contig, j)].count =
+            motif->xss[j].xs[twobit_get(contig, j)].count =
                 contig_motif_prior;
-            dist4_update(&motif->xss[k]);
+            dist4_update(&motif->xss[j]);
         }
         cond_dist4_set_update_rate(motif, 4);
 
@@ -397,7 +359,7 @@ void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
 
 void seqenc_get_contig_consensus(seqenc_t* E, twobit_t** contigs)
 {
-    size_t i, j, k;
+    size_t i, j;
     twobit_t*     contig;
     cond_dist4_t* motif;
     size_t len;
@@ -410,13 +372,12 @@ void seqenc_get_contig_consensus(seqenc_t* E, twobit_t** contigs)
 
         for (j = 0; j < len; ++j) {
             u = 0;
-            k = j + sw_band_width;
-            if (motif->xss[k].xs[1].count >
-                motif->xss[k].xs[u].count) u = 1;
-            if (motif->xss[k].xs[2].count >
-                motif->xss[k].xs[u].count) u = 2;
-            if (motif->xss[k].xs[3].count >
-                motif->xss[k].xs[u].count) u = 3;
+            if (motif->xss[j].xs[1].count >
+                motif->xss[j].xs[u].count) u = 1;
+            if (motif->xss[j].xs[2].count >
+                motif->xss[j].xs[u].count) u = 2;
+            if (motif->xss[j].xs[3].count >
+                motif->xss[j].xs[u].count) u = 3;
 
             twobit_set(contig, j, u);
         }

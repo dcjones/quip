@@ -340,4 +340,22 @@ uint32_t twobit_hash(const twobit_t* s)
 }
 
 
+uint32_t twobit_mismatch_count(const twobit_t* subject,
+                               const twobit_t* query,
+                               size_t spos)
+{
+    size_t n = subject->len;
+    size_t m = query->len;
+    uint32_t mismatches = 0;
+
+    size_t i;
+    for (i = 0; i < m && spos + i < n; ++i) {
+        if (twobit_get(subject, spos + i) != twobit_get(query, i)) {
+            ++mismatches;
+        }
+    }
+
+    return mismatches;
+}
+
 

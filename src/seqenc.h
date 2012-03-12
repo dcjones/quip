@@ -37,10 +37,10 @@ void seqenc_get_contig_consensus(seqenc_t*, twobit_t** contigs);
 
 void seqenc_encode_char_seq(seqenc_t*, const char*, size_t len);
 void seqenc_encode_twobit_seq(seqenc_t*, const twobit_t*);
+
 void seqenc_encode_alignment(
         seqenc_t* E,
-        size_t contig_idx, uint8_t strand,
-        const sw_alignment_t* aln,
+        uint32_t contig_idx, uint32_t spos, uint8_t strand,
         const twobit_t* query);
 void seqenc_flush(seqenc_t* E);
 
