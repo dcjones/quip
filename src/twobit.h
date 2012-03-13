@@ -18,16 +18,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-// typedef struct twobit_t_ twobit_t;
-
-typedef struct twobit_t_
-{
-    size_t len; /* length of stored sequnce */
-    size_t n;   /* space (number of kmers) allocated in seq */
-    kmer_t* seq;
-} twobit_t;
-
-
+typedef struct twobit_t_ twobit_t;
 
 twobit_t* twobit_alloc();
 twobit_t* twobit_alloc_n(size_t n);

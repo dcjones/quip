@@ -17,7 +17,7 @@ ac_t* ac_alloc_encoder(quip_writer_t writer, void* writer_data)
     ac->b = 0;
     ac->l = max_length;
 
-    ac->buflen = 65536;
+    ac->buflen = 10000000;
     ac->buf = malloc_or_die(ac->buflen * sizeof(uint8_t));
     ac->bufpos = 0;
 
@@ -60,30 +60,8 @@ void  ac_free(ac_t* ac)
 
 static void ac_append_byte(ac_t* E, uint8_t c)
 {
-    /* when the buffer is full, try to evict as much as possible, then shift
-     * everything over */
     if (E->bufpos >= E->buflen) {
-        size_t i = E->buflen - 1;
-        while (i > 0) {
-            if (E->buf[i] == 0xff && E->buf[i - 1] < 0xff) break;
-            --i;
-        }
-
-        if (i > 1) {
-            E->writer(E->writer_data, E->buf, i - 1);
-            memmove(E->buf, E->buf + (i - 1), (E->buflen - (i - 1)) * sizeof(uint8_t));
-            E->bufpos = E->buflen - (i - 1);
-        }
-        else if (i == 0) {
-            E->writer(E->writer_data, E->buf, E->buflen - 1);
-            E->buf[0] = E->buf[E->buflen - 1];
-            E->bufpos = 1;
-        }
-    }
-
-    /* if the buffer is _still_ full, we must expand it. */
-    if (E->bufpos >= E->buflen) {
-        E->buflen *= 2;
+        E->buflen += 1000000;
         E->buf = realloc_or_die(E->buf, E->buflen * sizeof(uint8_t));
      }
 
@@ -146,7 +124,7 @@ void ac_renormalize_decoder(ac_t* ac)
 }
 
 
-void ac_flush_encoder(ac_t* ac)
+size_t ac_finish_encoder(ac_t* ac)
 {
     uint32_t b0 = ac->b;
 
@@ -162,9 +140,14 @@ void ac_flush_encoder(ac_t* ac)
     if (b0 > ac->b) ac_propogate_carry(ac);
     ac_renormalize_encoder(ac);
 
+    return ac->bufpos;
+}
+
+
+void ac_flush_encoder(ac_t* ac)
+{
     ac->writer(ac->writer_data, ac->buf, ac->bufpos);
 
-    /* reset encoder */
     ac->b = 0;
     ac->l = max_length;
     ac->bufpos = 0;

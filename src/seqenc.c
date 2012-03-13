@@ -577,6 +577,11 @@ void seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
 }
 
 
+size_t seqenc_finish(seqenc_t* E)
+{
+    return ac_finish_encoder(E->ac);
+}
+
 
 void seqenc_flush(seqenc_t* E)
 {

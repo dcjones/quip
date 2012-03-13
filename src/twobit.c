@@ -4,6 +4,13 @@
 #include "misc.h"
 #include <string.h>
 
+struct twobit_t_
+{
+    size_t len; /* length of stored sequnce */
+    size_t n;   /* space (number of kmers) allocated in seq */
+    kmer_t* seq;
+};
+
 
 /* the number of kmer_t elements needed to represent a sequence of the given
  * length */

@@ -41,7 +41,9 @@ void seqenc_encode_alignment(
         seqenc_t* E,
         uint32_t contig_idx, uint32_t spos, uint8_t strand,
         const twobit_t* query);
-void seqenc_flush(seqenc_t* E);
+
+size_t seqenc_finish(seqenc_t* E);
+void   seqenc_flush(seqenc_t* E);
 
 /* Optionally called to inform the decoder that the next n sequences should be
  * considered contigs. */

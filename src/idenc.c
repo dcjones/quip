@@ -427,6 +427,12 @@ void idenc_decode(idenc_t* E, seq_t* seq)
 }
 
 
+size_t idenc_finish(idenc_t* E)
+{
+    return ac_finish_encoder(E->ac);
+}
+
+
 void idenc_flush(idenc_t* E)
 {
     ac_flush_encoder(E->ac);

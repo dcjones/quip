@@ -57,7 +57,10 @@ ac_t* ac_alloc_encoder(quip_writer_t writer, void* writer_data);
 ac_t* ac_alloc_decoder(quip_reader_t reader, void* reader_data);
 void  ac_free(ac_t*);
 
-/* Choose the final code value. */
+/* Choose the final code value and return the number of compressed bytes. */
+size_t ac_finish_encoder(ac_t*);
+
+/* Write buffered compressed bases and reset the encoder. */
 void ac_flush_encoder(ac_t*);
 
 /* This must be called following a call to alloc_decoder or

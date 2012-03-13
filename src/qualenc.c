@@ -182,6 +182,11 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     }
 }
 
+size_t qualenc_finish(qualenc_t* E)
+{
+    return ac_finish_encoder(E->ac);
+}
+
 
 void qualenc_flush(qualenc_t* E)
 {

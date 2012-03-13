@@ -106,18 +106,6 @@ struct quip_compressor_t_
     qualenc_t*   qualenc;
     assembler_t* assembler;
 
-    /* compressed quality scores */
-    uint8_t* qualbuf;
-    size_t qualbuf_size, qualbuf_len;
-
-    /* compressed ids */
-    uint8_t* idbuf;
-    size_t idbuf_size, idbuf_len;
-
-    /* compressed sequence */
-    uint8_t* seqbuf;
-    size_t seqbuf_size, seqbuf_len;
-
     /* number of bases encoded in the current block */
     size_t buffered_reads;
     size_t buffered_bases;
@@ -192,58 +180,6 @@ static void* qual_compressor_thread(void* ctx)
 }
 
 
-static void qual_buf_writer(void* param, const uint8_t* data, size_t size)
-{
-    quip_compressor_t* C = (quip_compressor_t*) param;
-
-    if (C->qualbuf_size < C->qualbuf_len + size) {
-        while (C->qualbuf_size < C->qualbuf_len + size) {
-            C->qualbuf_size += 1000000;
-        }
-
-        C->qualbuf = realloc_or_die(C->qualbuf, C->qualbuf_size * sizeof(uint8_t));
-    }
-
-    memcpy(C->qualbuf + C->qualbuf_len, data, size);
-    C->qualbuf_len += size;
-}
-
-
-static void id_buf_writer(void* param, const uint8_t* data, size_t size)
-{
-    quip_compressor_t* C = (quip_compressor_t*) param;
-
-    if (C->idbuf_size < C->idbuf_len + size) {
-        while (C->idbuf_size < C->idbuf_len + size) {
-            C->idbuf_size += 1000000;
-        }
-
-        C->idbuf = realloc_or_die(C->idbuf, C->idbuf_size * sizeof(uint8_t));
-    }
-
-    memcpy(C->idbuf + C->idbuf_len, data, size);
-    C->idbuf_len += size;
-}
-
-
-static void seq_writer(void* param, const uint8_t* data, size_t size)
-{
-    quip_compressor_t* C = (quip_compressor_t*) param;
-
-    if (C->seqbuf_size < C->seqbuf_len + size) {
-        while (C->seqbuf_size < C->seqbuf_len + size) {
-            C->seqbuf_size += 1000000;
-        }
-
-        C->seqbuf = realloc_or_die(C->seqbuf, C->seqbuf_size * sizeof(uint8_t));
-    }
-
-    memcpy(C->seqbuf + C->seqbuf_len, data, size);
-    C->seqbuf_len += size;
-}
-
-
-
 quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool quick)
 {
     quip_compressor_t* C = malloc_or_die(sizeof(quip_compressor_t));
@@ -255,18 +191,6 @@ quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool
         C->chunk[i] = fastq_alloc_seq();
     }
     C->chunk_len = 0;
-
-    C->qualbuf_size = 1000000;
-    C->qualbuf_len = 0;
-    C->qualbuf = malloc_or_die(C->qualbuf_size * sizeof(uint8_t));
-
-    C->idbuf_size = 1000000;
-    C->idbuf_len = 0;
-    C->idbuf = malloc_or_die(C->idbuf_size * sizeof(uint8_t));
-
-    C->seqbuf_size = 1000000;
-    C->seqbuf_len = 0;
-    C->seqbuf = malloc_or_die(C->seqbuf_size * sizeof(uint8_t));
 
     C->buffered_reads = 0;
     C->buffered_bases = 0;
@@ -287,9 +211,9 @@ quip_compressor_t* quip_comp_alloc(quip_writer_t writer, void* writer_data, bool
     C->total_reads = 0;
     C->total_bases = 0;
 
-    C->idenc     = idenc_alloc_encoder(id_buf_writer, (void*) C);
-    C->qualenc   = qualenc_alloc_encoder(qual_buf_writer, (void*) C);
-    C->assembler = assembler_alloc(seq_writer, (void*) C, assembler_k, aligner_k, quick);
+    C->idenc     = idenc_alloc_encoder(writer, (void*) writer_data);
+    C->qualenc   = qualenc_alloc_encoder(writer, (void*) writer_data);
+    C->assembler = assembler_alloc(writer, (void*) writer_data, assembler_k, aligner_k, quick);
 
     /* write header */
     C->writer(C->writer_data, quip_header_magic, 6);
@@ -338,50 +262,47 @@ void quip_comp_flush_block(quip_compressor_t* C)
     }
 
     /* finish coding */
-    idenc_flush(C->idenc);
-    assembler_assemble(C->assembler);
-    qualenc_flush(C->qualenc);
+    size_t comp_id_bytes   = idenc_finish(C->idenc);
+    size_t comp_seq_bytes  = assembler_finish(C->assembler);
+    size_t comp_qual_bytes = qualenc_finish(C->qualenc);
 
     /* write the size of each chunk and its checksum */
     write_uint32(C->writer, C->writer_data, C->id_bytes);
-    write_uint32(C->writer, C->writer_data, C->idbuf_len);
+    write_uint32(C->writer, C->writer_data, comp_id_bytes);
     write_uint64(C->writer, C->writer_data, C->id_crc);
 
     write_uint32(C->writer, C->writer_data, C->seq_bytes);
-    write_uint32(C->writer, C->writer_data, C->seqbuf_len);
+    write_uint32(C->writer, C->writer_data, comp_seq_bytes);
     write_uint64(C->writer, C->writer_data, C->seq_crc);
 
     write_uint32(C->writer, C->writer_data, C->qual_bytes);
-    write_uint32(C->writer, C->writer_data, C->qualbuf_len);
+    write_uint32(C->writer, C->writer_data, comp_qual_bytes);
     write_uint64(C->writer, C->writer_data, C->qual_crc);
 
     /* write compressed ids */
-    C->writer(C->writer_data, C->idbuf, C->idbuf_len);
+    idenc_flush(C->idenc);
     if (quip_verbose) {
         fprintf(stderr, "\tid: %u / %u (%0.2f%%)\n",
-                (unsigned int) C->idbuf_len, (unsigned int) C->id_bytes,
-                100.0 * (double) C->idbuf_len / (double) C->id_bytes);
+                (unsigned int) comp_id_bytes, (unsigned int) C->id_bytes,
+                100.0 * (double) comp_id_bytes / (double) C->id_bytes);
     }
-    C->idbuf_len = 0;
 
     /* write compressed sequences */
-    C->writer(C->writer_data, C->seqbuf, C->seqbuf_len);
+    assembler_flush(C->assembler);
     if (quip_verbose) {
         fprintf(stderr, "\tseq: %u / %u (%0.2f%%)\n",
-                (unsigned int) C->seqbuf_len, (unsigned int) C->seq_bytes,
-                100.0 * (double) C->seqbuf_len / (double) C->seq_bytes);
+                (unsigned int) comp_seq_bytes, (unsigned int) C->seq_bytes,
+                100.0 * (double) comp_seq_bytes / (double) C->seq_bytes);
     }
-    C->seqbuf_len = 0;
 
 
     /* write compressed qualities */
-    C->writer(C->writer_data, C->qualbuf, C->qualbuf_len);
+    qualenc_flush(C->qualenc);
     if (quip_verbose) {
         fprintf(stderr, "\tqual: %u / %u (%0.2f%%)\n",
-                (unsigned int) C->qualbuf_len, (unsigned int) C->qual_bytes,
-                100.0 * (double) C->qualbuf_len / (double) C->qual_bytes);
+                (unsigned int) comp_qual_bytes, (unsigned int) C->qual_bytes,
+                100.0 * (double) comp_qual_bytes / (double) C->qual_bytes);
     }
-    C->qualbuf_len = 0;
 
     /* reset */
     C->buffered_reads = 0;
@@ -480,9 +401,6 @@ void quip_comp_free(quip_compressor_t* C)
     idenc_free(C->idenc);
     qualenc_free(C->qualenc);
     assembler_free(C->assembler);
-    free(C->qualbuf);
-    free(C->idbuf);
-    free(C->seqbuf);
     free(C->readlen_vals);
     free(C->readlen_lens);
     free(C);

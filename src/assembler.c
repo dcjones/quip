@@ -1,4 +1,4 @@
-
+// 
 #include "assembler.h"
 #include "bloom.h"
 #include "kmer.h"
@@ -19,6 +19,9 @@ static const size_t contig_padding = 50;
 /* Maximum score for an alignment to be reported, in proportion
  * of positions that mismatch. */
 static const double max_align_score = 0.22;
+
+/* Minimum allowable contig length. */
+static size_t min_contig_len = 300;
 
 
 static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
@@ -109,9 +112,6 @@ struct assembler_t_
     /* should we try attempt to assemble contigs with the current batch of reads
      * */
     bool assemble_batch;
-
-    /* nothing has been written yet */
-    bool initial_state;
 };
 
 
@@ -150,7 +150,6 @@ assembler_t* assembler_alloc(
     A->seqenc = NULL;
 
     A->assemble_batch = true;
-    A->initial_state = true;
 
     /* If we are not assembling, we do not need any of the data structure
      * initialized below. */
@@ -252,8 +251,6 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
         return false;
     }
 
-    prefetch(seq->seq);
-
     uint32_t max_mismatch = (uint32_t) ceil(aln_score * (double) qlen);
     size_t i, j;
     for (i = 0; i < 3 && best_aln_score > 0.0; ++i) {
@@ -309,8 +306,6 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
                 contig = A->contigs_rc[pos->contig_idx];
             }
 
-            prefetch(contig->seq);
-
             aln_score = (double) twobit_mismatch_count(contig, seq, spos - qpos, max_mismatch) / (double) qlen;
 
             if (aln_score <= max_align_score &&
@@ -341,14 +336,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
 {
     if (A->quick) {
-        /* output the number of contigs (i.e., 0) */
-        if (A->initial_state) {
-            write_uint32(A->writer, A->writer_data, 0);
-            A->initial_state = false;
-        }
-
         seqenc_encode_char_seq(A->seqenc, seq, seqlen);
-        return;
     }
     else if (A->assemble_batch) {
         if (A->N == A->ord_size) {
@@ -375,12 +363,6 @@ void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
         }
     }
     else {
-        /* output the number of contigs (i.e., 0) */
-        if (A->initial_state) {
-            write_uint32(A->writer, A->writer_data, 0);
-            A->initial_state = false;
-        }
-
         /* does the read contain non-nucleotide characters ? */
         size_t i;
         bool has_N = false;
@@ -666,8 +648,7 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
         /* reject over terribly short contigs */
         len = twobit_len(contig);
-        if (len < twobit_len(xs[i].seq.tb) + 4 * A->assemble_k) {
-            
+        if (len < min_contig_len) {
             /* reclaim k-mers from the failed contig */
             x = 0;
             for (j = 0; j < len; ++j) {
@@ -711,8 +692,10 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
 
 
-void assembler_assemble(assembler_t* A)
+size_t assembler_finish(assembler_t* A)
 {
+    size_t bytes = 0;
+
     if (!A->quick && A->assemble_batch) {
 
         /* dump reads and sort by copy number*/
@@ -724,26 +707,19 @@ void assembler_assemble(assembler_t* A)
         count_kmers(A, xs, n);
         make_contigs(A, xs, n);
 
-        /* Only assemble the first batch. */
-        A->assemble_batch = false;
-
-        /* And free up memory we won't need any more */
+        /* Free up memory we won't need any more */
         bloom_free(A->B);
         A->B = NULL;
 
-        /* Now that we have some memory to spare, bring the sequence encoder
-         * online. */
+        /* Now that we have some memory to spare, bring up the sequence encoder. */
         A->seqenc = seqenc_alloc_encoder(A->writer, A->writer_data);
         seqenc_set_contigs(A->seqenc, A->contigs, A->contigs_len);
 
-        /* write the number of contigs and their lengths  */
-        size_t i;
-        write_uint32(A->writer, A->writer_data, A->contigs_len);
-        for (i = 0; i < A->contigs_len; ++i) {
-            write_uint32(A->writer, A->writer_data, twobit_len(A->contigs[i]));
-        }
+        /* Number of bytes needed to write the contig count and contig lengths */
+        bytes += 4 * (A->contigs_len + 1);
 
         /* write the contigs */
+        size_t i;
         for (i = 0; i < A->contigs_len; ++i) {
             seqenc_encode_twobit_seq(A->seqenc, A->contigs[i]);
         }
@@ -759,16 +735,42 @@ void assembler_assemble(assembler_t* A)
         free(A->ord);
         A->ord = NULL;
     }
+    else {
+        /* Zero contigs in the block. */
+        bytes += 4;
+    }
 
-    seqenc_flush(A->seqenc);
+    bytes += seqenc_finish(A->seqenc);
 
     if (!A->quick) {
         seqenc_get_contig_consensus(A->seqenc, A->contigs);
         reindex_contigs(A);
     }
 
-    A->initial_state = true;
+    return bytes;
 }
+
+
+void assembler_flush(assembler_t* A)
+{
+    /* write contig count and lengths */
+    if (!A->quick && A->assemble_batch) {
+        size_t i;
+        write_uint32(A->writer, A->writer_data, A->contigs_len);
+        for (i = 0; i < A->contigs_len; ++i) {
+            write_uint32(A->writer, A->writer_data, twobit_len(A->contigs[i]));
+        }
+
+        /* only assemble the first block. */
+        A->assemble_batch = false;
+    }
+    else {
+        write_uint32(A->writer, A->writer_data, 0);
+    }
+
+    seqenc_flush(A->seqenc);
+}
+
 
 
 struct disassembler_t_
