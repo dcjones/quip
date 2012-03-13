@@ -86,19 +86,24 @@ unsigned int bloom_get(bloom_t* B, kmer_t x)
     const size_t bytes_per_bucket = B->m * cell_bytes;
 
     /* fingerprint */
-    uint64_t h, h1, h0 = kmer_hash(x);
+    uint64_t h1, h0 = kmer_hash(x);
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
+    uint64_t hs[NUM_SUBTABLES];
+
+    h1 = h0;
+    size_t i;
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
+        h1 = hs[i] = kmer_hash_mix(h0, h1);
+        hs[i] = (hs[i] % B->n) * bytes_per_bucket;
+        prefetch(B->subtable[i] + hs[i]);
+    }
 
     uint8_t* c;
     uint8_t* c_end;
-    size_t i;
-    h1 = h0;
     for (i = 0; i < NUM_SUBTABLES; ++i) {
-        h1 = kmer_hash_mix(h0, h1);
-        h = h1 % B->n;
 
         /* get bucket offset */
-        c = B->subtable[i] + h * bytes_per_bucket;
+        c = B->subtable[i] + hs[i];
         c_end = c + bytes_per_bucket;
 
         /* scan through cells */
@@ -120,20 +125,24 @@ void bloom_ldec(bloom_t* B, kmer_t x)
     const size_t bytes_per_bucket = B->m * cell_bytes;
 
     /* fingerprint */
-    uint64_t h, h1, h0 = kmer_hash(x);
+    uint64_t h1, h0 = kmer_hash(x);
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
-    uint32_t cnt;
+    uint64_t hs[NUM_SUBTABLES];
 
+    h1 = h0;
+    size_t i;
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
+        h1 = hs[i] = kmer_hash_mix(h0, h1);
+        hs[i] = (hs[i] % B->n) * bytes_per_bucket;
+        prefetch(B->subtable[i] + hs[i]);
+    }
+
+    uint32_t cnt;
     uint8_t* c;
     uint8_t* c_end;
-    size_t i;
-    h1 = h0;
     for (i = 0; i < NUM_SUBTABLES; ++i) {
-        h1 = kmer_hash_mix(h0, h1);
-        h = h1 % B->n;
-
         /* get bucket offset */
-        c = B->subtable[i] + h * bytes_per_bucket;
+        c = B->subtable[i] + hs[i];
         c_end = c + bytes_per_bucket;
 
         /* scan through cells */
@@ -161,19 +170,23 @@ void bloom_del(bloom_t* B, kmer_t x)
     const size_t bytes_per_bucket = B->m * cell_bytes;
 
     /* fingerprint */
-    uint64_t h, h1, h0 = kmer_hash(x);
+    uint64_t h1, h0 = kmer_hash(x);
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
+    uint64_t hs[NUM_SUBTABLES];
+
+    h1 = h0;
+    size_t i;
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
+        h1 = hs[i] = kmer_hash_mix(h0, h1);
+        hs[i] = (hs[i] % B->n) * bytes_per_bucket;
+        prefetch(B->subtable[i] + hs[i]);
+    }
 
     uint8_t* c;
     uint8_t* c_end;
-    size_t i;
-    h1 = h0;
     for (i = 0; i < NUM_SUBTABLES; ++i) {
-        h1 = kmer_hash_mix(h0, h1);
-        h = h1 % B->n;
-
         /* get bucket offset */
-        c = B->subtable[i] + h * bytes_per_bucket;
+        c = B->subtable[i] + hs[i];
         c_end = c + bytes_per_bucket;
 
         /* scan through cells */
@@ -200,8 +213,20 @@ unsigned int bloom_add(bloom_t* B, kmer_t x, unsigned int d)
     const size_t bytes_per_bucket = B->m * cell_bytes;
 
     /* fingerprint */
-    uint64_t h, h1, h0 = kmer_hash(x);
+    uint64_t h1, h0 = kmer_hash(x);
+
+    /* compute all the hashes up front, this given an opportunity to prefetch
+     * and hopefully avoid a few cache misses. */
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
+    uint64_t hs[NUM_SUBTABLES];
+
+    h1 = h0;
+    size_t i;
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
+        h1 = hs[i] = kmer_hash_mix(h0, h1);
+        hs[i] = (hs[i] % B->n) * bytes_per_bucket;
+        prefetch(B->subtable[i] + hs[i]);
+    }
 
     uint32_t g;
     uint32_t cnt;
@@ -210,14 +235,10 @@ unsigned int bloom_add(bloom_t* B, kmer_t x, unsigned int d)
     size_t bucket_sizes[NUM_SUBTABLES];
 
     uint8_t *c0, *c, *c_end;
-    size_t i;
-    h1 = h0;
     for (i = 0; i < NUM_SUBTABLES; ++i) {
-        h1 = kmer_hash_mix(h0, h1);
-        h = h1 % B->n;
 
         /* get bucket offset */
-        c0 = c = B->subtable[i] + h * bytes_per_bucket;
+        c0 = c = B->subtable[i] + hs[i];
         c_end = c + bytes_per_bucket;
 
         /* scan through cells */
