@@ -265,7 +265,13 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
         y = kmer_canonical(x, A->align_k);
 
         poslen = kmerhash_get(A->H, y, &pos);
-        poslen = poslen > max_seeds ? max_seeds : poslen;
+
+        // if (poslen > 50) {
+        //     fprintf(stderr, "here\n");
+        // }
+
+        // poslen = poslen > max_seeds ? max_seeds : poslen;
+
 
         for (j = 0; j < poslen && best_aln_score > 0.0; ++j, ++pos) {
             slen = twobit_len(A->contigs[pos->contig_idx]);

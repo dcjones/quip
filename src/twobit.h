@@ -50,8 +50,8 @@ void   twobit_revcomp(twobit_t* dest, const twobit_t* src);
 
 uint32_t twobit_hash(const twobit_t*);
 
-/* count mismatches between a query and subject, with the query
- * places at the given offset in the subject. */
+/* Count mismatches (i.e. hamming distange) between a query and subject,
+ * with the query places at the given offset in the subject. */
 uint32_t twobit_mismatch_count(const twobit_t* subject,
                                const twobit_t* query,
                                size_t spos);

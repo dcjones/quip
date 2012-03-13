@@ -14,7 +14,7 @@ static const uint8_t quip_header_magic[6] =
 
 static const uint8_t quip_header_version = 0x01;
 
-static const size_t assembler_k = 25;
+static const size_t assembler_k = 30;
 static const size_t aligner_k   = 12;
 
 /* maximum number of bases per block */

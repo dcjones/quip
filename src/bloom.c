@@ -215,8 +215,8 @@ unsigned int bloom_add(bloom_t* B, kmer_t x, unsigned int d)
     /* fingerprint */
     uint64_t h1, h0 = kmer_hash(x);
 
-    /* compute all the hashes up front, this given an opportunity to prefetch
-     * and hopefully avoid a few cache misses. */
+    /* compute all the hashes up front, this given an opportunity
+     * to prefetch and hopefully avoid a few cache misses. */
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
     uint64_t hs[NUM_SUBTABLES];
 
