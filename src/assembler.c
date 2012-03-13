@@ -18,7 +18,7 @@ static const size_t contig_padding = 50;
 
 /* Maximum score for an alignment to be reported, in proportion
  * of positions that mismatch. */
-static const double max_align_score = 0.20;
+static const double max_align_score = 0.22;
 
 
 static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
@@ -221,7 +221,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 {
     /* We only consider the first few seed hits found in the hash table. The
      * should be in an approximately random order. */
-    static const size_t max_seeds = 100;
+    static const size_t max_seeds = 20;
 
     /* position of the seed with the subject and query sequecne, resp. */
     int spos, qpos;
@@ -252,11 +252,16 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
         return false;
     }
 
+    prefetch(seq->seq);
+
+    uint32_t max_mismatch = (uint32_t) ceil(aln_score * (double) qlen);
     size_t i, j;
     for (i = 0; i < 3 && best_aln_score > 0.0; ++i) {
         if      (i == 0) qpos = 0;
-        else if (i == 1) qpos = (qlen - A->align_k) / 2;
-        else if (i == 2) qpos = qlen - A->align_k - 1;
+        else if (i == 1) qpos = 2 * A->align_k; 
+        else if (i == 2) qpos = 4 * A->align_k;
+        if (qpos + A->align_k > (size_t) qlen) qpos = qlen - A->align_k - 1;
+
 
         x = twobit_get_kmer_rev(
                 seq,
@@ -265,12 +270,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
         y = kmer_canonical(x, A->align_k);
 
         poslen = kmerhash_get(A->H, y, &pos);
-
-        // if (poslen > 50) {
-        //     fprintf(stderr, "here\n");
-        // }
-
-        // poslen = poslen > max_seeds ? max_seeds : poslen;
+        poslen = poslen > max_seeds ? max_seeds : poslen;
 
 
         for (j = 0; j < poslen && best_aln_score > 0.0; ++j, ++pos) {
@@ -309,7 +309,9 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
                 contig = A->contigs_rc[pos->contig_idx];
             }
 
-            aln_score = (double) twobit_mismatch_count(contig, seq, spos - qpos) / (double) qlen;
+            prefetch(contig->seq);
+
+            aln_score = (double) twobit_mismatch_count(contig, seq, spos - qpos, max_mismatch) / (double) qlen;
 
             if (aln_score <= max_align_score &&
                 aln_score < best_aln_score)

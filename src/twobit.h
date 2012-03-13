@@ -18,7 +18,15 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-typedef struct twobit_t_ twobit_t;
+// typedef struct twobit_t_ twobit_t;
+
+typedef struct twobit_t_
+{
+    size_t len; /* length of stored sequnce */
+    size_t n;   /* space (number of kmers) allocated in seq */
+    kmer_t* seq;
+} twobit_t;
+
 
 
 twobit_t* twobit_alloc();
@@ -54,7 +62,7 @@ uint32_t twobit_hash(const twobit_t*);
  * with the query places at the given offset in the subject. */
 uint32_t twobit_mismatch_count(const twobit_t* subject,
                                const twobit_t* query,
-                               size_t spos);
+                               size_t spos, uint32_t max_miss);
 
 #endif
 

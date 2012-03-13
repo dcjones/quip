@@ -14,14 +14,6 @@ static size_t kmers_needed(size_t len)
 }
 
 
-struct twobit_t_
-{
-    size_t len; /* length of stored sequnce */
-    size_t n;   /* space (number of kmers) allocated in seq */
-    kmer_t* seq;
-};
-
-
 void twobit_reserve(twobit_t* s, size_t seqlen)
 {
     if (s->n < kmers_needed(s->len + seqlen)) {
@@ -352,7 +344,7 @@ uint32_t twobit_hash(const twobit_t* s)
 
 uint32_t twobit_mismatch_count(const twobit_t* subject,
                                const twobit_t* query,
-                               size_t spos)
+                               size_t spos, uint32_t max_miss)
 {
     /* This is made a bit tricky because the query's
      * limbs are probably not aligned with the subjects.
@@ -382,6 +374,7 @@ uint32_t twobit_mismatch_count(const twobit_t* subject,
             x >>= 2;
             y >>= 2;
         }
+        if (mismatches >= max_miss) break;
 
         x = subject->seq[++subj_idx];
         for (j = 0; j < l && i < m; ++j, ++i) {
@@ -389,6 +382,7 @@ uint32_t twobit_mismatch_count(const twobit_t* subject,
             x >>= 2;
             y >>= 2;
         }
+        if (mismatches >= max_miss) break;
 
         y = query->seq[++query_idx];
     }
