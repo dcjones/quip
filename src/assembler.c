@@ -14,7 +14,7 @@
 
 
 /* Contigs are padded on both sides by this many As. */
-static const size_t contig_padding = 50;
+static const size_t contig_padding = 30;
 
 /* Maximum score for an alignment to be reported, in proportion
  * of positions that mismatch. */

@@ -16,7 +16,7 @@ static const char   qual_last  = 40;
 static const size_t qual_size  = 41;
 static const size_t pos_bins   = 4;
 static const size_t q_bins     = 16;
-static const size_t delta_bins = 10;
+static const size_t delta_bins = 8;
 static const int    delta_max  = 50;
 
 /* Map quality scores to a smaller alphabet size. */
@@ -28,11 +28,11 @@ static const uint8_t q_bin_map[41] =
 
 /* Map running deltas to a smaller alphabet size. */
 static const uint8_t delta_bin_map[50] =
-  {   0,  1,  2,  3,  3,  4,  4,  4,  4,  5,
-      5,  5,  5,  5,  5,  6,  6,  6,  6,  6,
-      6,  6,  6,  7,  7,  7,  7,  7,  7,  7,
-      7,  7,  7,  8,  8,  8,  8,  8,  8,  8,
-      8,  8,  8,  8,  8,  8,  8,  8,  8,  9 };
+  {   0,  1,  2,  2,  2,  3,  3,  3,  3,  3,
+      4,  4,  4,  4,  4,  4,  4,  4,  5,  5,
+      5,  5,  5,  5,  5,  5,  5,  5,  6,  6,
+      6,  6,  6,  6,  6,  6,  6,  6,  6,  6,
+      6,  6,  6,  6,  6,  6,  6,  6,  6,  7 };
 
 
 struct qualenc_t_
@@ -42,13 +42,19 @@ struct qualenc_t_
 };
 
 
-#define cs_index(n, bin, delta, q3, q2, q1) \
-    (q1 + qual_size * (\
-       q2 + q_bins * (\
-         q3 + q_bins * (\
-           delta_bin_map[delta] + delta_bins * (\
-             bin)))))
+/* Compute indexes into the quality conditional distribution */
+#if 0
+#define cs_index(bin, delta, q3, q2, q1) \
+ (q1 + qual_size * (\
+    q2 + q_bins * (\
+      q3 + q_bins * (\
+        delta_bin_map[delta] + delta_bins * (\
+          bin)))))
+#endif
 
+/* This version depends on the specific values defined above, but is somewhat faster. */
+#define cs_index(bin, delta, q3, q2, q1) \
+    ((q1) + qual_size * (((((((bin) << 3) | delta_bin_map[delta]) << 4) | (q3)) << 4) | (q2)))
 
 
 static void qualenc_setprior(qualenc_t* E)
@@ -147,7 +153,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
     for (i = 0; i < n; ++i) {
         cond_dist41_encode(E->ac, &E->cs,
-                cs_index(n, i / pos_bin_size, delta,
+                cs_index(i / pos_bin_size, delta,
                          charmin2(qprev.ui8[3], qprev.ui8[2]),
                          qprev.ui8[1], qprev.ui8[0]), qs[i]);
 
@@ -172,7 +178,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
      * */
     for (; i < n; ++i) {
         cond_dist41_encode(E->ac, &E->cs,
-                cs_index(n, i / pos_bin_size, delta,
+                cs_index(i / pos_bin_size, delta,
                          charmin2(qprev.ui8[3], qprev.ui8[2]),
                          qprev.ui8[1], qprev.ui8[0]), qs[i]);
 
@@ -217,7 +223,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
 
     for (i = 0; i < n; ++i) {
         qs[i] = cond_dist41_decode(E->ac, &E->cs,
-                    cs_index(n, i / pos_bin_size, delta,
+                    cs_index(i / pos_bin_size, delta,
                              charmin2(qprev.ui8[3], qprev.ui8[2]),
                              qprev.ui8[1], qprev.ui8[0]));
 
@@ -240,7 +246,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     /* Faster loop once delta hits its maximum. */
     for (; i < n; ++i) {
         qs[i] = cond_dist41_decode(E->ac, &E->cs,
-                    cs_index(n, i / pos_bin_size, delta,
+                    cs_index(i / pos_bin_size, delta,
                              charmin2(qprev.ui8[3], qprev.ui8[2]),
                              qprev.ui8[1], qprev.ui8[0]));
 
