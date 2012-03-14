@@ -1,4 +1,4 @@
-// 
+ 
 #include "assembler.h"
 #include "bloom.h"
 #include "kmer.h"
@@ -238,9 +238,9 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
     /* optimal alignment found so far */
     double   best_aln_score = HUGE_VAL;
-    uint32_t best_spos;
-    uint32_t best_contig_idx;
-    uint8_t  best_strand;
+    uint32_t best_spos = 0;
+    uint32_t best_contig_idx = 0;
+    uint8_t  best_strand = 0;
 
     double aln_score;
 
@@ -640,7 +640,6 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
     twobit_t* contig = twobit_alloc();
     twobit_t* padded_contig = twobit_alloc();
-    kmer_t x, y;
     size_t len;
 
     size_t i, j;
@@ -652,19 +651,6 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
         /* reject over terribly short contigs */
         len = twobit_len(contig);
         if (len < min_contig_len) {
-            /* reclaim k-mers from the failed contig */
-            x = 0;
-            for (j = 0; j < len; ++j) {
-                x = ((x << 2) | twobit_get(contig, j)) & A->assemble_kmer_mask;
-
-                if (j + 1 >= A->assemble_k) {
-                    y = kmer_canonical(x, A->assemble_k);
-                    /* ideally we would add the k-mer back with its original
-                     * count, but that information is lost. */
-                    bloom_add(A->B, y, xs[i].cnt);
-                }
-            }
-
             continue;
         }
 

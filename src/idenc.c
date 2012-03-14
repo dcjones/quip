@@ -5,6 +5,7 @@
 #include "misc.h"
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <ctype.h>
 #include <limits.h>
 #include <assert.h>
@@ -387,7 +388,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             tok.type = ID_TOK_NUM;
             tok.pos  = j;
             tok.num  = E->toks[i].num + off;
-            tok.len  = snprintf(id->s + j, 20, "%llu", tok.num);
+            tok.len  = snprintf(id->s + j, 20, "%"PRIu64, tok.num);
             j += tok.len;
         }
         else if (type == ID_GROUP_NUM) {
@@ -400,7 +401,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             tok.type = ID_TOK_NUM;
             tok.pos  = j;
             tok.num  = dist_decode_uint64(E->ac, &E->d_num[i]);
-            tok.len  = snprintf(id->s + j, 20, "%llu", tok.num);
+            tok.len  = snprintf(id->s + j, 20, "%"PRIu64, tok.num);
             j += tok.len;
         }
 
