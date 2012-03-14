@@ -361,6 +361,7 @@ static int quip_cmd_decompress(char** fns, size_t fn_count, bool dryrun)
 
             quip_decomp_free(D);
 
+            fflush(fout);
             if (!stdout_flag && !dryrun) fclose(fout);
         }
     }

@@ -506,7 +506,10 @@ static void* seq_decompressor_thread(void* ctx)
     size_t i;
 
     for (i = 0; i < cnt; ) {
+
+        pthread_mutex_lock(&D->seq_decode_mut);
         if (i < D->decoded_quals) {
+            pthread_mutex_unlock(&D->seq_decode_mut);
             n = D->readlen_vals[readlen_idx];
             if (++readlen_off >= D->readlen_lens[readlen_idx]) {
                 readlen_off = 0;
@@ -521,6 +524,7 @@ static void* seq_decompressor_thread(void* ctx)
         }
         else {
             pthread_cond_wait(&D->seq_decode_cond, &D->seq_decode_mut);
+            pthread_mutex_unlock(&D->seq_decode_mut);
         }
     }
 
@@ -546,7 +550,9 @@ static void* qual_decompressor_thread(void* ctx)
         }
 
         qualenc_decode(D->qualenc, D->chunk[i], n);
+        pthread_mutex_lock(&D->seq_decode_mut);
         D->decoded_quals++;
+        pthread_mutex_unlock(&D->seq_decode_mut);
         pthread_cond_signal(&D->seq_decode_cond);
 
         D->qual_crc = crc64_update(
@@ -835,10 +841,9 @@ seq_t* quip_decomp_read(quip_decompressor_t* D)
     pthread_create(&seq_thread,  &attr, seq_decompressor_thread,  (void*) D);
     pthread_create(&qual_thread, &attr, qual_decompressor_thread, (void*) D);
 
-    void* val;
-    pthread_join(id_thread,   &val);
-    pthread_join(seq_thread,  &val);
-    pthread_join(qual_thread, &val);
+    pthread_join(id_thread,   NULL);
+    pthread_join(seq_thread,  NULL);
+    pthread_join(qual_thread, NULL);
 
     pthread_attr_destroy(&attr);
 
