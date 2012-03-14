@@ -354,7 +354,7 @@ static int quip_cmd_decompress(char** fns, size_t fn_count, bool dryrun)
             D = quip_decomp_alloc(block_reader, fin);
 
             while ((r = quip_decomp_read(D))) {
-                if (!dryrun) fastq_print(stdout, r);
+                if (!dryrun) fastq_print(fout, r);
             }
 
             fclose(fin);
