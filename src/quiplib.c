@@ -318,10 +318,14 @@ void quip_comp_flush_block(quip_compressor_t* C)
 
 static void quip_comp_flush_chunk(quip_compressor_t* C)
 {
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
     pthread_t id_thread, seq_thread, qual_thread;
-    pthread_create(&id_thread,   NULL, id_compressor_thread,   (void*) C);
-    pthread_create(&seq_thread,  NULL, seq_compressor_thread,  (void*) C);
-    pthread_create(&qual_thread, NULL, qual_compressor_thread, (void*) C);
+    pthread_create(&id_thread,   &attr, id_compressor_thread,   (void*) C);
+    pthread_create(&seq_thread,  &attr, seq_compressor_thread,  (void*) C);
+    pthread_create(&qual_thread, &attr, qual_compressor_thread, (void*) C);
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
@@ -340,6 +344,8 @@ static void quip_comp_flush_chunk(quip_compressor_t* C)
     pthread_join(id_thread,   &val);
     pthread_join(seq_thread,  &val);
     pthread_join(qual_thread, &val);
+
+    pthread_attr_destroy(&attr);
 
     C->chunk_len = 0;
 }
@@ -542,7 +548,9 @@ static void* qual_decompressor_thread(void* ctx)
         }
 
         qualenc_decode(D->qualenc, D->chunk[i], n);
+        pthread_mutex_lock(&D->seq_decode_mut);
         D->decoded_quals++;
+        pthread_mutex_unlock(&D->seq_decode_mut);
         pthread_cond_signal(&D->seq_decode_cond);
 
         D->qual_crc = crc64_update(
@@ -817,14 +825,21 @@ seq_t* quip_decomp_read(quip_decompressor_t* D)
     pthread_t id_thread, seq_thread, qual_thread;
 
     D->decoded_quals = 0;
-    pthread_create(&id_thread,   NULL, id_decompressor_thread,   (void*) D);
-    pthread_create(&seq_thread,  NULL, seq_decompressor_thread,  (void*) D);
-    pthread_create(&qual_thread, NULL, qual_decompressor_thread, (void*) D);
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+
+    pthread_create(&id_thread,   &attr, id_decompressor_thread,   (void*) D);
+    pthread_create(&seq_thread,  &attr, seq_decompressor_thread,  (void*) D);
+    pthread_create(&qual_thread, &attr, qual_decompressor_thread, (void*) D);
 
     void* val;
     pthread_join(id_thread,   &val);
     pthread_join(seq_thread,  &val);
     pthread_join(qual_thread, &val);
+
+    pthread_attr_destroy(&attr);
 
     D->chunk_len = D->pending_reads >= chunk_size ?
                     chunk_size : D->pending_reads;

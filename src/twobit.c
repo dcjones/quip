@@ -300,7 +300,7 @@ void twobit_revcomp(twobit_t* dest, const twobit_t* src)
 uint32_t twobit_hash(const twobit_t* s)
 {
     if (s->len == 0) return 0;
-    size_t len = ((s->len - 1) / 4 + 1);
+    size_t len = kmers_needed(s->n) * sizeof(kmer_t);
     uint8_t* data = (uint8_t*) s->seq;
 
     uint32_t hash = len, tmp;
