@@ -13,9 +13,6 @@
 #include <math.h>
 
 
-/* Contigs are padded on both sides by this many As. */
-static const size_t contig_padding = 30;
-
 /* Maximum score for an alignment to be reported, in proportion
  * of positions that mismatch. */
 static const double max_align_score = 0.22;
@@ -161,7 +158,7 @@ assembler_t* assembler_alloc(
 
         A->N = 0;
 
-        A->B = bloom_alloc(3097152, 8);
+        A->B = bloom_alloc(4097152, 8);
 
         A->x = twobit_alloc();
 
@@ -220,7 +217,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 {
     /* We only consider the first few seed hits found in the hash table. The
      * should be in an approximately random order. */
-    static const size_t max_seeds = 20;
+    static const size_t max_seeds = 100;
 
     /* position of the seed with the subject and query sequecne, resp. */
     int spos, qpos;
@@ -639,10 +636,9 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
     if (quip_verbose) fprintf(stderr, "assembling contigs ... ");
 
     twobit_t* contig = twobit_alloc();
-    twobit_t* padded_contig = twobit_alloc();
     size_t len;
 
-    size_t i, j;
+    size_t i;
     for (i = 0; i < n && xs[i].cnt >= A->count_cutoff; ++i) {
         if (!xs[i].is_twobit) continue;
 
@@ -654,27 +650,15 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
             continue;
         }
 
-        twobit_clear(padded_contig);
-        for (j = 0; j < contig_padding; ++j) {
-            twobit_append_kmer(padded_contig, 0, 1);
-        }
-
-        twobit_append_twobit(padded_contig, contig);
-
-        for (j = 0; j < contig_padding; ++j) {
-            twobit_append_kmer(padded_contig, 0, 1);
-        }
-
         if (A->contigs_len == A->contigs_size) {
             A->contigs_size *= 2;
             A->contigs = realloc_or_die(A->contigs, A->contigs_size * sizeof(twobit_t*));
         }
 
-        A->contigs[A->contigs_len++] = twobit_dup(padded_contig);
+        A->contigs[A->contigs_len++] = twobit_dup(contig);
     }
 
     twobit_free(contig);
-    twobit_free(padded_contig);
 
     if (quip_verbose) fprintf(stderr, "done. (%zu contigs)\n", A->contigs_len);
 }

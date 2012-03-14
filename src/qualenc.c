@@ -9,7 +9,7 @@
 #include <assert.h>
 
 /* The rate at which the quality markov chain is updated. */
-static const size_t qual_update_rate = 4;
+static const size_t qual_update_rate = 5;
 
 /* Every quality encoding scheme uses ASCII charocters in [33, 104] */
 static const char   qual_last  = 40;
@@ -21,9 +21,10 @@ static const int    delta_max  = 50;
 
 /* Map quality scores to a smaller alphabet size. */
 static const uint8_t q_bin_map[41] =
-  {  15, 15, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
-     13, 13, 13, 13, 13, 13, 13, 13, 12, 12, 12, 12, 12, 12, 11, 10,
-      9,  8,  7,  6,  5,  4,  3,  2,  1 };
+  { 1,  1,  2,  2,  2,  2,  2,  2,  2,  2,
+    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
+    3,  3,  3,  3,  3,  4,  4,  4,  4,  4,
+    5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15 };
 
 
 /* Map running deltas to a smaller alphabet size. */
@@ -152,7 +153,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     for (i = 0; i < n; ++i) {
         cond_dist41_encode(E->ac, &E->cs,
                 cs_index(i / pos_bin_size, delta,
-                         charmin2(qprev.ui8[3], qprev.ui8[2]),
+                         charmax2(qprev.ui8[3], qprev.ui8[2]),
                          qprev.ui8[1], qprev.ui8[0]), qs[i]);
 
         qdiff = (int) qprev.ui8[0] - (int) qs[i];
@@ -161,7 +162,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
         qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
         qprev.ui8[0] = qs[i];
 
-        if (qdiff != 0) {
+        if (qdiff < -1 || qdiff >= 1) {
             delta += 1;
             if (delta >= delta_max) {
                 delta = delta_max - 1;
@@ -177,7 +178,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     for (; i < n; ++i) {
         cond_dist41_encode(E->ac, &E->cs,
                 cs_index(i / pos_bin_size, delta,
-                         charmin2(qprev.ui8[3], qprev.ui8[2]),
+                         charmax2(qprev.ui8[3], qprev.ui8[2]),
                          qprev.ui8[1], qprev.ui8[0]), qs[i]);
 
         qprev.ui64 <<= 8;
@@ -222,7 +223,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     for (i = 0; i < n; ++i) {
         qs[i] = cond_dist41_decode(E->ac, &E->cs,
                     cs_index(i / pos_bin_size, delta,
-                             charmin2(qprev.ui8[3], qprev.ui8[2]),
+                             charmax2(qprev.ui8[3], qprev.ui8[2]),
                              qprev.ui8[1], qprev.ui8[0]));
 
         qdiff = (int) qprev.ui8[0] - (int) qs[i];
@@ -245,7 +246,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     for (; i < n; ++i) {
         qs[i] = cond_dist41_decode(E->ac, &E->cs,
                     cs_index(i / pos_bin_size, delta,
-                             charmin2(qprev.ui8[3], qprev.ui8[2]),
+                             charmax2(qprev.ui8[3], qprev.ui8[2]),
                              qprev.ui8[1], qprev.ui8[0]));
 
         qprev.ui64 <<= 8;

@@ -85,7 +85,6 @@ unsigned int bloom_get(bloom_t* B, kmer_t x)
 {
     const size_t bytes_per_bucket = B->m * cell_bytes;
 
-    /* fingerprint */
     uint64_t h1, h0 = kmer_hash(x);
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
     uint64_t hs[NUM_SUBTABLES];
@@ -124,7 +123,6 @@ void bloom_ldec(bloom_t* B, kmer_t x)
 {
     const size_t bytes_per_bucket = B->m * cell_bytes;
 
-    /* fingerprint */
     uint64_t h1, h0 = kmer_hash(x);
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
     uint64_t hs[NUM_SUBTABLES];
@@ -169,7 +167,6 @@ void bloom_del(bloom_t* B, kmer_t x)
 {
     const size_t bytes_per_bucket = B->m * cell_bytes;
 
-    /* fingerprint */
     uint64_t h1, h0 = kmer_hash(x);
     uint32_t fp = h0 & (uint64_t) fingerprint_mask;
     uint64_t hs[NUM_SUBTABLES];
@@ -212,7 +209,6 @@ unsigned int bloom_add(bloom_t* B, kmer_t x, unsigned int d)
 {
     const size_t bytes_per_bucket = B->m * cell_bytes;
 
-    /* fingerprint */
     uint64_t h1, h0 = kmer_hash(x);
 
     /* compute all the hashes up front, this given an opportunity

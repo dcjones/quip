@@ -31,14 +31,6 @@ static const size_t update_delay_factor = 1;
 const size_t dist_length_shift = 15;
 static const size_t max_count = 1 << 15;
 
-/* Code for computing dec_size and dec_shift:
- *
- *      size_t dec_bits = 3;
- *      while (DISTSIZE > (1U << (dec_bits + 2))) ++dec_bits;
- *      dec_size  = (1 << dec_bits) + 4;
- *      dec_shift = dist_length_shift - dec_bits;
- */
-
 
 #define DISTSIZE 2
 #define dist_t dist2_t
