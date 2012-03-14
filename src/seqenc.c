@@ -205,8 +205,6 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 
 void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
 {
-    prefetch(x);
-
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_SEQUENCE);
 
     kmer_t uv;

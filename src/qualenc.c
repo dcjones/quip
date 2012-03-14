@@ -132,8 +132,6 @@ static inline int intmin2(int a, int b)
 
 void qualenc_encode(qualenc_t* E, const seq_t* x)
 {
-    prefetch(x->qual.s);
-
     union {
         uint64_t ui64;
         uint8_t  ui8[4];

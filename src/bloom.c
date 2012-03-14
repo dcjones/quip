@@ -95,7 +95,7 @@ unsigned int bloom_get(bloom_t* B, kmer_t x)
     for (i = 0; i < NUM_SUBTABLES; ++i) {
         h1 = hs[i] = kmer_hash_mix(h0, h1);
         hs[i] = (hs[i] % B->n) * bytes_per_bucket;
-        prefetch(B->subtable[i] + hs[i]);
+        prefetch(B->subtable[i] + hs[i], 0, 0);
     }
 
     uint8_t* c;
@@ -134,7 +134,7 @@ void bloom_ldec(bloom_t* B, kmer_t x)
     for (i = 0; i < NUM_SUBTABLES; ++i) {
         h1 = hs[i] = kmer_hash_mix(h0, h1);
         hs[i] = (hs[i] % B->n) * bytes_per_bucket;
-        prefetch(B->subtable[i] + hs[i]);
+        prefetch(B->subtable[i] + hs[i], 1, 0);
     }
 
     uint32_t cnt;
@@ -179,7 +179,7 @@ void bloom_del(bloom_t* B, kmer_t x)
     for (i = 0; i < NUM_SUBTABLES; ++i) {
         h1 = hs[i] = kmer_hash_mix(h0, h1);
         hs[i] = (hs[i] % B->n) * bytes_per_bucket;
-        prefetch(B->subtable[i] + hs[i]);
+        prefetch(B->subtable[i] + hs[i], 1, 0);
     }
 
     uint8_t* c;
@@ -225,7 +225,7 @@ unsigned int bloom_add(bloom_t* B, kmer_t x, unsigned int d)
     for (i = 0; i < NUM_SUBTABLES; ++i) {
         h1 = hs[i] = kmer_hash_mix(h0, h1);
         hs[i] = (hs[i] % B->n) * bytes_per_bucket;
-        prefetch(B->subtable[i] + hs[i]);
+        prefetch(B->subtable[i] + hs[i], 1, 0);
     }
 
     uint32_t g;

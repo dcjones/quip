@@ -24,9 +24,9 @@ FILE* fopen_or_die(const char*, const char*);
 uint32_t strhash(const char*, size_t len);
 
 #if HAVE_PREFETCH
-#define prefetch(p) __builtin_prefetch(p)
+#define prefetch(p, rw, locality) __builtin_prefetch(p, rw, locality)
 #else
-#define prefetch(p)
+#define prefetch(p, rw, locality)
 #endif
 
 /* Windows reads/writes in "text mode" by default. This is confusing 

@@ -26,7 +26,7 @@ AC_MSG_CHECKING([for __builtin_prefetch])
 AC_COMPILE_IFELSE(
   [AC_LANG_PROGRAM(
     [[#include<stdlib.h>]],
-    [[__builtin_prefetch(NULL);]])],
+    [[__builtin_prefetch(NULL, 0, 0);]])],
   [
     AC_MSG_RESULT([yes])
     AC_DEFINE_UNQUOTED([HAVE_PREFETCH], 1, [Define to 1 if you have the `__builtin_prefetch' function.] ) ],

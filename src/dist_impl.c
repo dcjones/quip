@@ -61,7 +61,7 @@ void dfun(update)(dist_t* D)
 
 static void dfun(encode2)(ac_t* ac, dist_t* D, symb_t x, uint8_t update_rate)
 {
-    prefetch(D);
+    prefetch(D, 1, 0);
 
     uint32_t b0 = ac->b;
 
@@ -93,7 +93,7 @@ void dfun(encode)(ac_t* ac, dist_t* D, symb_t x)
 
 static symb_t dfun(decode2)(ac_t* ac, dist_t* D, uint8_t update_rate)
 {
-    prefetch(D);
+    prefetch(D, 1, 0);
 
     symb_t low_sym, mid_sym, hi_sym;
     uint32_t low_val, mid_val, hi_val;
