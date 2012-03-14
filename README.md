@@ -1,8 +1,30 @@
 
-http://sourceforge.net/projects/quip-compressor/
 
-Algorithms used in Quip
-=======================
+Quip compresses FASTQ files, which are generated in DNA/RNA sequencing
+experiments. Compared to gzip, quip halves both the compression ratio and the
+runtime on typical data.
+
+
+Installation
+============
+
+No special libraries are needed, Quip depends only on the pthreads library,
+available on any Unix-like system. You will need a C compiler.
+
+On most systems, you need only
+
+    ./configure && make install
+
+
+Usage
+=====
+
+After installing, see 'man quip'.
+
+
+
+Algorithms
+==========
 
 Primarily Quip works by building statistical models of the read ids, nucleotide
 sequences, and quality scores which are then compressed using arithmetic coding.
