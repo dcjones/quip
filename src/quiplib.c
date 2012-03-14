@@ -505,9 +505,7 @@ static void* seq_decompressor_thread(void* ctx)
                     chunk_size : D->pending_reads;
     size_t i;
 
-    pthread_mutex_lock(&D->seq_decode_mut);
     for (i = 0; i < cnt; ) {
-
         if (i < D->decoded_quals) {
             n = D->readlen_vals[readlen_idx];
             if (++readlen_off >= D->readlen_lens[readlen_idx]) {
@@ -548,9 +546,7 @@ static void* qual_decompressor_thread(void* ctx)
         }
 
         qualenc_decode(D->qualenc, D->chunk[i], n);
-        pthread_mutex_lock(&D->seq_decode_mut);
         D->decoded_quals++;
-        pthread_mutex_unlock(&D->seq_decode_mut);
         pthread_cond_signal(&D->seq_decode_cond);
 
         D->qual_crc = crc64_update(
@@ -641,6 +637,9 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
     D->readlen_vals = malloc_or_die(D->readlen_size * sizeof(uint32_t));
     D->readlen_lens = malloc_or_die(D->readlen_size * sizeof(uint32_t));
 
+    pthread_mutex_init(&D->seq_decode_mut, NULL);
+    pthread_cond_init(&D->seq_decode_cond, NULL);
+
     D->end_of_stream = false;
 
     uint8_t header[7];
@@ -672,6 +671,8 @@ void quip_decomp_free(quip_decompressor_t* D)
     free(D->qualbuf);
     free(D->idbuf);
     free(D->seqbuf);
+    pthread_mutex_destroy(&D->seq_decode_mut);
+    pthread_cond_destroy(&D->seq_decode_cond);
     free(D);
 }
 
