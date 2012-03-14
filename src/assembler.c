@@ -251,7 +251,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
         return false;
     }
 
-    uint32_t max_mismatch = (uint32_t) ceil(aln_score * (double) qlen);
+    uint32_t max_mismatch = 1 + max_align_score * (double) qlen;
     size_t i, j;
     for (i = 0; i < 3 && best_aln_score > 0.0; ++i) {
         if      (i == 0) qpos = 0;
@@ -487,6 +487,9 @@ static int seqset_value_cnt_cmp(const void* a_, const void* b_)
 
     if      (a->cnt < b->cnt) return 1;
     else if (a->cnt > b->cnt) return -1;
+    /* break ties with the index, just to make things deterministic */
+    else if (a->idx < b->idx) return 1;
+    else if (a->idx > b->idx) return -1;
     else                      return 0;
 }
 

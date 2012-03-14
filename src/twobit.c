@@ -381,7 +381,7 @@ uint32_t twobit_mismatch_count(const twobit_t* subject,
             x >>= 2;
             y >>= 2;
         }
-        if (mismatches >= max_miss) break;
+        if (i >= m || mismatches >= max_miss) break;
 
         x = subject->seq[++subj_idx];
         for (j = 0; j < l && i < m; ++j, ++i) {
@@ -389,7 +389,7 @@ uint32_t twobit_mismatch_count(const twobit_t* subject,
             x >>= 2;
             y >>= 2;
         }
-        if (mismatches >= max_miss) break;
+        if (i >= m || mismatches >= max_miss) break;
 
         y = query->seq[++query_idx];
     }
