@@ -424,7 +424,7 @@ static void seqenc_decode_supercontig(seqenc_t* E)
 {
     seq_t* seq = fastq_alloc_seq();
 
-#ifdef DNDEBUG
+#ifdef NDEBUG
     dist2_decode(E->ac, &E->d_type);
 #else
     assert(dist2_decode(E->ac, &E->d_type) == SEQENC_TYPE_SEQUENCE);
