@@ -101,11 +101,15 @@ Compressed Sequence Chunk
 -------------------------
 
     +---+---+---+---+---+ ... +---+
-    | Contig Count  |    Data     |
+    |  Contig Len   |    Data     |
     +---+---+---+---+---+ ... +---+
 
-The compressed sequence chunk is lead by a 4 byte integer giving the number of
-contigs (i.e., encoded sequences that are not reads).
+The compressed sequence chunk is lead by a 4-byte unsigned integer giving
+the length of the supercontig---a single contig formed by concatenating
+each of the seperately assembled contigs.
+
+This number may be zero, indicating that assembly based compression is not
+being used.
 
 
 Compressed Quality Chunk
@@ -129,11 +133,3 @@ an empty block and the end of the stream.
     +---+---+---+---+
 
 
-SPECULATIVE:
-We could add an overall checksum at the end that would facilitate rapidly
-checking the equality of a compressed and uncompressed file. It wouldn't
-add any safety, but might be helpful in quickly matching files.
-
-    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
-    |                          CRC64 Checksum                       |
-    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+

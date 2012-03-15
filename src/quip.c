@@ -229,17 +229,17 @@ static int quip_cmd_compress(char** fns, size_t fn_count)
 
     fastq_t* fq;
 
-    quip_compressor_t* C;
+    quip_out_t* C;
 
     if (fn_count == 0) {
-        C = quip_comp_alloc(block_writer, stdout, quick_flag);
+        C = quip_out_alloc(block_writer, stdout, quick_flag);
 
         fq = fastq_open(stdin);
 
-        while (quip_comp_readseq(C, fq));
+        while (quip_out_readseq(C, fq));
 
         fastq_close(fq);
-        quip_comp_free(C);
+        quip_out_free(C);
     }
     else {
         for (i = 0; i < fn_count; ++i) {
@@ -265,18 +265,18 @@ static int quip_cmd_compress(char** fns, size_t fn_count)
             setvbuf(fin,  NULL, _IONBF, 0);
             setvbuf(fout, NULL, _IONBF, 0);
 
-            C = quip_comp_alloc(block_writer, fout, quick_flag);
+            C = quip_out_alloc(block_writer, fout, quick_flag);
 
             fq = fastq_open(fin);
 
-            while (quip_comp_readseq(C, fq));
+            while (quip_out_readseq(C, fq));
 
-            quip_comp_finish(C);
+            quip_out_finish(C);
 
             fastq_close(fq);
             fclose(fin);
 
-            quip_comp_free(C);
+            quip_out_free(C);
             if (!stdout_flag) fclose(fout);
         }
     }
@@ -298,16 +298,16 @@ static int quip_cmd_decompress(char** fns, size_t fn_count, bool dryrun)
     char* outbuf = malloc_or_die(outbuf_size * sizeof(char));
 
     seq_t* r;
-    quip_decompressor_t* D;
+    quip_in_t* D;
 
     if (fn_count == 0) {
-        D = quip_decomp_alloc(block_reader, stdin);
+        D = quip_in_alloc(block_reader, stdin);
 
-        while ((r = quip_decomp_read(D))) {
+        while ((r = quip_in_read(D))) {
             if (!dryrun) fastq_print(stdout, r);
         }
 
-        quip_decomp_free(D);
+        quip_in_free(D);
     }
     else {
         for (i = 0; i < fn_count; ++i) {
@@ -351,15 +351,15 @@ static int quip_cmd_decompress(char** fns, size_t fn_count, bool dryrun)
             if (!dryrun) setvbuf(fout, outbuf, _IOFBF, outbuf_size);
 
 
-            D = quip_decomp_alloc(block_reader, fin);
+            D = quip_in_alloc(block_reader, fin);
 
-            while ((r = quip_decomp_read(D))) {
+            while ((r = quip_in_read(D))) {
                 if (!dryrun) fastq_print(fout, r);
             }
 
             fclose(fin);
 
-            quip_decomp_free(D);
+            quip_in_free(D);
 
             fflush(fout);
             if (!stdout_flag && !dryrun) fclose(fout);
