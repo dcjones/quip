@@ -1,24 +1,34 @@
 
+
+lib_LTLIBRARIES = libquip.la
+
+libquip_la_SOURCES = \
+          version.h \
+          ac.h            ac.c \
+          assembler.h     assembler.c \
+          bloom.h         bloom.c \
+          dist.h          dist.c \
+          crc64.h         crc64.c \
+          idenc.h         idenc.c \
+          kmer.h          kmer.c \
+          kmerhash.h      kmerhash.c \
+          misc.h          misc.c \
+          seqenc.h        seqenc.c \
+          seqenc_prior.h  seqenc_prior.c \
+          seqset.h        seqset.c \
+          twobit.h        twobit.c \
+          quip_parse.h    quip_parse.c \
+          qualenc.h       qualenc.c \
+          qualenc_prior.h qualenc_prior.c \
+          quiplib.c       quip.h
+
 bin_PROGRAMS = quip
 
-quip_SOURCES = quip.c version.h \
-               ac.h            ac.c \
-               assembler.h     assembler.c \
-               bloom.h         bloom.c \
-               dist.h          dist.c \
-               crc64.h         crc64.c \
-               idenc.h         idenc.c \
-               kmer.h          kmer.c \
-               kmerhash.h      kmerhash.c \
-               misc.h          misc.c \
-               seqenc.h        seqenc.c \
-               seqenc_prior.h  seqenc_prior.c \
-               seqset.h        seqset.c \
-               twobit.h        twobit.c \
-               parse.h         parse.c \
-               qualenc.h       qualenc.c \
-               qualenc_prior.h qualenc_prior.c \
-               quiplib.c       quip.h
+quip_SOURCES = quip.c
+
+quip_LDADD = libquip.la
+
+include_HEADERS = quip.h quip_parse.h
 
 noinst_HEADERS = dist_impl.h dist_impl.c \
                  dist_template_on.h dist_template_off.h \

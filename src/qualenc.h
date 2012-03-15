@@ -15,7 +15,7 @@
 #define QUIP_QUALENC
 
 #include "quip.h"
-#include "parse.h"
+#include "quip_parse.h"
 #include <stdint.h>
 
 

@@ -8,7 +8,7 @@
 #ifndef QUIP_QUIP
 #define QUIP_QUIP
 
-#include "parse.h"
+#include "quip_parse.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>

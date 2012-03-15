@@ -5,7 +5,7 @@
  *
  */
 
-#include "parse.h"
+#include "quip_parse.h"
 #include "misc.h"
 #include <stdlib.h>
 #include <ctype.h>

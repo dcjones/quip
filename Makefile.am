@@ -4,3 +4,4 @@ SUBDIRS = src
 
 dist_man_MANS = quip.1
 
+EXTRADIST = README.md

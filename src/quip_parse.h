@@ -1,15 +1,15 @@
 /*
  * This file is part of quip.
  *
- * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ * Copyright (c) 2012 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
  * parse :
  * A parser for FASTQ files.
  *
  */
 
-#ifndef FASTQ_TOOLS_PARSE_H
-#define FASTQ_TOOLS_PARSE_H
+#ifndef QUIP_PARSE_H
+#define QUIP_PARSE_H
 
 #include <stdio.h>
 
