@@ -9,9 +9,9 @@
 #include <assert.h>
 
 /* The rate at which the quality markov chain is updated. */
-static const size_t qual_update_rate = 5;
+static const size_t qual_update_rate = 6;
 
-/* Every quality encoding scheme uses ASCII charocters in [33, 104] */
+/* Every quality encoding scheme uses ASCII characters in [33, 104] */
 static const char   qual_last  = 40;
 static const size_t qual_size  = 41;
 static const size_t pos_bins   = 4;

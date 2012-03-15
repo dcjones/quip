@@ -18,7 +18,7 @@
 static const double max_align_score = 0.22;
 
 /* Minimum allowable contig length. */
-static size_t min_contig_len = 300;
+static size_t min_contig_len = 200;
 
 
 static uint32_t read_uint32(quip_reader_t reader, void* reader_data)

@@ -16,7 +16,8 @@ static const size_t k = 11;
 static const size_t prefix_len = 4;
 
 /* The rate at which the nucleotide markov chain is updated. */
-static const size_t seq_update_rate = 2;
+static const size_t seq_update_rate   = 1;
+static const size_t motif_update_rate = 4;
 
 /* Initial pseudocount biasing contig motifs towards the consensus sequence.  */
 static const uint16_t contig_motif_prior = 50;
@@ -329,7 +330,7 @@ void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
                 contig_motif_prior;
             dist4_update(&motif->xss[j]);
         }
-        cond_dist4_set_update_rate(motif, 4);
+        cond_dist4_set_update_rate(motif, motif_update_rate);
 
         if (i + 1 < E->contig_count) {
             E->cum_contig_lens[i + 1] = E->cum_contig_lens[i] + len;
