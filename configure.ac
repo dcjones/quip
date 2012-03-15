@@ -55,7 +55,7 @@ CC="$PTHREAD_CC"
 AC_DEFINE([_FILE_OFFSET_BITS], [64],
           [Do not crash on >4GB files on 32bit machines.])
 
-# These are POSIX standards, but we just to be careful.
+# These are POSIX standards, but we check just to be careful.
 AC_CHECK_FUNC(open, ,
               AC_MSG_ERROR([The 'open' function is missing.]))
 AC_CHECK_FUNC(fdopen, ,

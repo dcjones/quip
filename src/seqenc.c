@@ -53,21 +53,10 @@ struct seqenc_t_
     cond_dist256_t d_contig_off;
 
     /* contig motifs used to compress nucleotides in alignments */
-    cond_dist4_t* contig_motifs;
+    cond_dist4_t supercontig_motif;
 
-    /* number of contigs alignment may originate from */
-    uint32_t contig_count;
-
-    /* how many of the leading sequences are contigs */
-    uint32_t expected_contigs;
-
-    /* lengths of the expected contigs */
-    uint32_t* contig_lens;
-
-    /* cumulative contig lengths
-     * We encode a position of an alignment as an offset into a
-     * super-contig formed by laying the contigs end-to-end. */
-    uint32_t* cum_contig_lens;
+    /* length of the supercontig to be decoded */
+    size_t expected_supercontig_len;
 };
 
 
@@ -116,11 +105,8 @@ static void seqenc_init(seqenc_t* E)
 
     cond_dist256_init(&E->d_contig_off, 9 * 256);
 
-    E->contig_motifs    = NULL;
-    E->contig_lens      = NULL;
-    E->cum_contig_lens  = NULL;
-    E->contig_count     = 0;
-    E->expected_contigs = 0;
+    E->expected_supercontig_len = 0;
+    memset(&E->supercontig_motif, 0, sizeof(cond_dist4_t));
 }
 
 
@@ -161,13 +147,7 @@ void seqenc_free(seqenc_t* E)
     }
 
     cond_dist256_free(&E->d_contig_off);
-
-    for (i = 0; i < E->contig_count; ++i) {
-        cond_dist4_free(&E->contig_motifs[i]);
-    }
-    free(E->contig_motifs);
-    free(E->contig_lens);
-    free(E->cum_contig_lens);
+    cond_dist4_free(&E->supercontig_motif);
 
     free(E);
 }
@@ -267,19 +247,17 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
 
 void seqenc_encode_alignment(
         seqenc_t* E,
-        uint32_t contig_idx, uint32_t spos, uint8_t strand,
+        uint32_t spos, uint8_t strand,
         const twobit_t* query)
 {
-    cond_dist4_t* motif = &E->contig_motifs[contig_idx];
     size_t qlen = twobit_len(query);
-    size_t slen = motif->n;
+    size_t slen = E->supercontig_motif.n;
+
+    assert(spos < slen);
 
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_ALIGNMENT);
-
     dist2_encode(E->ac, &E->d_aln_strand, strand);
-
-    dist_encode_uint32(E->ac, &E->d_contig_off,
-        E->cum_contig_lens[contig_idx] + spos);
+    dist_encode_uint32(E->ac, &E->d_contig_off, spos);
 
 
     kmer_t u;
@@ -287,101 +265,55 @@ void seqenc_encode_alignment(
     if (strand) {
         for (i = 0; i < qlen; ++i) {
             u = kmer_comp1(twobit_get(query, i));
-            cond_dist4_encode(E->ac, motif, slen - (spos + i) - 1, u);
+            cond_dist4_encode(E->ac, &E->supercontig_motif, slen - (spos + i) - 1, u);
         }
     }
     else {
         for (i = 0; i < qlen; ++i) {
             u = twobit_get(query, i);
-            cond_dist4_encode(E->ac, motif, spos + i, u);
+            cond_dist4_encode(E->ac, &E->supercontig_motif, spos + i, u);
         }
     }
 }
 
 
-void seqenc_set_contigs(seqenc_t* E, twobit_t** contigs, size_t n)
+void seqenc_set_supercontig(seqenc_t* E, const twobit_t* supercontig)
 {
-    size_t i, j;
-    for (i = 0; i < E->contig_count; ++i) {
-        cond_dist4_free(&E->contig_motifs[i]);
-    }
-    free(E->contig_motifs);
-    free(E->cum_contig_lens);
-
-    E->cum_contig_lens = malloc_or_die(n * sizeof(uint32_t));
-
-    twobit_t*     contig;
-    cond_dist4_t* motif;
-    size_t len;
-
-    E->contig_count = n;
-    E->contig_motifs = malloc_or_die(n * sizeof(cond_dist4_t));
-
-    if (n > 0) E->cum_contig_lens[0] = 0;
-
-    for (i = 0; i < E->contig_count; ++i) {
-        contig = contigs[i];
-        motif  = &E->contig_motifs[i];
-        len    = twobit_len(contig);
-
-        cond_dist4_init(motif, len);
-        for (j = 0; j < len; ++j) {
-            motif->xss[j].xs[twobit_get(contig, j)].count =
-                contig_motif_prior;
-            dist4_update(&motif->xss[j]);
-        }
-        cond_dist4_set_update_rate(motif, motif_update_rate);
-
-        if (i + 1 < E->contig_count) {
-            E->cum_contig_lens[i + 1] = E->cum_contig_lens[i] + len;
-        }
-    }
-}
-
-
-void seqenc_get_contig_consensus(seqenc_t* E, twobit_t** contigs)
-{
-    size_t i, j;
-    twobit_t*     contig;
-    cond_dist4_t* motif;
-    size_t len;
-    kmer_t u;
-
-    for (i = 0; i < E->contig_count; ++i) {
-        contig = contigs[i];
-        motif  = &E->contig_motifs[i];
-        len    = twobit_len(contig);;
-
-        for (j = 0; j < len; ++j) {
-            u = 0;
-            if (motif->xss[j].xs[1].count >
-                motif->xss[j].xs[u].count) u = 1;
-            if (motif->xss[j].xs[2].count >
-                motif->xss[j].xs[u].count) u = 2;
-            if (motif->xss[j].xs[3].count >
-                motif->xss[j].xs[u].count) u = 3;
-
-            twobit_set(contig, j, u);
-        }
-    }
-}
-
-
-void seqenc_prepare_decoder(seqenc_t* E, uint32_t n, const uint32_t* lens)
-{
+    size_t len = twobit_len(supercontig);
+    cond_dist4_init(&E->supercontig_motif, len);
+    cond_dist4_set_update_rate(&E->supercontig_motif, motif_update_rate);
     size_t i;
+    kmer_t u;
+    for (i = 0; i < len; ++i) {
+        u = twobit_get(supercontig, i);
+        E->supercontig_motif.xss[i].xs[u].count = contig_motif_prior;
+        dist4_update(&E->supercontig_motif.xss[i]);
+   }
+}
 
-    free(E->contig_lens);
-    E->contig_lens = NULL;
 
-    E->contig_count = 0;
-    E->expected_contigs = n;
+void seqenc_get_supercontig_consensus(seqenc_t* E, twobit_t* supercontig)
+{
+    size_t len = twobit_len(supercontig);
+    kmer_t u;
+    size_t i;
+    for (i = 0; i < len; ++i) {
+        u = 0;
+        if (E->supercontig_motif.xss[i].xs[1].count >
+            E->supercontig_motif.xss[i].xs[u].count) u = 1;
+        if (E->supercontig_motif.xss[i].xs[2].count >
+            E->supercontig_motif.xss[i].xs[u].count) u = 2;
+        if (E->supercontig_motif.xss[i].xs[3].count >
+            E->supercontig_motif.xss[i].xs[u].count) u = 3;
 
-    E->contig_lens = malloc_or_die(n * sizeof(uint32_t));
+        twobit_set(supercontig, i, u);
+    }
+}
 
-    for (i = 0; i < n; ++i) {
-        E->contig_lens[i] = lens[i];
-    } 
+
+void seqenc_prepare_decoder(seqenc_t* E, uint32_t supercontig_len)
+{
+    E->expected_supercontig_len = supercontig_len;
 }
 
 
@@ -457,59 +389,28 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 }
 
 
-static uint32_t decode_contig_idx(seqenc_t* E, uint32_t supercontig_off)
-{
-    /* find the contig index by binary search */
-    int i, j, k;
-    i = 0;
-    j = E->contig_count;
-
-    do {
-        k = (i + j) / 2;
-        if (supercontig_off < E->cum_contig_lens[k]) j = k;
-        else i = k;
-    } while (i + 1 < j);
-
-    assert(i == (int) E->contig_count - 1 || supercontig_off < E->cum_contig_lens[i + 1]);
-    assert(supercontig_off >= E->cum_contig_lens[i]);
-
-    return i;
-}
-
-
 static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t qlen)
 {
     while (qlen >= x->seq.size) fastq_expand_str(&x->seq);
 
-    uint32_t contig_idx, spos;
-    uint32_t z;
+    uint8_t  strand = dist2_decode(E->ac, &E->d_aln_strand);
+    uint32_t spos   = dist_decode_uint32(E->ac, &E->d_contig_off);
 
-    uint8_t strand = dist2_decode(E->ac, &E->d_aln_strand);
-
-    /* contig index and offset */
-    z = dist_decode_uint32(E->ac, &E->d_contig_off);
-    contig_idx = decode_contig_idx(E, z);
-    spos = z - E->cum_contig_lens[contig_idx];
-
-    /* contig motif */
-    if (contig_idx >= E->contig_count) {
-        fprintf(stderr, "Error: contig index out of bounds.\n");
-        exit(EXIT_FAILURE);
-    }
-    cond_dist4_t* motif = &E->contig_motifs[contig_idx];
-    size_t slen = motif->n;
+    size_t slen = E->supercontig_motif.n;
+    
+    assert(spos < slen);
 
     kmer_t u;
     size_t i;
     if (strand) {
         for (i = 0; i < qlen; ++i) {
-            u = cond_dist4_decode(E->ac, motif, slen - (spos + i) - 1);
+            u = cond_dist4_decode(E->ac, &E->supercontig_motif, slen - (spos + i) - 1);
             x->seq.s[i] = kmertochar[kmer_comp1(u)];
         }
     }
     else {
         for (i = 0; i < qlen; ++i) {
-            u = cond_dist4_decode(E->ac, motif, spos + i);
+            u = cond_dist4_decode(E->ac, &E->supercontig_motif, spos + i);
             x->seq.s[i] = kmertochar[u];
         }
     }
@@ -519,55 +420,34 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t qlen)
 }
 
 
-static void seqenc_decode_contigs(seqenc_t* E)
+static void seqenc_decode_supercontig(seqenc_t* E)
 {
     seq_t* seq = fastq_alloc_seq();
 
-    uint32_t type;
-    size_t len;
+#ifdef DNDEBUG
+    dist2_decode(E->ac, &E->d_type);
+#else
+    assert(dist2_decode(E->ac, &E->d_type) == SEQENC_TYPE_SEQUENCE);
+#endif
 
-    twobit_t** contigs = NULL;
-    contigs = malloc_or_die(E->expected_contigs * sizeof(twobit_t*));
-    memset(contigs, 0, E->expected_contigs * sizeof(twobit_t*));
+    seqenc_decode_seq(E, seq, E->expected_supercontig_len);
 
-    uint32_t cnt = 0;
+    twobit_t* supercontig = twobit_alloc_n(E->expected_supercontig_len);
+    twobit_copy_n(supercontig, seq->seq.s, E->expected_supercontig_len);
 
-    while (cnt < E->expected_contigs) {
-        type = dist2_decode(E->ac, &E->d_type);
+    seqenc_set_supercontig(E, supercontig);
 
-        /* contigs aligned to prior contigs is not currently supported. */
-        assert(type == SEQENC_TYPE_SEQUENCE);
-
-        len = E->contig_lens[cnt];
-
-        seqenc_decode_seq(E, seq, len);
-        contigs[cnt] = twobit_alloc_n(len);
-        twobit_copy_n(contigs[cnt], seq->seq.s, len);
-
-        cnt++;
-    }
-
+    twobit_free(supercontig);
     fastq_free_seq(seq);
 
-    /* initialize contig motifs */
-    seqenc_set_contigs(E, contigs, cnt);
-
-    uint32_t i;
-    for (i = 0; i < cnt; ++i) {
-        twobit_free(contigs[i]);
-    }
-    free(contigs);
-
-    if (quip_verbose) fprintf(stderr, "read %u contigs\n", (unsigned int) cnt);
+    E->expected_supercontig_len = 0;
 }
 
 
 
 void seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
 {
-    if (E->contig_count < E->expected_contigs) {
-        seqenc_decode_contigs(E);
-    }
+    if (E->expected_supercontig_len > 0) seqenc_decode_supercontig(E);
 
     uint32_t type = dist2_decode(E->ac, &E->d_type);
 

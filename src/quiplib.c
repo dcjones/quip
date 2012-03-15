@@ -643,6 +643,10 @@ quip_decompressor_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
     D->readlen_vals = malloc_or_die(D->readlen_size * sizeof(uint32_t));
     D->readlen_lens = malloc_or_die(D->readlen_size * sizeof(uint32_t));
 
+    D->id_crc   = D->exp_id_crc   = 0;
+    D->seq_crc  = D->exp_seq_crc  = 0;
+    D->qual_crc = D->exp_qual_crc = 0;
+
     pthread_mutex_init(&D->seq_decode_mut, NULL);
     pthread_cond_init(&D->seq_decode_cond, NULL);
 

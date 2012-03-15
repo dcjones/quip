@@ -22,21 +22,16 @@
 #include "kmer.h"
 
 
-
 typedef struct kmerhash_t_ kmerhash_t;
 
-typedef struct kmer_pos_t_
-{
-    uint32_t contig_idx;
-    int32_t contig_pos;
-} kmer_pos_t;
+typedef int32_t kmer_pos_t;
 
 kmerhash_t* kmerhash_alloc();
 void        kmerhash_clear(kmerhash_t*);
 void        kmerhash_free(kmerhash_t*);
 
 size_t kmerhash_size(kmerhash_t*);
-void   kmerhash_put(kmerhash_t*, kmer_t, uint32_t contig_idx, int32_t contig_pos);
+void   kmerhash_put(kmerhash_t*, kmer_t, kmer_pos_t contig_pos);
 size_t kmerhash_get(kmerhash_t*, kmer_t, kmer_pos_t**);
 
 #endif

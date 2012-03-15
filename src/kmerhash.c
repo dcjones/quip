@@ -4,18 +4,18 @@
 #include <string.h>
 #include <assert.h>
 
-static const size_t kmerhash_initial_size = 1024;
-static const size_t kmerhash_max_load     = 5.0;
+static const uint32_t kmerhash_initial_size = 1024;
+static const double   kmerhash_max_load     = 5.0;
 
 typedef unsigned char* slot_t;
 
 struct kmerhash_t_
 {
-    size_t n;     /* number of slots */
-    size_t m;     /* number of pairs stored */
-    size_t m_max; /* number of stored pairs before we expand */
+    uint32_t n;     /* number of slots */
+    uint32_t m;     /* number of pairs stored */
+    uint32_t m_max; /* number of stored pairs before we expand */
 
-    size_t* slot_sizes;
+    uint32_t* slot_sizes;
     slot_t* slots;
 };
 
@@ -25,10 +25,10 @@ kmerhash_t* kmerhash_alloc()
     kmerhash_t* H = malloc_or_die(sizeof(kmerhash_t));
     H->n = kmerhash_initial_size;
     H->m = 0;
-    H->m_max = (size_t) (kmerhash_max_load * (double) H->n);
+    H->m_max = (uint32_t) (kmerhash_max_load * (double) H->n);
 
-    H->slot_sizes = malloc_or_die(H->n * sizeof(size_t));
-    memset(H->slot_sizes, 0, H->n * sizeof(size_t));
+    H->slot_sizes = malloc_or_die(H->n * sizeof(uint32_t));
+    memset(H->slot_sizes, 0, H->n * sizeof(uint32_t));
 
     H->slots = malloc_or_die(H->n * sizeof(slot_t*));
     memset(H->slots, 0, H->n * sizeof(slot_t*));
@@ -42,7 +42,7 @@ void kmerhash_clear(kmerhash_t* H)
     size_t i;
     for (i = 0; i < H->n; ++i) free(H->slots[i]);
     memset(H->slots, 0, H->n * sizeof(slot_t*));
-    memset(H->slot_sizes, 0, H->n * sizeof(size_t));
+    memset(H->slot_sizes, 0, H->n * sizeof(uint32_t));
     H->m = 0;
 }
 
@@ -70,9 +70,9 @@ size_t kmerhash_size(kmerhash_t* H)
 
 static void kmerhash_expand(kmerhash_t* H)
 {
-    size_t new_n = 2 * H->n;
-    size_t* slot_sizes = malloc_or_die(new_n * sizeof(size_t));
-    memset(slot_sizes, 0, new_n * sizeof(size_t));
+    uint32_t new_n = 2 * H->n;
+    uint32_t* slot_sizes = malloc_or_die(new_n * sizeof(uint32_t));
+    memset(slot_sizes, 0, new_n * sizeof(uint32_t));
 
 
     /* Figure out the slot sizes for the new table. */
@@ -150,11 +150,11 @@ static void kmerhash_expand(kmerhash_t* H)
     H->slot_sizes = slot_sizes;
 
     H->n = new_n;
-    H->m_max = (size_t) (kmerhash_max_load * (double) H->n);
+    H->m_max = (uint32_t) (kmerhash_max_load * (double) H->n);
 }
 
 
-void kmerhash_put(kmerhash_t* H, kmer_t x, uint32_t contig_idx, int32_t contig_pos)
+void kmerhash_put(kmerhash_t* H, kmer_t x, kmer_pos_t contig_pos)
 {
     /* if we are at capacity, preemptively expand */
     if (H->m >= H->m_max) kmerhash_expand(H);
@@ -192,16 +192,14 @@ void kmerhash_put(kmerhash_t* H, kmer_t x, uint32_t contig_idx, int32_t contig_p
             *(uint8_t*) c += 1;
             c += sizeof(uint8_t);
 
-            ((kmer_pos_t*) c)->contig_idx = contig_idx;
-            ((kmer_pos_t*) c)->contig_pos = contig_pos;
-
+            *(kmer_pos_t*) c = contig_pos;
             return;
         }
         else {
             c += sizeof(kmer_t);
             len = *(uint8_t*) c;
             c += sizeof(uint8_t);
-            c += len * (sizeof(uint32_t) + sizeof(int32_t));
+            c += len * (sizeof(kmer_pos_t));
         }
     }
 
@@ -218,8 +216,7 @@ void kmerhash_put(kmerhash_t* H, kmer_t x, uint32_t contig_idx, int32_t contig_p
     *(uint8_t*) c = 1;
     c += sizeof(uint8_t);
 
-    ((kmer_pos_t*) c)->contig_idx = contig_idx;
-    ((kmer_pos_t*) c)->contig_pos = contig_pos;
+    *(kmer_pos_t*) c = contig_pos;
 
     H->m++;
 }

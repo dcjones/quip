@@ -97,14 +97,8 @@ struct assembler_t_
     seqenc_t* seqenc;
 
     /* assembled contigs and their reverse complements */
-    twobit_t** contigs;
-    twobit_t** contigs_rc;
-
-    /* allocated size of the contigs array */
-    size_t contigs_size;
-
-    /* number of contigs stored in the contigs array */
-    size_t contigs_len;
+    twobit_t* supercontig;
+    twobit_t* supercontig_rc;
 
     /* should we try attempt to assemble contigs with the current batch of reads
      * */
@@ -165,11 +159,6 @@ assembler_t* assembler_alloc(
         A->H = kmerhash_alloc();
 
         A->count_cutoff = 2;
-
-        A->contigs_size = 512;
-        A->contigs_len  = 0;
-        A->contigs = malloc_or_die(A->contigs_size * sizeof(twobit_t*));
-        A->contigs_rc = NULL;
     }
     else {
         A->seqenc = seqenc_alloc_encoder(writer, writer_data);
@@ -187,27 +176,12 @@ void assembler_free(assembler_t* A)
     kmerhash_free(A->H);
     twobit_free(A->x);
     seqenc_free(A->seqenc);
-
-    size_t i;
-    for (i = 0; i < A->contigs_len; ++i) {
-        twobit_free(A->contigs[i]);
-        twobit_free(A->contigs_rc[i]);
-    }
-    free(A->contigs);
-    free(A->contigs_rc);
-
+    twobit_free(A->supercontig);
+    twobit_free(A->supercontig_rc);
     free(A);
 }
 
 
-void assembler_clear_contigs(assembler_t* A)
-{
-    size_t i;
-    for (i = 0; i < A->contigs_len; ++i) {
-        twobit_free(A->contigs[i]);
-    }
-    A->contigs_len = 0;
-}
 
 
 /* Try desperately to align the given read. If no good alignment is found, just
@@ -223,7 +197,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
     int spos, qpos;
 
     /* subject and query lengths, reps */
-    int slen, qlen;
+    int qlen, slen = twobit_len(A->supercontig);
     kmer_t x, y;
     uint8_t strand;
 
@@ -236,7 +210,6 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
     /* optimal alignment found so far */
     double   best_aln_score = HUGE_VAL;
     uint32_t best_spos = 0;
-    uint32_t best_contig_idx = 0;
     uint8_t  best_strand = 0;
 
     double aln_score;
@@ -268,25 +241,24 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
 
         for (j = 0; j < poslen && best_aln_score > 0.0; ++j, ++pos) {
-            slen = twobit_len(A->contigs[pos->contig_idx]);
 
-            if (pos->contig_pos >= 0) {
+            if (*pos >= 0) {
                 if (x == y) {
-                    spos = pos->contig_pos;
+                    spos = *pos;
                     strand = 0;
                 }
                 else {
-                    spos = slen - pos->contig_pos - A->align_k;
+                    spos = slen - *pos - A->align_k;
                     strand = 1;
                 }
             }
             else {
                 if (x == y) {
-                    spos = slen + pos->contig_pos - A->align_k + 1;
+                    spos = slen + *pos - A->align_k + 1;
                     strand = 1;
                 }
                 else {
-                    spos = -pos->contig_pos - 1;
+                    spos = -*pos - 1;
                     strand = 0;
                 }
             }
@@ -296,12 +268,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
                 continue;
             }
 
-            if (strand == 0) {
-                contig = A->contigs[pos->contig_idx];
-            }
-            else {
-                contig = A->contigs_rc[pos->contig_idx];
-            }
+            contig = strand == 0 ? A->supercontig : A->supercontig_rc;
 
             aln_score = (double) twobit_mismatch_count(contig, seq, spos - qpos, max_mismatch) / (double) qlen;
 
@@ -310,7 +277,6 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
             {
                 best_aln_score  = aln_score;
                 best_strand     = strand;
-                best_contig_idx = pos->contig_idx;
                 best_spos       = spos - qpos;
             }
         }
@@ -318,7 +284,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
     if (best_aln_score < HUGE_VAL) {
         seqenc_encode_alignment(
-            A->seqenc, best_contig_idx, best_spos, best_strand, seq);
+            A->seqenc, best_spos, best_strand, seq);
 
         return true;
     }
@@ -485,8 +451,8 @@ static int seqset_value_cnt_cmp(const void* a_, const void* b_)
     if      (a->cnt < b->cnt) return 1;
     else if (a->cnt > b->cnt) return -1;
     /* break ties with the index, just to make things deterministic */
-    else if (a->idx < b->idx) return 1;
-    else if (a->idx > b->idx) return -1;
+    else if (a->idx < b->idx) return -1;
+    else if (a->idx > b->idx) return 1;
     else                      return 0;
 }
 
@@ -506,58 +472,28 @@ static void build_kmer_hash(assembler_t* A)
 {
     kmerhash_clear(A->H);
 
-    size_t i;
-    size_t len;
+    size_t len = twobit_len(A->supercontig);
     size_t pos;
-    kmer_t x, y;
-    twobit_t* contig;
-    for (i = 0; i < A->contigs_len; ++i) {
-        contig = A->contigs[i];
-        len = twobit_len(contig);
-        x = 0;
-        for (pos = 0; pos < len; ++pos) {
+    kmer_t x = 0, y;
+    for (pos = 0; pos < len; ++pos) {
+        x = ((x << 2) | twobit_get(A->supercontig, pos)) & A->align_kmer_mask;
 
-            x = ((x << 2) | twobit_get(contig, pos)) & A->align_kmer_mask;
-
-            if (pos + 1 >= A->align_k) {
-                y = kmer_canonical(x, A->align_k);
-                if (x == y) kmerhash_put(A->H, y, i, pos + 1 - A->align_k);
-                else        kmerhash_put(A->H, y, i, - (int32_t) (pos + 2 - A->align_k));
-            }
+        if (pos + 1 >= A->align_k) {
+            y = kmer_canonical(x, A->align_k);
+            if (x == y) kmerhash_put(A->H, y, pos + 1 - A->align_k);
+            else        kmerhash_put(A->H, y, - (int32_t) (pos + 2 - A->align_k));
         }
     }
-
 }
 
 
+/* build new indexes after updating the consensus sequences */
 static void index_contigs(assembler_t* A)
 {
     if (quip_verbose) fprintf(stderr, "indexing contigs ... ");
 
     build_kmer_hash(A);
-
-    A->contigs_rc = malloc_or_die(A->contigs_len * sizeof(twobit_t*));
-
-    size_t i;
-    for (i = 0; i < A->contigs_len; ++i) {
-        A->contigs_rc[i] = twobit_alloc_n(twobit_len(A->contigs[i]));
-        twobit_revcomp(A->contigs_rc[i], A->contigs[i]);
-    }
-
-    if (quip_verbose) fprintf(stderr, "done.\n");
-}
-
-/* build new indexes after updating the consensus sequences */
-static void reindex_contigs(assembler_t* A)
-{
-    if (quip_verbose) fprintf(stderr, "indexing contigs ... ");
-
-    build_kmer_hash(A);
-
-    size_t i;
-    for (i = 0; i < A->contigs_len; ++i) {
-        twobit_revcomp(A->contigs_rc[i], A->contigs[i]);
-    }
+    twobit_revcomp(A->supercontig_rc, A->supercontig);
 
     if (quip_verbose) fprintf(stderr, "done.\n");
 }
@@ -635,8 +571,11 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 {
     if (quip_verbose) fprintf(stderr, "assembling contigs ... ");
 
+    A->supercontig = twobit_alloc();
     twobit_t* contig = twobit_alloc();
     size_t len;
+
+    size_t contig_cnt = 0;
 
     size_t i;
     for (i = 0; i < n && xs[i].cnt >= A->count_cutoff; ++i) {
@@ -650,17 +589,17 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
             continue;
         }
 
-        if (A->contigs_len == A->contigs_size) {
-            A->contigs_size *= 2;
-            A->contigs = realloc_or_die(A->contigs, A->contigs_size * sizeof(twobit_t*));
-        }
-
-        A->contigs[A->contigs_len++] = twobit_dup(contig);
+        twobit_append_twobit(A->supercontig, contig);
+        ++contig_cnt;
     }
 
     twobit_free(contig);
 
-    if (quip_verbose) fprintf(stderr, "done. (%zu contigs)\n", A->contigs_len);
+    A->supercontig_rc = twobit_alloc_n(twobit_len(A->supercontig));
+    twobit_revcomp(A->supercontig_rc, A->supercontig);
+
+    if (quip_verbose) fprintf(stderr, "done. (%zu contigs, %zunt)\n",
+                              contig_cnt, twobit_len(A->supercontig));
 }
 
 
@@ -686,17 +625,14 @@ size_t assembler_finish(assembler_t* A)
 
         /* Now that we have some memory to spare, bring up the sequence encoder. */
         A->seqenc = seqenc_alloc_encoder(A->writer, A->writer_data);
-        seqenc_set_contigs(A->seqenc, A->contigs, A->contigs_len);
+        seqenc_set_supercontig(A->seqenc, A->supercontig);
 
         /* Number of bytes needed to write the contig count and contig lengths */
-        bytes += 4 * (A->contigs_len + 1);
+        bytes += 4;
 
-        /* write the contigs */
-        size_t i;
-        for (i = 0; i < A->contigs_len; ++i) {
-            seqenc_encode_twobit_seq(A->seqenc, A->contigs[i]);
-        }
-            
+        /* write the supercontig */
+        seqenc_encode_twobit_seq(A->seqenc, A->supercontig);
+
         index_contigs(A);
 
         align_to_contigs(A, xs, n);
@@ -716,8 +652,8 @@ size_t assembler_finish(assembler_t* A)
     bytes += seqenc_finish(A->seqenc);
 
     if (!A->quick) {
-        seqenc_get_contig_consensus(A->seqenc, A->contigs);
-        reindex_contigs(A);
+        seqenc_get_supercontig_consensus(A->seqenc, A->supercontig);
+        index_contigs(A);
     }
 
     return bytes;
@@ -726,13 +662,9 @@ size_t assembler_finish(assembler_t* A)
 
 void assembler_flush(assembler_t* A)
 {
-    /* write contig count and lengths */
+    /* write supercontig length */
     if (!A->quick && A->assemble_batch) {
-        size_t i;
-        write_uint32(A->writer, A->writer_data, A->contigs_len);
-        for (i = 0; i < A->contigs_len; ++i) {
-            write_uint32(A->writer, A->writer_data, twobit_len(A->contigs[i]));
-        }
+        write_uint32(A->writer, A->writer_data, twobit_len(A->supercontig));
 
         /* only assemble the first block. */
         A->assemble_batch = false;
@@ -781,18 +713,11 @@ void disassembler_free(disassembler_t* D)
 void disassembler_read(disassembler_t* D, seq_t* x, size_t n)
 {
     if (D->init_state) {
-        uint32_t contig_count = read_uint32(D->reader, D->reader_data);
-        uint32_t* contig_lens = malloc_or_die(contig_count * sizeof(uint32_t));
-        uint32_t i;
-        for (i = 0; i < contig_count; ++i) {
-            contig_lens[i] = read_uint32(D->reader, D->reader_data);
-        }
+        uint32_t supercontig_len = read_uint32(D->reader, D->reader_data);
 
-        if (contig_count > 0) {
-            seqenc_prepare_decoder(D->seqenc, contig_count, contig_lens);
+        if (supercontig_len > 0) {
+            seqenc_prepare_decoder(D->seqenc, supercontig_len);
         }
-
-        free(contig_lens);
 
         seqenc_start_decoder(D->seqenc);
 

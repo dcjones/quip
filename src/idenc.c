@@ -172,6 +172,7 @@ idenc_t* idenc_alloc_decoder(quip_reader_t reader, void* reader_data)
 void idenc_free(idenc_t* E)
 {
     free(E->lastid);
+    free(E->toks);
     ac_free(E->ac);
 
     size_t i;
