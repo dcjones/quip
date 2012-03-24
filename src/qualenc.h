@@ -1,7 +1,7 @@
 /*
  * This file is part of quip.
  *
- * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ * Copyright (c) 2012 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
  */
 

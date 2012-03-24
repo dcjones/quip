@@ -5,13 +5,109 @@
  *
  */
 
+
+/*
+
+Quip provides a unified interface for reading and writing short read
+sequencing data is a variety of formats, no least of which, the quip format.
+
+Currently the following formats are provided:
+
+  * FASTQ
+  * QUIP
+  * SAM
+  * BAM
+
+Any format may be converted to any other, but conversions from SAM/BAM to
+FASTQ will lose alignment information.
+
+Additionally, our interpretation of the FASTQ format, excludes redundant
+listing. If your FASTQ file looks like this:
+
+  @unique_read_id_1234
+  ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT
+  +unique_read_id_1234
+  BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+
+You will lose the second listing of 'unique_read_id_12234'. This entry will
+be read as:
+
+  @unique_read_id_1234
+  ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT
+  +
+  BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+
+This is a feature, not a bug. We are doing you favor.
+
+*/
+
 #ifndef QUIP_QUIP
 #define QUIP_QUIP
 
-#include "quip_parse.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
+
+
+
+/* Simple encapsulated string. */
+typedef struct
+{
+    unsigned char* s;    /* null-terminated string */
+    size_t         n;    /* length of s */
+    size_t         size; /* bytes allocated for s */
+} str_t;
+
+void str_init(str_t*);
+void str_reserve(str_t*, size_t);
+void str_free(str_t*);
+
+
+/* A series of CIGAR (edit) operations. */
+typedef struct cigar_t_
+{
+    uint8_t*  ops;  /* cigar operations */
+    uint32_t* lens; /* operation lengths */
+
+    size_t n;    /* number of cigar ops */
+    size_t size; /* size allocated */
+} cigar_t;
+
+void cigar_init(cigar_t*);
+void cigar_reserve(cigar_t*, size_t);
+void cigar_free(cigar_t*);
+
+
+/* A read, either aligned or unaligned. */
+typedef struct short_read_t_
+{
+    /* read ID */
+    str_t id;
+
+    /* Nucleotide sequence. A string over the alphabet [ACGTN] */
+    str_t seq;
+
+    /* Quality scores, of qual length as seq, from
+     * ASCII chars in [33, 96] (that is, ['!', '`']) */
+    str_t qual;
+
+    /* SAM flags */
+    uint32_t flags;
+
+    /* Information for aligned reads. These must be set if
+     * (flags & BAM_FUNMAP) == 0 (i.e., the read is not unmapped). */
+    str_t    seqname;
+    uint8_t  strand;
+    uint32_t pos;
+
+    /* auxiliary SAM fields */
+    str_t aux;
+
+} short_read_t;
+
+void short_read_init(short_read_t*);
+void short_read_free(short_read_t*);
+
 
  /* All input and output in quip are performed by a simple callback interface.
   * The writer is responsible for writing compressed data, and has the takes
@@ -42,67 +138,82 @@ typedef void   (*quip_writer_t) (void* writer_data, const uint8_t* data, size_t 
 typedef size_t (*quip_reader_t) (void* reader_data, uint8_t* data, size_t size);
 
 
+/*
+ * Formats supported by quip.
+ */
+typedef enum quip_fmt_t_
+{
+    QUIP_FMT_FASTQ,
+    QUIP_FMT_SAM,
+    QUIP_FMT_QUIP
+} quip_fmt_t;
 
-/* Compression */
+
+/*
+ * Format specific options are specified using
+ * combinations of these flags.
+ */
+
+/* Compress quip files without the de novo assembly step, which
+ * is somewhat faster. */
+#define QUIP_OPT_QUIP_ASSEMBLY_FREE 1
+
+/* Output SAM files in BAM (compressed SAM) format. */
+#define QUIP_OPT_SAM_BAM 1
+
+typedef uint32_t quip_opt_t;
+
+
+/*
+ * Writing short read data in a variety of formats.
+ */
+
 typedef struct quip_out_t_ quip_out_t;
 
+quip_out_t* quip_out_open(
+              quip_writer_t writer,
+              void*         writer_data,
+              quip_fmt_t    format,
+              quip_opt_t    opts);
 
-/* Create a new compressor with the given stream of raw fastq data. */
-quip_out_t* quip_out_alloc(quip_writer_t, void* writer_data, bool quick);
+void quip_out_close(quip_out_t*);
 
-/* Deallocate a compressor, once finished with it.
- * This will flush any buffered data to the output stream. */
-void quip_out_free(quip_out_t*);
-
-/* Compress a single read. */
-void quip_out_addseq(quip_out_t*, seq_t*);
-
-/* Compress a single read, read from a parser (slightly more efficient than addseq) */
-int quip_out_readseq(quip_out_t*, fastq_t*);
-
-/* Finish compressing reads, flushing all buffered data,
- * and writing a end of stream marker. */
-void quip_out_finish(quip_out_t*);
+/*
+ * Write one read to the output stream.
+ */
+void quip_write(quip_out_t*, short_read_t*);
 
 
+/*
+ * Reading short read data in a variety of formats.
+ */
 
-/* Decompression */
 typedef struct quip_in_t_ quip_in_t;
 
-/* Create a new decompressor with the given stream of compressed data in the quip format. */
-quip_in_t* quip_in_alloc(quip_reader_t, void* reader_data);
+quip_in_t* quip_in_open(
+              quip_reader_t reader,
+              void*         reader_data,
+              quip_fmt_t    format,
+              quip_opt_t    opts);
 
-/* Deallocate a decompressor, once finished with it. */
-void quip_in_free(quip_in_t*);
 
-/* Decompress one read from the stream. The pointer returned
- * should not be freed and is not guaranteed to be valid after
- * subsequent calls to quip_in_read, or calls to quip_in_free.
- *
- * If there are no more reads in the stream, NULL is returned.
+void quip_in_close(quip_in_t*);
+
+/*
+ * Get one read from the input stream. Output NULL if there are none.
+ * The pointer returned is not guaranteed to be valid after
+ * subsequent calls to quip_in_read, or to quip_in_close.
  */
-seq_t* quip_in_read(quip_in_t*);
+short_read_t* quip_read(quip_in_t*);
 
-/* Efficiently determine the number of reads summary information
-   about a compressed stream. */
-typedef struct quip_list_t_
-{
-    uint64_t num_blocks;
-    uint64_t num_bases;
-    uint64_t num_reads;
 
-    /* the uncompressed (0) and compressed (1) byte counts */
-    uint64_t id_bytes[2];
-    uint64_t seq_bytes[2];
-    uint64_t qual_bytes[2];
-    uint64_t header_bytes;
+/*
+ * Read one read from the input stream and write it
+ * to the output stream. Return false in the input
+ * stream is empty, and true otherwise.
+ */
+bool quip_pipe(quip_in_t* in, quip_out_t* out);
 
-} quip_list_t;
-
-void quip_list(quip_reader_t, void* reader_data, quip_list_t*);
-
-/* Test the integrity of a stream. */
-void quip_test(quip_reader_t, void* reader_data); 
 
 /* Print a great deal of useless information while running. */
 extern bool quip_verbose;

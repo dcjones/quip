@@ -1,7 +1,7 @@
 /*
  * This file is part of quip.
  *
- * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ * Copyright (c) 2012 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
  * misc :
  * A few common functions, primarily for crashing whilst retaining our dignity.
@@ -28,6 +28,15 @@ uint32_t strhash(const char*, size_t len);
 #else
 #define prefetch(p, rw, locality)
 #endif
+
+#ifndef __attribute__
+#if __GNUC__ < 2 || (__GNUC__ == 2 && __GNUC_MINOR__ < 8) || __STRICT_ANSI__
+#define __attribute__(x)
+#endif
+#endif
+
+#define ATTRIB_UNUSED __attribute__((__unused__))
+
 
 /* Windows reads/writes in "text mode" by default. This is confusing 
  * and wrong, so we need to disable it.

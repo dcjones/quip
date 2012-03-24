@@ -17,9 +17,12 @@ libquip_a_SOURCES = \
           seqenc_prior.h  seqenc_prior.c \
           seqset.h        seqset.c \
           twobit.h        twobit.c \
-          quip_parse.h    quip_parse.c \
           qualenc.h       qualenc.c \
-          quiplib.c       quip.h
+          quiplib.c       quip.h \
+          fastqfmt.h      fastqfmt.c \
+          samfmt.h        samfmt.c \
+          quipfmt.h       quipfmt.c \
+		  sam/bam.h       sam/bam.c
 
 bin_PROGRAMS = quip
 
@@ -27,7 +30,7 @@ quip_SOURCES = quip.c
 
 quip_LDADD = libquip.a
 
-include_HEADERS = quip.h quip_parse.h
+include_HEADERS = quip.h
 
 noinst_HEADERS = dist_impl.h dist_impl.c \
                  dist_template_on.h dist_template_off.h \
