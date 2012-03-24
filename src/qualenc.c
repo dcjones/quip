@@ -1,6 +1,5 @@
 
 #include "qualenc.h"
-#include "qualenc_prior.h"
 #include "ac.h"
 #include "dist.h"
 #include "misc.h"
@@ -11,21 +10,34 @@
 /* The rate at which the quality markov chain is updated. */
 static const size_t qual_update_rate = 6;
 
-/* Every quality encoding scheme uses ASCII characters in [33, 104] */
-static const char   qual_last  = 40;
-static const size_t qual_size  = 41;
+/* These constants should not be tweaked willy-nilly. The tables
+   below and the cs_index macro depend on them being what they are. */
+static const size_t qual_size  = 64;
 static const size_t pos_bins   = 4;
-static const size_t q_bins     = 16;
+static const size_t q_bins1    = 42;
+static const size_t q_bins2    = 16;
 static const size_t delta_bins = 8;
 static const int    delta_max  = 50;
 
-/* Map quality scores to a smaller alphabet size. */
-static const uint8_t q_bin_map[41] =
-  { 1,  1,  2,  2,  2,  2,  2,  2,  2,  2,
-    3,  3,  3,  3,  3,  3,  3,  3,  3,  3,
-    3,  3,  3,  3,  3,  4,  4,  4,  4,  4,
-    5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15 };
+/* Map a quality score alphabet of size 64 to an alphabet of size of 42. */
+static const uint8_t q_bin_map1[64] =
+  {  1,  2,  3,  4,  5,  6,  7,  8,
+     9, 10, 11, 12, 13, 14, 15, 16,
+    17, 18, 19, 20, 21, 22, 23, 24,
+    25, 26, 27, 28, 29, 30, 31, 32,
+    33, 34, 35, 36, 38, 39, 40, 41,
+    41, 41, 41, 41, 41, 41, 41, 41,
+    41, 41, 41, 41, 41, 41, 41, 41,
+    41, 41, 41, 41, 41, 41, 41, 41 };
 
+/* Map a quality score alphabet of size 42 to an alphabet of size of 16. */
+static const uint8_t q_bin_map2[42] =
+  {  1,  1,  2,  2,  2,  2,  2,  2,
+     2,  2,  3,  3,  3,  3,  3,  3,
+     3,  3,  3,  3,  3,  3,  3,  3,
+     3,  4,  4,  4,  4,  4,  5,  6,
+     7,  8,  9, 10, 11, 12, 13, 14,
+    15, 15 };
 
 /* Map running deltas to a smaller alphabet size. */
 static const uint8_t delta_bin_map[50] =
@@ -39,49 +51,23 @@ static const uint8_t delta_bin_map[50] =
 struct qualenc_t_
 {
     ac_t* ac;
-    cond_dist41_t cs;
+    cond_dist64_t cs;
 };
 
 
-/* Compute indexes into the quality conditional distribution */
-#if 0
-#define cs_index(bin, delta, q3, q2, q1) \
- (q1 + qual_size * (\
-    q2 + q_bins * (\
-      q3 + q_bins * (\
-        delta_bin_map[delta] + delta_bins * (\
-          bin)))))
-#endif
-
-/* This version depends on the specific values defined above, but is somewhat faster. */
-#define cs_index(bin, delta, q3, q2, q1) \
-    ((q1) + qual_size * (((((((bin) << 3) | delta_bin_map[delta]) << 4) | (q3)) << 4) | (q2)))
-
-
-static void qualenc_setprior(qualenc_t* E)
-{
-    size_t q0, q1;
-    for (q1 = 0; q1 < qual_size; ++q1) {
-        for (q0 = 0; q0 < qual_size; ++q0) {
-            E->cs.xss[q1].xs[q0].count = qualenc_prior[q1 * qual_size + q0];
-        }
-        dist41_update(&E->cs.xss[q1]);
-    }
-
-    size_t i;
-    for (i = 1; i < q_bins * q_bins * delta_bins * pos_bins; ++i) {
-        memcpy(&E->cs.xss[i * qual_size], &E->cs.xss[0],
-                qual_size * sizeof(dist41_t));
-    }
-}
+/* Compute an index into the conditional distribution over quality scores. */
+#define cs_index(pos_bin, delta, q3, q2, q1) \
+    ((((((((pos_bin << 3) | \
+     delta_bin_map[delta]) << 4) | \
+      (q3)) << 4) | \
+       (q2)) * 42) + \
+        (q1))
 
 
 static void qualenc_init(qualenc_t* E)
 {
-    cond_dist41_init(&E->cs, delta_bins * pos_bins * q_bins * q_bins * qual_size);
-    qualenc_setprior(E);
-
-    cond_dist41_set_update_rate(&E->cs, qual_update_rate);
+    cond_dist64_init(&E->cs, delta_bins * pos_bins * q_bins2 * q_bins2 * q_bins1);
+    cond_dist64_set_update_rate(&E->cs, qual_update_rate);
 }
 
 
@@ -109,18 +95,12 @@ qualenc_t* qualenc_alloc_decoder(quip_reader_t reader, void* reader_data)
 
 void qualenc_free(qualenc_t* E)
 {
-    cond_dist41_free(&E->cs);
+    cond_dist64_free(&E->cs);
     ac_free(E->ac);
     free(E);
 }
 
-static inline char charmin2(char a, char b)
-{
-    return a < b ? a : b;
-}
-
-
-static inline char charmax2(char a, char b)
+static inline uint8_t bytemax2(uint8_t a, uint8_t b)
 {
     return a > b ? a : b;
 }
@@ -151,16 +131,16 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     size_t i;
 
     for (i = 0; i < n; ++i) {
-        cond_dist41_encode(E->ac, &E->cs,
+        cond_dist64_encode(E->ac, &E->cs,
                 cs_index(i / pos_bin_size, delta,
-                         charmax2(qprev.ui8[3], qprev.ui8[2]),
+                         bytemax2(qprev.ui8[3], qprev.ui8[2]),
                          qprev.ui8[1], qprev.ui8[0]), qs[i]);
 
         qdiff = (int) qprev.ui8[0] - (int) qs[i];
 
         qprev.ui64 <<= 8;
-        qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
-        qprev.ui8[0] = qs[i];
+        qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
+        qprev.ui8[0] = q_bin_map1[(uint8_t) qs[i]];
 
         if (qdiff < -1 || qdiff >= 1) {
             delta += 1;
@@ -176,14 +156,14 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
      * above loop but saves a few cycles by not dealing with delta any further.
      * */
     for (; i < n; ++i) {
-        cond_dist41_encode(E->ac, &E->cs,
+        cond_dist64_encode(E->ac, &E->cs,
                 cs_index(i / pos_bin_size, delta,
-                         charmax2(qprev.ui8[3], qprev.ui8[2]),
+                         bytemax2(qprev.ui8[3], qprev.ui8[2]),
                          qprev.ui8[1], qprev.ui8[0]), qs[i]);
 
         qprev.ui64 <<= 8;
-        qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
-        qprev.ui8[0] = qs[i];
+        qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
+        qprev.ui8[0] = q_bin_map1[(uint8_t) qs[i]];
     }
 }
 
@@ -221,16 +201,16 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
     size_t i;
 
     for (i = 0; i < n; ++i) {
-        qs[i] = cond_dist41_decode(E->ac, &E->cs,
+        qs[i] = cond_dist64_decode(E->ac, &E->cs,
                     cs_index(i / pos_bin_size, delta,
-                             charmax2(qprev.ui8[3], qprev.ui8[2]),
+                             bytemax2(qprev.ui8[3], qprev.ui8[2]),
                              qprev.ui8[1], qprev.ui8[0]));
 
         qdiff = (int) qprev.ui8[0] - (int) qs[i];
 
         qprev.ui64 <<= 8;
-        qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
-        qprev.ui8[0] = qs[i];
+        qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
+        qprev.ui8[0] = q_bin_map1[(uint8_t) qs[i]];
 
         if (qdiff < -1 || qdiff >= 1) {
             delta += 1;
@@ -244,14 +224,14 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
 
     /* Faster loop once delta hits its maximum. */
     for (; i < n; ++i) {
-        qs[i] = cond_dist41_decode(E->ac, &E->cs,
+        qs[i] = cond_dist64_decode(E->ac, &E->cs,
                     cs_index(i / pos_bin_size, delta,
-                             charmax2(qprev.ui8[3], qprev.ui8[2]),
+                             bytemax2(qprev.ui8[3], qprev.ui8[2]),
                              qprev.ui8[1], qprev.ui8[0]));
 
         qprev.ui64 <<= 8;
-        qprev.ui8[1] = q_bin_map[qprev.ui8[1]];
-        qprev.ui8[0] = qs[i];
+        qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
+        qprev.ui8[0] = q_bin_map1[(uint8_t) qs[i]];
     }
 
     qual->n = n;

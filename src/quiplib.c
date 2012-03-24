@@ -18,7 +18,7 @@ static const size_t assembler_k = 25;
 static const size_t aligner_k   = 12;
 
 /* maximum number of bases per block */
-static const size_t block_size = 100000000;
+static const size_t block_size = 65000000;
 
 /* Maximum number of sequences to read before they are compressed. */
 #define chunk_size 5000 

@@ -1,8 +1,8 @@
 
 
-lib_LTLIBRARIES = libquip.la
+lib_LIBRARIES = libquip.a
 
-libquip_la_SOURCES = \
+libquip_a_SOURCES = \
           version.h \
           ac.h            ac.c \
           assembler.h     assembler.c \
@@ -19,14 +19,13 @@ libquip_la_SOURCES = \
           twobit.h        twobit.c \
           quip_parse.h    quip_parse.c \
           qualenc.h       qualenc.c \
-          qualenc_prior.h qualenc_prior.c \
           quiplib.c       quip.h
 
 bin_PROGRAMS = quip
 
 quip_SOURCES = quip.c
 
-quip_LDADD = libquip.la
+quip_LDADD = libquip.a
 
 include_HEADERS = quip.h quip_parse.h
 
