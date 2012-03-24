@@ -602,7 +602,7 @@ static size_t seq_buf_reader(void* param, uint8_t* data, size_t size)
 }
 
 
-quip_in_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
+quip_in_t* quip_in_alloc(quip_reader_t reader, void* reader_data)
 {
     quip_in_t* D = malloc_or_die(sizeof(quip_in_t));
 
@@ -668,7 +668,7 @@ quip_in_t* quip_decomp_alloc(quip_reader_t reader, void* reader_data)
 }
 
 
-void quip_decomp_free(quip_in_t* D)
+void quip_in_free(quip_in_t* D)
 {
     size_t i;
     for (i = 0; i < chunk_size; ++i) {
@@ -687,7 +687,7 @@ void quip_decomp_free(quip_in_t* D)
 }
 
 
-static void quip_decomp_read_block_header(quip_in_t* D)
+static void quip_in_read_block_header(quip_in_t* D)
 {
     D->pending_reads = read_uint32(D->reader, D->reader_data);
     if (D->pending_reads == 0) {
@@ -792,7 +792,7 @@ static void quip_decomp_read_block_header(quip_in_t* D)
 }
 
 
-seq_t* quip_decomp_read(quip_in_t* D)
+seq_t* quip_in_read(quip_in_t* D)
 {
     if (D->chunk_pos < D->chunk_len) {
         return D->chunk[D->chunk_pos++];
@@ -819,7 +819,7 @@ seq_t* quip_decomp_read(quip_in_t* D)
                 "Quality data may be corrupt.\n", D->block_num);
         }
 
-        quip_decomp_read_block_header(D);
+        quip_in_read_block_header(D);
         if (D->pending_reads == 0) return NULL;
 
         /* reset decoders */
