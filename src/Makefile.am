@@ -1,4 +1,5 @@
 
+SUBDIRS = sam
 
 lib_LIBRARIES = libquip.a
 
@@ -21,8 +22,9 @@ libquip_a_SOURCES = \
           quiplib.c       quip.h \
           fastqfmt.h      fastqfmt.c \
           samfmt.h        samfmt.c \
-          quipfmt.h       quipfmt.c \
-		  sam/bam.h       sam/bam.c
+          quipfmt.h       quipfmt.c
+
+libquip_a_LIBADD = sam/libsam.a
 
 bin_PROGRAMS = quip
 

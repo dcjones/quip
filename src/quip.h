@@ -48,6 +48,9 @@ This is a feature, not a bug. We are doing you favor.
 #include <stdint.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 
 /* Simple encapsulated string. */
@@ -218,6 +221,10 @@ bool quip_pipe(quip_in_t* in, quip_out_t* out);
 /* Print a great deal of useless information while running. */
 extern bool quip_verbose;
 
+
+#ifdef __cplusplus
+}
+#endif
 #endif
 
 
