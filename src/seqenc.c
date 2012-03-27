@@ -158,8 +158,10 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 {
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_SEQUENCE);
 
-    kmer_t uv;
     size_t n = twobit_len(x);
+    if (n == 0) return;
+    
+    kmer_t uv;
     size_t i;
     uint32_t ctx = 0;
 
@@ -280,6 +282,8 @@ void seqenc_encode_alignment(
 void seqenc_set_supercontig(seqenc_t* E, const twobit_t* supercontig)
 {
     size_t len = twobit_len(supercontig);
+    if (len == 0) return;
+
     cond_dist4_init(&E->supercontig_motif, len);
     cond_dist4_set_update_rate(&E->supercontig_motif, motif_update_rate);
     size_t i;
@@ -288,7 +292,7 @@ void seqenc_set_supercontig(seqenc_t* E, const twobit_t* supercontig)
         u = twobit_get(supercontig, i);
         E->supercontig_motif.xss[i].xs[u].count = contig_motif_prior;
         dist4_update(&E->supercontig_motif.xss[i]);
-   }
+    }
 }
 
 
@@ -320,6 +324,7 @@ void seqenc_prepare_decoder(seqenc_t* E, uint32_t supercontig_len)
 
 static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 {
+    if (n == 0) return;
     while (n >= x->seq.size) fastq_expand_str(&x->seq);
 
     kmer_t uv, u, v;
@@ -439,8 +444,6 @@ static void seqenc_decode_supercontig(seqenc_t* E)
 
     twobit_free(supercontig);
     fastq_free_seq(seq);
-
-    E->expected_supercontig_len = 0;
 }
 
 

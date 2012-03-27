@@ -631,7 +631,9 @@ size_t assembler_finish(assembler_t* A)
         bytes += 4;
 
         /* write the supercontig */
-        seqenc_encode_twobit_seq(A->seqenc, A->supercontig);
+        if (twobit_len(A->supercontig) > 0) {
+            seqenc_encode_twobit_seq(A->seqenc, A->supercontig);
+        }
 
         index_contigs(A);
 

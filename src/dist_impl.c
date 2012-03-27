@@ -144,6 +144,8 @@ symb_t dfun(decode)(ac_t* ac, dist_t* D)
 
 void cdfun(init) (cond_dist_t* D, size_t n)
 {
+    if (n == 0) n = 1;
+
     D->n = n;
     D->xss   = malloc_or_die(n * sizeof(dist_t));
     D->update_rate = 1;
