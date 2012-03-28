@@ -103,8 +103,9 @@ compress files that are not in the FASTQ format.
 .PP
 Quip will not compress AB SOLiD colorspace data.
 .PP
-Quip only supports quality scores on Phred+33 scale, which is not
-compatible with certain versions of the Illumina platform.
+Quip will deduce the quality score scale used, but does not support quality
+score schemes that span a range larger than 64. At the time of writing, such
+systems are quite rare.
 .PP
 In certain versions of FASTQ, the read ID is printed twice: before the
 sequence and before the quality scores. This is an idiotic idea that has
