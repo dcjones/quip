@@ -377,6 +377,8 @@ static void update_qual_scheme_guess(quip_out_t* C)
     size_t i, j;
     qual_scheme_t* last_qual_scheme = &C->qual_scheme_vals[C->qual_scheme_count - 1];
     char base_qual = last_qual_scheme->base_qual;
+    char min_qual = '~';
+    char max_qual = '!';
     char n_qual   = 0;
     for (i = 0; i < C->chunk_len; ++i) {
         for (j = 0; j < C->chunk[i]->qual.n; ++j) {
@@ -395,24 +397,31 @@ static void update_qual_scheme_guess(quip_out_t* C)
                                     " to the lowest quality score should be 'N'.\n");
                     exit(EXIT_FAILURE);
             }
-            else if (C->chunk[i]->qual.s[j] < base_qual) {
-                base_qual = C->chunk[i]->qual.s[j];
+
+            if (C->chunk[i]->qual.s[j] < min_qual) {
+                min_qual = C->chunk[i]->qual.s[j];
             }
-            else if (C->chunk[i]->qual.s[j] - base_qual > max_qual) {
-                fprintf(stderr, "Quality scoring scheme uses scores higher than "
-                                " quip currently supports.\n");
-                exit(EXIT_FAILURE);
+
+            if (C->chunk[i]->qual.s[j] > max_qual) {
+                max_qual = C->chunk[i]->qual.s[j];
             }
         }
+    }
+
+    if (max_qual - min_qual > max_qual) {
+        fprintf(stderr, "Invalid quality score scheme: are large range is used than quip "
+                        "currently supports..\n");
+        exit(EXIT_FAILURE);
     }
 
     if (n_qual == 0) {
         n_qual = last_qual_scheme->n_qual;
     }
 
-    if (n_qual    != last_qual_scheme->n_qual ||
-        base_qual != last_qual_scheme->base_qual)
-    {
+    if (n_qual != last_qual_scheme->n_qual ||
+        min_qual < last_qual_scheme->base_qual ||
+        max_qual > last_qual_scheme->base_qual + max_qual) {
+
         /* new quality scheme guess */
         C->qual_scheme_count++;
         if (C->qual_scheme_count >= C->qual_scheme_size) {
