@@ -712,6 +712,12 @@ void disassembler_free(disassembler_t* D)
 }
 
 
+void disassembler_set_n_qual(disassembler_t* D, char n_qual)
+{
+    seqenc_set_n_qual(D->seqenc, n_qual);
+}
+
+
 void disassembler_read(disassembler_t* D, seq_t* x, size_t n)
 {
     if (D->init_state) {

@@ -57,6 +57,9 @@ struct seqenc_t_
 
     /* length of the supercontig to be decoded */
     size_t expected_supercontig_len;
+
+    /* the quality score used to encode Ns in the nucleotide sequence */
+    char n_qual;
 };
 
 
@@ -107,6 +110,8 @@ static void seqenc_init(seqenc_t* E)
 
     E->expected_supercontig_len = 0;
     memset(&E->supercontig_motif, 0, sizeof(cond_dist4_t));
+
+    E->n_qual = '!';
 }
 
 
@@ -296,6 +301,12 @@ void seqenc_set_supercontig(seqenc_t* E, const twobit_t* supercontig)
 }
 
 
+void seqenc_set_n_qual(seqenc_t* E, char n_qual)
+{
+    E->n_qual = n_qual;
+}
+
+
 void seqenc_get_supercontig_consensus(seqenc_t* E, twobit_t* supercontig)
 {
     size_t len = twobit_len(supercontig);
@@ -334,7 +345,7 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
     const char* qs = x->qual.s;
 
     for (i = 0; i < x->qual.n; ++i) {
-        if (qs[i] == 0) break;
+        if (qs[i] == E->n_qual) break;
     }
 
     /* sequence contains Ns */
@@ -344,11 +355,11 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 
         i = 0;
         while (i < n - 1) {
-            while (i < n && qs[i] == 0) ++i;
+            while (i < n && qs[i] == E->n_qual) ++i;
             if (i == n) break;
 
             j = i + 1;
-            while (j < n && qs[j] == 0) ++j;
+            while (j < n && qs[j] == E->n_qual) ++j;
             if (j == n) break;
 
             uv = cond_dist16_decode(E->ac, &E->cs, ctx);
@@ -383,7 +394,7 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
         }
     }
 
-    if (i < n && (x->qual.n == 0 || qs[i] != 0)) {
+    if (i < n && (x->qual.n == 0 || qs[i] != E->n_qual)) {
         uv = cond_dist16_decode(E->ac, &E->cs, ctx);
         v = uv & 0x3;
         x->seq.s[i] = kmertochar[v];

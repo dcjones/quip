@@ -52,6 +52,7 @@ struct qualenc_t_
 {
     ac_t* ac;
     cond_dist64_t cs;
+    char base_qual;
 };
 
 
@@ -68,6 +69,7 @@ static void qualenc_init(qualenc_t* E)
 {
     cond_dist64_init(&E->cs, delta_bins * pos_bins * q_bins2 * q_bins2 * q_bins1);
     cond_dist64_set_update_rate(&E->cs, qual_update_rate);
+    E->base_qual = '!';
 }
 
 
@@ -100,6 +102,13 @@ void qualenc_free(qualenc_t* E)
     free(E);
 }
 
+
+void qualenc_set_base_qual(qualenc_t* E, char base_qual)
+{
+    E->base_qual = base_qual;
+}
+
+
 static inline uint8_t bytemax2(uint8_t a, uint8_t b)
 {
     return a > b ? a : b;
@@ -122,6 +131,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
     int delta = 0; 
     int qdiff;
+    char q;
 
     char* qs = x->qual.s;
     size_t n = x->qual.n;
@@ -131,16 +141,17 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
     size_t i;
 
     for (i = 0; i < n; ++i) {
+        q = qs[i] - E->base_qual;
         cond_dist64_encode(E->ac, &E->cs,
                 cs_index(i / pos_bin_size, delta,
                          bytemax2(qprev.ui8[3], qprev.ui8[2]),
-                         qprev.ui8[1], qprev.ui8[0]), qs[i]);
+                         qprev.ui8[1], qprev.ui8[0]), q);
 
-        qdiff = (int) qprev.ui8[0] - (int) qs[i];
+        qdiff = (int) qprev.ui8[0] - (int) q;
 
         qprev.ui64 <<= 8;
         qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
-        qprev.ui8[0] = q_bin_map1[(uint8_t) qs[i]];
+        qprev.ui8[0] = q_bin_map1[(uint8_t) q];
 
         if (qdiff < -1 || qdiff >= 1) {
             delta += 1;
@@ -156,14 +167,15 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
      * above loop but saves a few cycles by not dealing with delta any further.
      * */
     for (; i < n; ++i) {
+        q = qs[i] - E->base_qual;
         cond_dist64_encode(E->ac, &E->cs,
                 cs_index(i / pos_bin_size, delta,
                          bytemax2(qprev.ui8[3], qprev.ui8[2]),
-                         qprev.ui8[1], qprev.ui8[0]), qs[i]);
+                         qprev.ui8[1], qprev.ui8[0]), q);
 
         qprev.ui64 <<= 8;
         qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
-        qprev.ui8[0] = q_bin_map1[(uint8_t) qs[i]];
+        qprev.ui8[0] = q_bin_map1[(uint8_t) q];
     }
 }
 
@@ -211,6 +223,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
         qprev.ui64 <<= 8;
         qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
         qprev.ui8[0] = q_bin_map1[(uint8_t) qs[i]];
+        qs[i] += E->base_qual;
 
         if (qdiff < -1 || qdiff >= 1) {
             delta += 1;
@@ -232,6 +245,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
         qprev.ui64 <<= 8;
         qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
         qprev.ui8[0] = q_bin_map1[(uint8_t) qs[i]];
+        qs[i] += E->base_qual;
     }
 
     qual->n = n;

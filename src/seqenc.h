@@ -30,6 +30,9 @@ void      seqenc_free(seqenc_t*);
  * calls to seqenc_encode_alignment. */
 void seqenc_set_supercontig(seqenc_t*, const twobit_t* supercontig);
 
+/* Set the quality score used to represent Ns in the nucleotide sequence. */
+void seqenc_set_n_qual(seqenc_t*, char n_qual);
+
 /* Update the contig sequences to the current maximum-likelihood
  * consensus sequence. */
 void seqenc_get_supercontig_consensus(seqenc_t*, twobit_t* supercontig);
