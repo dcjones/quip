@@ -11,6 +11,9 @@
 /* Order of the markov chain assigning probabilities to dinucleotides. */
 static const size_t k = 11;
 
+/* Order of the markov chain assigning probabilities to the N mask. */
+static const size_t k_nmask = 6;
+
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */
 static const size_t prefix_len = 4;
@@ -43,6 +46,10 @@ struct seqenc_t_
     /* special case models for the first 2 * prefix_les positions. */
     cond_dist16_t cs0[5];
 
+    /* N probability, given the last k_nmask bits. */
+    cond_dist2_t d_nmask;
+    uint32_t nmask_ctx_mask;
+
     /* binary distribution of unique (0) / match (1) */
     dist2_t d_type;
 
@@ -57,9 +64,6 @@ struct seqenc_t_
 
     /* length of the supercontig to be decoded */
     size_t expected_supercontig_len;
-
-    /* the quality score used to encode Ns in the nucleotide sequence */
-    char n_qual;
 };
 
 
@@ -103,6 +107,10 @@ static void seqenc_init(seqenc_t* E)
      * uniform */
     seqenc_setprior(E);
 
+    N = 1 << k_nmask;
+    E->nmask_ctx_mask = N -1 ;
+    cond_dist2_init(&E->d_nmask, N);
+
     dist2_init(&E->d_type);
     dist2_init(&E->d_aln_strand);
 
@@ -110,8 +118,6 @@ static void seqenc_init(seqenc_t* E)
 
     E->expected_supercontig_len = 0;
     memset(&E->supercontig_motif, 0, sizeof(cond_dist4_t));
-
-    E->n_qual = '!';
 }
 
 
@@ -151,6 +157,8 @@ void seqenc_free(seqenc_t* E)
         cond_dist16_free(&E->cs0[i]);
     }
 
+    cond_dist2_free(&E->d_nmask);
+
     cond_dist256_free(&E->d_contig_off);
     cond_dist4_free(&E->supercontig_motif);
 
@@ -165,10 +173,11 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 
     size_t n = twobit_len(x);
     if (n == 0) return;
-    
+
+   
     kmer_t uv;
-    size_t i;
     uint32_t ctx = 0;
+    size_t i;
 
     for (i = 0; i < n - 1 && i / 2 < prefix_len; i += 2) {
         uv = (twobit_get(x, i) << 2) | twobit_get(x, i + 1);
@@ -187,6 +196,11 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
         uv = twobit_get(x, i);
         cond_dist16_encode(E->ac, &E->cs, ctx, uv);
     }
+
+    /* encode N mask */
+    for (i = 0; i < n; ++i) {
+        cond_dist2_encode(E->ac, &E->d_nmask, 0, 0);
+    }
 }
 
 
@@ -197,55 +211,38 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
 
     kmer_t uv;
     uint32_t ctx = 0;
-    size_t i = 0;
-    size_t j = 0;
+    size_t i;
 
+    /* encode leading positions. */
+    for (i = 0; i < len - 1 && i / 2 < prefix_len; i += 2) {
+        uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
+        cond_dist16_encode(E->ac, &E->cs0[i/2], ctx, uv);
+        ctx = ((ctx << 4) | uv) & E->ctx_mask;
+    }
+
+    /* encode trailing positions. */
+    for (; i < len - 1; i += 2) {
+        uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
+        cond_dist16_encode(E->ac, &E->cs, ctx, uv);
+        ctx = ((ctx << 4) | uv) & E->ctx_mask;
+    }
+
+    /* handle odd read lengths */
+    if (i == len - 1) {
+        uv = chartokmer[(uint8_t) x[i]];
+        cond_dist16_encode(E->ac, &E->cs, ctx, uv);
+    }
+
+    /* encode N mask */
+    uint32_t nmask_ctx = 0;
     for (i = 0; i < len; ++i) {
-        if (x[i] == 'N') break;
-    }
-
-    /* the sequence contains Ns, encode around them */
-    if (i < len) {
-        i = 0;
-        while (i < len - 1) {
-            while (i < len && x[i] == 'N') ++i;
-            if (i == len) break;
-
-            j = i + 1;
-            while (j < len && x[j] == 'N') ++j;
-            if (j == len) break;
-
-            uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[j]];
-            cond_dist16_encode(E->ac, &E->cs, ctx, uv);
-            ctx = ((ctx << 4) | uv) & E->ctx_mask;
-
-            i = j + 1;
+        if (x[i] == 'N') {
+            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 1);
+            nmask_ctx = ((nmask_ctx << 1) | 1) & E->nmask_ctx_mask;
         }
-
-        /* handle odd read lengths */
-        if (i < len && x[i] != 'N') {
-            uv = chartokmer[(uint8_t) x[i]];
-            cond_dist16_encode(E->ac, &E->cs, ctx, uv);
-        }
-    }
-    /* no Ns, use a slightly more efficent loop */
-    else {
-        for (i = 0; i < len - 1 && i / 2 < prefix_len; i += 2) {
-            uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
-            cond_dist16_encode(E->ac, &E->cs0[i/2], ctx, uv);
-            ctx = ((ctx << 4) | uv) & E->ctx_mask;
-        }
-
-        for (; i < len - 1; i += 2) {
-            uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
-            cond_dist16_encode(E->ac, &E->cs, ctx, uv);
-            ctx = ((ctx << 4) | uv) & E->ctx_mask;
-        }
-
-        /* handle odd read lengths */
-        if (i == len - 1) {
-            uv = chartokmer[(uint8_t) x[i]];
-            cond_dist16_encode(E->ac, &E->cs, ctx, uv);
+        else {
+            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 0);
+            nmask_ctx = (nmask_ctx << 1) & E->nmask_ctx_mask;
         }
     }
 }
@@ -301,12 +298,6 @@ void seqenc_set_supercontig(seqenc_t* E, const twobit_t* supercontig)
 }
 
 
-void seqenc_set_n_qual(seqenc_t* E, char n_qual)
-{
-    E->n_qual = n_qual;
-}
-
-
 void seqenc_get_supercontig_consensus(seqenc_t* E, twobit_t* supercontig)
 {
     size_t len = twobit_len(supercontig);
@@ -340,65 +331,40 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 
     kmer_t uv, u, v;
     uint32_t ctx = 0;
-    size_t i, j;
+    size_t i;
 
-    const char* qs = x->qual.s;
-
-    for (i = 0; i < x->qual.n; ++i) {
-        if (qs[i] == E->n_qual) break;
+    for (i = 0; i < n - 1 && i / 2 < prefix_len;) {
+        uv = cond_dist16_decode(E->ac, &E->cs0[i/2], ctx);
+        u = uv >> 2;
+        v = uv & 0x3;
+        x->seq.s[i++] = kmertochar[u];
+        x->seq.s[i++] = kmertochar[v];
+        ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
-    /* sequence contains Ns */
-    if (i < n && x->qual.n > 0) {
-
-        memset(x->seq.s, 'N', n * sizeof(char));
-
-        i = 0;
-        while (i < n - 1) {
-            while (i < n && qs[i] == E->n_qual) ++i;
-            if (i == n) break;
-
-            j = i + 1;
-            while (j < n && qs[j] == E->n_qual) ++j;
-            if (j == n) break;
-
-            uv = cond_dist16_decode(E->ac, &E->cs, ctx);
-            u = uv >> 2;
-            v = uv & 0x3;
-
-            x->seq.s[i] = kmertochar[u];
-            x->seq.s[j] = kmertochar[v];
-
-            ctx = ((ctx << 4) | uv) & E->ctx_mask;
-
-            i = j + 1;
-        }
-    }
-    else {
-        for (i = 0; i < n - 1 && i / 2 < prefix_len;) {
-            uv = cond_dist16_decode(E->ac, &E->cs0[i/2], ctx);
-            u = uv >> 2;
-            v = uv & 0x3;
-            x->seq.s[i++] = kmertochar[u];
-            x->seq.s[i++] = kmertochar[v];
-            ctx = ((ctx << 4) | uv) & E->ctx_mask;
-        }
-
-        while (i < n - 1) {
-            uv = cond_dist16_decode(E->ac, &E->cs, ctx);
-            u = uv >> 2;
-            v = uv & 0x3;
-            x->seq.s[i++] = kmertochar[u];
-            x->seq.s[i++] = kmertochar[v];
-            ctx = ((ctx << 4) | uv) & E->ctx_mask;
-        }
+    while (i < n - 1) {
+        uv = cond_dist16_decode(E->ac, &E->cs, ctx);
+        u = uv >> 2;
+        v = uv & 0x3;
+        x->seq.s[i++] = kmertochar[u];
+        x->seq.s[i++] = kmertochar[v];
+        ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
-    if (i < n && (x->qual.n == 0 || qs[i] != E->n_qual)) {
+    if (i == n - 1) {
         uv = cond_dist16_decode(E->ac, &E->cs, ctx);
         v = uv & 0x3;
         x->seq.s[i] = kmertochar[v];
     }
+
+    uint32_t nmask_ctx = 0;
+    for (i = 0; i < n; ++i) {
+        nmask_ctx = (nmask_ctx << 1) | cond_dist2_decode(E->ac, &E->d_nmask, nmask_ctx);
+        nmask_ctx &= E->nmask_ctx_mask;
+
+        if (nmask_ctx & 0x1) x->seq.s[i] = 'N';
+    }
+
 
     x->seq.s[n] = '\0';
     x->seq.n = n;
@@ -455,6 +421,8 @@ static void seqenc_decode_supercontig(seqenc_t* E)
 
     twobit_free(supercontig);
     fastq_free_seq(seq);
+
+    E->expected_supercontig_len = 0;
 }
 
 

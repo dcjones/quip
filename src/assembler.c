@@ -152,7 +152,7 @@ assembler_t* assembler_alloc(
 
         A->N = 0;
 
-        A->B = bloom_alloc(4097152, 8);
+        A->B = bloom_alloc(3000000, 8);
 
         A->x = twobit_alloc();
 
@@ -709,12 +709,6 @@ void disassembler_free(disassembler_t* D)
     if (D == NULL) return;
     seqenc_free(D->seqenc);
     free(D);
-}
-
-
-void disassembler_set_n_qual(disassembler_t* D, char n_qual)
-{
-    seqenc_set_n_qual(D->seqenc, n_qual);
 }
 
 

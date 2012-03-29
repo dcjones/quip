@@ -53,9 +53,9 @@ Block Header
     |    Read Len.  |    Run Len.   |  ...
     +---+---+---+---+---+---+---+---+
 
-    +---+---+---+---+---+---+
-    | Q | U |    Run Len.   |  ...  (Where, Q is the base quality score, and 
-    +---+---+---+---+---+---+        U is quality score used to encode 'N's)
+    +---+---+---+---+---+
+    | Q |    Run Len.   |  ...  (Where Q is assumed the base quality score.)
+    +---+---+---+---+---+        
 
     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
     | Uncomp. Bytes |  Comp. Bytes  |        CRC64 Checksum         |   (ID chunk description)

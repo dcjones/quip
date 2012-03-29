@@ -21,7 +21,7 @@ static const size_t aligner_k   = 12;
 static const size_t block_size = 65000000;
 
 /* highest quality score supported. */
-static const char max_qual = 63;
+static const char qual_scale_size = 64;
 
 /* Maximum number of sequences to read before they are compressed. */
 #define chunk_size 5000 
@@ -109,15 +109,6 @@ static uint64_t read_uint64(quip_reader_t reader, void* reader_data)
            ((uint64_t) bytes[7]);
 }
 
-/* A quality score scheme is defined by the base (lowest) ascii
- * character, and the character used to represent Ns in the nucleotide
- * sequence. */
-typedef struct qual_scheme_t_
-{
-    char base_qual;
-    char n_qual;
-} qual_scheme_t;
-
 
 struct quip_out_t_
 {
@@ -154,7 +145,7 @@ struct quip_out_t_
     size_t readlen_count, readlen_size;
 
     /* run length encoded quality score scheme guesses */
-    qual_scheme_t* qual_scheme_vals;
+    char*     qual_scheme_vals;
     uint32_t* qual_scheme_lens;
     size_t qual_scheme_count, qual_scheme_size;
 
@@ -243,10 +234,9 @@ quip_out_t* quip_out_alloc(quip_writer_t writer, void* writer_data, bool quick)
 
     C->qual_scheme_size  = 1;
     C->qual_scheme_count = 1;
-    C->qual_scheme_vals = malloc_or_die(C->qual_scheme_size * sizeof(qual_scheme_t));
+    C->qual_scheme_vals = malloc_or_die(C->qual_scheme_size * sizeof(char));
     C->qual_scheme_lens = malloc_or_die(C->qual_scheme_size * sizeof(uint32_t));
-    C->qual_scheme_vals[0].base_qual = '!';
-    C->qual_scheme_vals[0].n_qual    = '!';
+    C->qual_scheme_vals[0] = '!';
 
     C->total_reads = 0;
     C->total_bases = 0;
@@ -303,8 +293,7 @@ void quip_out_flush_block(quip_out_t* C)
 
     /* write the run length encoded quality scheme guesses */
     for (i = 0; i < C->qual_scheme_count; ++i) {
-        write_uint8(C->writer, C->writer_data, C->qual_scheme_vals[i].base_qual);
-        write_uint8(C->writer, C->writer_data, C->qual_scheme_vals[i].n_qual);
+        write_uint8(C->writer, C->writer_data, C->qual_scheme_vals[i]);
         write_uint32(C->writer, C->writer_data, C->qual_scheme_lens[i]);
     }
 
@@ -362,11 +351,9 @@ void quip_out_flush_block(quip_out_t* C)
     C->qual_crc       = 0;
     C->readlen_count  = 0;
 
-    memmove(&C->qual_scheme_vals[0],
-            &C->qual_scheme_vals[C->qual_scheme_count - 1],
-            sizeof(qual_scheme_t));
-    C->qual_scheme_count = 1;
+    C->qual_scheme_vals[0] = C->qual_scheme_vals[C->qual_scheme_count - 1];
     C->qual_scheme_lens[0] = 0;
+    C->qual_scheme_count = 1;
 }
 
 
@@ -375,29 +362,11 @@ void quip_out_flush_block(quip_out_t* C)
 static void update_qual_scheme_guess(quip_out_t* C)
 {
     size_t i, j;
-    qual_scheme_t* last_qual_scheme = &C->qual_scheme_vals[C->qual_scheme_count - 1];
-    char base_qual = last_qual_scheme->base_qual;
+    char last_base_qual = C->qual_scheme_vals[C->qual_scheme_count - 1];
     char min_qual = '~';
     char max_qual = '!';
-    char n_qual   = 0;
     for (i = 0; i < C->chunk_len; ++i) {
         for (j = 0; j < C->chunk[i]->qual.n; ++j) {
-            if (C->chunk[i]->seq.s[j] == 'N') {
-                if (n_qual == 0) {
-                    n_qual = C->chunk[i]->qual.s[j];
-                }
-                else if (C->chunk[i]->qual.s[j] != n_qual) {
-                    fprintf(stderr, "Inconsistent quality score scheme: multiple "
-                                    "values are used to score 'N'.\n");
-                    exit(EXIT_FAILURE);
-                }
-            }
-            else if (C->chunk[i]->qual.s[j] == n_qual) {
-                    fprintf(stderr, "Invalid quality score scheme: nucleotides corresponding"
-                                    " to the lowest quality score should be 'N'.\n");
-                    exit(EXIT_FAILURE);
-            }
-
             if (C->chunk[i]->qual.s[j] < min_qual) {
                 min_qual = C->chunk[i]->qual.s[j];
             }
@@ -414,13 +383,8 @@ static void update_qual_scheme_guess(quip_out_t* C)
         exit(EXIT_FAILURE);
     }
 
-    if (n_qual == 0) {
-        n_qual = last_qual_scheme->n_qual;
-    }
-
-    if (n_qual != last_qual_scheme->n_qual ||
-        min_qual < last_qual_scheme->base_qual ||
-        max_qual > last_qual_scheme->base_qual + max_qual) {
+    if (min_qual <  last_base_qual ||
+        max_qual >= last_base_qual + qual_scale_size) {
 
         /* new quality scheme guess */
         C->qual_scheme_count++;
@@ -429,7 +393,7 @@ static void update_qual_scheme_guess(quip_out_t* C)
             C->qual_scheme_vals =
                 realloc_or_die(
                     C->qual_scheme_vals,
-                    C->qual_scheme_size * sizeof(qual_scheme_t));
+                    C->qual_scheme_size * sizeof(char));
 
             C->qual_scheme_lens =
                 realloc_or_die(
@@ -437,16 +401,14 @@ static void update_qual_scheme_guess(quip_out_t* C)
                     C->qual_scheme_size * sizeof(uint32_t));
         }
 
-        last_qual_scheme = &C->qual_scheme_vals[C->qual_scheme_count - 1];
-        last_qual_scheme->base_qual = base_qual;
-        last_qual_scheme->n_qual    = n_qual;
+        last_base_qual = C->qual_scheme_vals[C->qual_scheme_count - 1] = min_qual;
         C->qual_scheme_lens[C->qual_scheme_count - 1] = C->chunk_len;
     }
     else {
         C->qual_scheme_lens[C->qual_scheme_count - 1] += C->chunk_len;
     }
 
-    qualenc_set_base_qual(C->qualenc, base_qual);
+    qualenc_set_base_qual(C->qualenc, last_base_qual);
 }
 
 
@@ -603,21 +565,13 @@ struct quip_in_t_
     size_t readlen_idx, readlen_off;
 
     /* run length encoded quality scheme guesses */
-    qual_scheme_t* qual_scheme_vals;
+    char*     qual_scheme_vals;
     uint32_t* qual_scheme_lens;
     size_t qual_scheme_count, qual_scheme_size;
 
     size_t qual_scheme_idx, qual_scheme_off;
 
     bool end_of_stream;
-
-    /* decoding sequences depend on the quality scores being decoded,
-     * so when running multiple threads, we need to make sure the
-     * quality decode keeps up with the sequence decoder. This is
-     * facilitated here. */
-    uint32_t decoded_quals;
-    pthread_mutex_t seq_decode_mut;
-    pthread_cond_t  seq_decode_cond;
 };
 
 
@@ -646,43 +600,23 @@ static void* seq_decompressor_thread(void* ctx)
     size_t readlen_idx = D->readlen_idx;
     size_t readlen_off = D->readlen_off;
 
-    size_t qual_scheme_idx = D->qual_scheme_idx;
-    size_t qual_scheme_off = D->qual_scheme_off;
-
     size_t n; /* read length */
     size_t cnt = D->pending_reads >= chunk_size ?
                     chunk_size : D->pending_reads;
     size_t i;
 
     for (i = 0; i < cnt; ) {
-
-        pthread_mutex_lock(&D->seq_decode_mut);
-        if (i < D->decoded_quals) {
-            pthread_mutex_unlock(&D->seq_decode_mut);
-            n = D->readlen_vals[readlen_idx];
-            if (++readlen_off >= D->readlen_lens[readlen_idx]) {
-                readlen_off = 0;
-                readlen_idx++;
-            }
-
-            if (++qual_scheme_off >= D->qual_scheme_lens[qual_scheme_idx]) {
-                qual_scheme_off = 0;
-                qual_scheme_idx++;
-                if (qual_scheme_idx < D->qual_scheme_count) {
-                    disassembler_set_n_qual(D->disassembler, D->qual_scheme_vals[qual_scheme_idx].n_qual);
-                }
-            }
-
-            disassembler_read(D->disassembler, D->chunk[i], n);
-            D->seq_crc = crc64_update(
-                (uint8_t*) D->chunk[i]->seq.s,
-                D->chunk[i]->seq.n, D->seq_crc);
-            ++i;
+        n = D->readlen_vals[readlen_idx];
+        if (++readlen_off >= D->readlen_lens[readlen_idx]) {
+            readlen_off = 0;
+            readlen_idx++;
         }
-        else {
-            pthread_cond_wait(&D->seq_decode_cond, &D->seq_decode_mut);
-            pthread_mutex_unlock(&D->seq_decode_mut);
-        }
+
+        disassembler_read(D->disassembler, D->chunk[i], n);
+        D->seq_crc = crc64_update(
+            (uint8_t*) D->chunk[i]->seq.s,
+            D->chunk[i]->seq.n, D->seq_crc);
+        ++i;
     }
 
     return NULL;
@@ -714,15 +648,11 @@ static void* qual_decompressor_thread(void* ctx)
             qual_scheme_off = 0;
             qual_scheme_idx++;
             if (qual_scheme_idx < D->qual_scheme_count) {
-                qualenc_set_base_qual(D->qualenc, D->qual_scheme_vals[qual_scheme_idx].base_qual);
+                qualenc_set_base_qual(D->qualenc, D->qual_scheme_vals[qual_scheme_idx]);
             }
         }
 
         qualenc_decode(D->qualenc, D->chunk[i], n);
-        pthread_mutex_lock(&D->seq_decode_mut);
-        D->decoded_quals++;
-        pthread_mutex_unlock(&D->seq_decode_mut);
-        pthread_cond_signal(&D->seq_decode_cond);
 
         D->qual_crc = crc64_update(
             (uint8_t*) D->chunk[i]->qual.s,
@@ -814,15 +744,12 @@ quip_in_t* quip_in_alloc(quip_reader_t reader, void* reader_data)
 
     D->qual_scheme_size  = 1;
     D->qual_scheme_count = 0;
-    D->qual_scheme_vals = malloc_or_die(D->qual_scheme_size * sizeof(qual_scheme_t));
+    D->qual_scheme_vals = malloc_or_die(D->qual_scheme_size * sizeof(char));
     D->qual_scheme_lens = malloc_or_die(D->qual_scheme_size * sizeof(uint32_t));
 
     D->id_crc   = D->exp_id_crc   = 0;
     D->seq_crc  = D->exp_seq_crc  = 0;
     D->qual_crc = D->exp_qual_crc = 0;
-
-    pthread_mutex_init(&D->seq_decode_mut, NULL);
-    pthread_cond_init(&D->seq_decode_cond, NULL);
 
     D->end_of_stream = false;
 
@@ -859,8 +786,6 @@ void quip_in_free(quip_in_t* D)
     free(D->readlen_lens);
     free(D->qual_scheme_vals);
     free(D->qual_scheme_lens);
-    pthread_mutex_destroy(&D->seq_decode_mut);
-    pthread_cond_destroy(&D->seq_decode_cond);
     free(D);
 }
 
@@ -901,23 +826,22 @@ static void quip_in_read_block_header(quip_in_t* D)
 
     /* read run length encoded quality scheme guesses */
     cnt = 0;
-    qual_scheme_t qual_scheme_val;
-    uint32_t      qual_scheme_len;
+    char     qual_scheme_val;
+    uint32_t qual_scheme_len;
     D->qual_scheme_count = 0;
     while (cnt < D->pending_reads) {
-        qual_scheme_val.base_qual = (char) read_uint8(D->reader, D->reader_data);
-        qual_scheme_val.n_qual    = (char) read_uint8(D->reader, D->reader_data);
+        qual_scheme_val = (char) read_uint8(D->reader, D->reader_data);
         qual_scheme_len = read_uint32(D->reader, D->reader_data);
 
         if (D->qual_scheme_count >= D->qual_scheme_size) {
             while (D->qual_scheme_count >= D->qual_scheme_size) D->qual_scheme_size *= 2;
             D->qual_scheme_vals = realloc_or_die(
-                    D->qual_scheme_vals, D->qual_scheme_size * sizeof(uint32_t));
+                    D->qual_scheme_vals, D->qual_scheme_size * sizeof(char));
             D->qual_scheme_lens = realloc_or_die(
                     D->qual_scheme_lens, D->qual_scheme_size * sizeof(uint32_t));
         }
 
-        memcpy(&D->qual_scheme_vals[D->qual_scheme_count], &qual_scheme_val, sizeof(qual_scheme_t));
+        D->qual_scheme_vals[D->qual_scheme_count] = qual_scheme_val;
         D->qual_scheme_lens[D->qual_scheme_count] = qual_scheme_len;
         D->qual_scheme_count++;
         cnt += qual_scheme_len;
@@ -994,8 +918,7 @@ static void quip_in_read_block_header(quip_in_t* D)
            D->qual_scheme_lens[D->qual_scheme_idx] == 0) {
         D->qual_scheme_idx++;
     }
-    disassembler_set_n_qual(D->disassembler, D->qual_scheme_vals[D->qual_scheme_idx].n_qual);
-    qualenc_set_base_qual(D->qualenc, D->qual_scheme_vals[D->qual_scheme_idx].base_qual);
+    qualenc_set_base_qual(D->qualenc, D->qual_scheme_vals[D->qual_scheme_idx]);
 
     D->id_crc   = 0;
     D->seq_crc  = 0;
@@ -1046,8 +969,6 @@ seq_t* quip_in_read(quip_in_t* D)
 
     /* launch threads to decode 1000 reads */
     pthread_t id_thread, seq_thread, qual_thread;
-
-    D->decoded_quals = 0;
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
@@ -1129,7 +1050,6 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
         qual_scheme_count = 0;
         while (qual_scheme_count < block_reads) {
             read_uint8(reader, reader_data); /* base_qual */
-            read_uint8(reader, reader_data); /* n_qual */
             qual_scheme_count += read_uint32(reader, reader_data);
             l->header_bytes += 6;
         }
