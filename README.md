@@ -11,6 +11,9 @@ Installation
 No special libraries are needed, Quip depends only on the pthreads library,
 available on any Unix-like system. You will need a C compiler.
 
+From the git repository
+-----------------------
+
 After obtaining the source code from the git repository with
 
     git clone git://github.com/dcjones/quip.git
@@ -20,6 +23,14 @@ Generate the configure script using
     autoreconf -i
 
 Then, on most systems, you need only
+
+    ./configure && make install
+
+
+From a source tarball
+---------------------
+
+Extract the source code with `tar xzf`, then simply
 
     ./configure && make install
 

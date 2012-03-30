@@ -1,7 +1,7 @@
 
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS = src
+SUBDIRS = src extra
 
 dist_man_MANS = quip.1
 
-EXTRADIST = README.md quip-format.md quip-api.md
+EXTRA_DIST = README.md quip-format.md quip-api.md
