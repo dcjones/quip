@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <pthread.h>
+#include <errno.h>
 
 static const uint8_t quip_header_magic[6] = 
     {0xff, 'Q', 'U', 'I', 'P', 0x00};
@@ -107,6 +108,58 @@ static uint64_t read_uint64(quip_reader_t reader, void* reader_data)
            ((uint64_t) bytes[5] << 16) |
            ((uint64_t) bytes[6] << 8) |
            ((uint64_t) bytes[7]);
+}
+
+
+static void pthread_join_or_die(pthread_t thread, void** value_ptr)
+{
+    int ret = pthread_join(thread, value_ptr);
+    if (ret != 0) {
+        fputs("pthread_join error: ", stderr);
+        switch (ret)
+        {
+            case EDEADLK:
+                fputs("deadlock detected.\n", stderr);
+                break;
+
+            case EINVAL:
+                fputs("non-joinable thread joined.\n", stderr);
+                break;
+
+            case ESRCH:
+                fputs("thread could not be found.\n", stderr);
+                break;
+
+            default:
+                fputs("mysterious non-specific error.\n", stderr);
+        }
+
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void pthread_create_or_die(
+    pthread_t* thread, const pthread_attr_t* attr, void *(*start_routine)(void*), void* arg)
+{
+    int ret = pthread_create(thread, attr, start_routine, arg);
+    if (ret != 0) {
+        fputs("pthread_create error: ", stderr);
+        switch (ret) 
+        {
+            case EAGAIN:
+                fputs("insufficient resources.\n", stderr);
+                break;
+
+            case EINVAL:
+                fputs("invalid attributes.\n", stderr);
+                break;
+
+            default:
+                fputs("mysterious non-specific error.\n", stderr);
+        }
+
+        exit(EXIT_FAILURE);
+    }
 }
 
 
@@ -421,9 +474,9 @@ static void quip_out_flush_chunk(quip_out_t* C)
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
     pthread_t id_thread, seq_thread, qual_thread;
-    pthread_create(&id_thread,   &attr, id_compressor_thread,   (void*) C);
-    pthread_create(&seq_thread,  &attr, seq_compressor_thread,  (void*) C);
-    pthread_create(&qual_thread, &attr, qual_compressor_thread, (void*) C);
+    pthread_create_or_die(&id_thread,   &attr, id_compressor_thread,   (void*) C);
+    pthread_create_or_die(&seq_thread,  &attr, seq_compressor_thread,  (void*) C);
+    pthread_create_or_die(&qual_thread, &attr, qual_compressor_thread, (void*) C);
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
@@ -439,9 +492,9 @@ static void quip_out_flush_chunk(quip_out_t* C)
     C->total_reads    += C->chunk_len;
 
     void* val;
-    pthread_join(id_thread,   &val);
-    pthread_join(seq_thread,  &val);
-    pthread_join(qual_thread, &val);
+    pthread_join_or_die(id_thread,   &val);
+    pthread_join_or_die(seq_thread,  &val);
+    pthread_join_or_die(qual_thread, &val);
 
     pthread_attr_destroy(&attr);
 
@@ -974,13 +1027,13 @@ seq_t* quip_in_read(quip_in_t* D)
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-    pthread_create(&id_thread,   &attr, id_decompressor_thread,   (void*) D);
-    pthread_create(&seq_thread,  &attr, seq_decompressor_thread,  (void*) D);
-    pthread_create(&qual_thread, &attr, qual_decompressor_thread, (void*) D);
+    pthread_create_or_die(&id_thread,   &attr, id_decompressor_thread,   (void*) D);
+    pthread_create_or_die(&seq_thread,  &attr, seq_decompressor_thread,  (void*) D);
+    pthread_create_or_die(&qual_thread, &attr, qual_decompressor_thread, (void*) D);
 
-    pthread_join(id_thread,   NULL);
-    pthread_join(seq_thread,  NULL);
-    pthread_join(qual_thread, NULL);
+    pthread_join_or_die(id_thread,   NULL);
+    pthread_join_or_die(seq_thread,  NULL);
+    pthread_join_or_die(qual_thread, NULL);
 
     pthread_attr_destroy(&attr);
 
