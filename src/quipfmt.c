@@ -1,5 +1,5 @@
 
-#include "quip.h"
+#include "quipfmt.h"
 #include "assembler.h"
 #include "misc.h"
 #include "qualenc.h"
@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <pthread.h>
+#include <errno.h>
 
 static const uint8_t quip_header_magic[6] = 
     {0xff, 'Q', 'U', 'I', 'P', 0x00};
@@ -20,8 +21,17 @@ static const size_t aligner_k   = 12;
 /* maximum number of bases per block */
 static const size_t block_size = 65000000;
 
+/* highest quality score supported. */
+static const char qual_scale_size = 64;
+
 /* Maximum number of sequences to read before they are compressed. */
 #define chunk_size 5000 
+
+
+static void write_uint8(quip_writer_t writer, void* writer_data, uint8_t x)
+{
+    writer(writer_data, &x, 1);
+}
 
 
 static void write_uint32(quip_writer_t writer, void* writer_data, uint32_t x)
@@ -46,6 +56,20 @@ static void write_uint64(quip_writer_t writer, void* writer_data, uint64_t x)
                          (uint8_t) x };
 
     writer(writer_data, bytes, 8);
+}
+
+
+static uint8_t read_uint8(quip_reader_t reader, void* reader_data)
+{
+    uint8_t x;
+    size_t cnt = reader(reader_data, &x, 1);
+
+    if (cnt == 0) {
+        fprintf(stderr, "Unexpected end of file.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    return x;
 }
 
 
@@ -87,11 +111,63 @@ static uint64_t read_uint64(quip_reader_t reader, void* reader_data)
 }
 
 
+static void pthread_join_or_die(pthread_t thread, void** value_ptr)
+{
+    int ret = pthread_join(thread, value_ptr);
+    if (ret != 0) {
+        fputs("pthread_join error: ", stderr);
+        switch (ret)
+        {
+            case EDEADLK:
+                fputs("deadlock detected.\n", stderr);
+                break;
+
+            case EINVAL:
+                fputs("non-joinable thread joined.\n", stderr);
+                break;
+
+            case ESRCH:
+                fputs("thread could not be found.\n", stderr);
+                break;
+
+            default:
+                fputs("mysterious non-specific error.\n", stderr);
+        }
+
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void pthread_create_or_die(
+    pthread_t* thread, const pthread_attr_t* attr, void *(*start_routine)(void*), void* arg)
+{
+    int ret = pthread_create(thread, attr, start_routine, arg);
+    if (ret != 0) {
+        fputs("pthread_create error: ", stderr);
+        switch (ret) 
+        {
+            case EAGAIN:
+                fputs("insufficient resources.\n", stderr);
+                break;
+
+            case EINVAL:
+                fputs("invalid attributes.\n", stderr);
+                break;
+
+            default:
+                fputs("mysterious non-specific error.\n", stderr);
+        }
+
+        exit(EXIT_FAILURE);
+    }
+}
+
+
 
 struct quip_out_t_
 {
     /* sequence buffers */
-    seq_t* chunk[chunk_size];
+    short_read_t* chunk[chunk_size];
     size_t chunk_len;
 
     /* function for writing compressed data */
@@ -121,6 +197,11 @@ struct quip_out_t_
     uint32_t* readlen_vals;
     uint32_t* readlen_lens;
     size_t readlen_count, readlen_size;
+
+    /* run length encoded quality score scheme guesses */
+    char*     qual_scheme_vals;
+    uint32_t* qual_scheme_lens;
+    size_t qual_scheme_count, qual_scheme_size;
 
     /* general statistics */
     uint64_t total_reads;
@@ -205,6 +286,12 @@ quip_out_t* quip_out_alloc(quip_writer_t writer, void* writer_data, bool quick)
     C->readlen_vals = malloc_or_die(C->readlen_size * sizeof(uint32_t));
     C->readlen_lens = malloc_or_die(C->readlen_size * sizeof(uint32_t));
 
+    C->qual_scheme_size  = 1;
+    C->qual_scheme_count = 1;
+    C->qual_scheme_vals = malloc_or_die(C->qual_scheme_size * sizeof(char));
+    C->qual_scheme_lens = malloc_or_die(C->qual_scheme_size * sizeof(uint32_t));
+    C->qual_scheme_vals[0] = '!';
+
     C->total_reads = 0;
     C->total_bases = 0;
 
@@ -251,12 +338,19 @@ void quip_out_flush_block(quip_out_t* C)
     write_uint32(C->writer, C->writer_data, C->buffered_reads);
     write_uint32(C->writer, C->writer_data, C->buffered_bases);
 
-    /* write the (run length encoded) read lengths. */
+    /* write the run length encoded read lengths. */
     size_t i;
     for (i = 0; i < C->readlen_count; ++i) {
         write_uint32(C->writer, C->writer_data, C->readlen_vals[i]);
         write_uint32(C->writer, C->writer_data, C->readlen_lens[i]);
     }
+
+    /* write the run length encoded quality scheme guesses */
+    for (i = 0; i < C->qual_scheme_count; ++i) {
+        write_uint8(C->writer, C->writer_data, C->qual_scheme_vals[i]);
+        write_uint32(C->writer, C->writer_data, C->qual_scheme_lens[i]);
+    }
+
 
     /* finish coding */
     size_t comp_id_bytes   = idenc_finish(C->idenc);
@@ -311,18 +405,80 @@ void quip_out_flush_block(quip_out_t* C)
     C->seq_crc        = 0;
     C->qual_crc       = 0;
     C->readlen_count  = 0;
+
+    C->qual_scheme_vals[0] = C->qual_scheme_vals[C->qual_scheme_count - 1];
+    C->qual_scheme_lens[0] = 0;
+    C->qual_scheme_count = 1;
 }
+
+
+/* Ensure the proper quality score scheme is used for the
+ * current chunk. */
+static void update_qual_scheme_guess(quip_out_t* C)
+{
+    size_t i, j;
+    char last_base_qual = C->qual_scheme_vals[C->qual_scheme_count - 1];
+    char min_qual = '~';
+    char max_qual = '!';
+    for (i = 0; i < C->chunk_len; ++i) {
+        for (j = 0; j < C->chunk[i]->qual.n; ++j) {
+            if (C->chunk[i]->qual.s[j] < min_qual) {
+                min_qual = C->chunk[i]->qual.s[j];
+            }
+
+            if (C->chunk[i]->qual.s[j] > max_qual) {
+                max_qual = C->chunk[i]->qual.s[j];
+            }
+        }
+    }
+
+    if (max_qual - min_qual > max_qual) {
+        fprintf(stderr, "Invalid quality score scheme: are large range is used than quip "
+                        "currently supports..\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (min_qual <  last_base_qual ||
+        max_qual >= last_base_qual + qual_scale_size) {
+
+        /* new quality scheme guess */
+        C->qual_scheme_count++;
+        if (C->qual_scheme_count >= C->qual_scheme_size) {
+            C->qual_scheme_size++;
+            C->qual_scheme_vals =
+                realloc_or_die(
+                    C->qual_scheme_vals,
+                    C->qual_scheme_size * sizeof(char));
+
+            C->qual_scheme_lens =
+                realloc_or_die(
+                    C->qual_scheme_lens,
+                    C->qual_scheme_size * sizeof(uint32_t));
+        }
+
+        last_base_qual = C->qual_scheme_vals[C->qual_scheme_count - 1] = min_qual;
+        C->qual_scheme_lens[C->qual_scheme_count - 1] = C->chunk_len;
+    }
+    else {
+        C->qual_scheme_lens[C->qual_scheme_count - 1] += C->chunk_len;
+    }
+
+    qualenc_set_base_qual(C->qualenc, last_base_qual);
+}
+
 
 static void quip_out_flush_chunk(quip_out_t* C)
 {
+    update_qual_scheme_guess(C);
+
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
     pthread_t id_thread, seq_thread, qual_thread;
-    pthread_create(&id_thread,   &attr, id_compressor_thread,   (void*) C);
-    pthread_create(&seq_thread,  &attr, seq_compressor_thread,  (void*) C);
-    pthread_create(&qual_thread, &attr, qual_compressor_thread, (void*) C);
+    pthread_create_or_die(&id_thread,   &attr, id_compressor_thread,   (void*) C);
+    pthread_create_or_die(&seq_thread,  &attr, seq_compressor_thread,  (void*) C);
+    pthread_create_or_die(&qual_thread, &attr, qual_compressor_thread, (void*) C);
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
@@ -338,9 +494,9 @@ static void quip_out_flush_chunk(quip_out_t* C)
     C->total_reads    += C->chunk_len;
 
     void* val;
-    pthread_join(id_thread,   &val);
-    pthread_join(seq_thread,  &val);
-    pthread_join(qual_thread, &val);
+    pthread_join_or_die(id_thread,   &val);
+    pthread_join_or_die(seq_thread,  &val);
+    pthread_join_or_die(qual_thread, &val);
 
     pthread_attr_destroy(&attr);
 
@@ -406,6 +562,8 @@ void quip_out_free(quip_out_t* C)
     assembler_free(C->assembler);
     free(C->readlen_vals);
     free(C->readlen_lens);
+    free(C->qual_scheme_vals);
+    free(C->qual_scheme_lens);
     free(C);
 }
 
@@ -413,7 +571,7 @@ void quip_out_free(quip_out_t* C)
 struct quip_in_t_
 {
     /* sequence buffers */
-    seq_t* chunk[chunk_size];
+    short_read_t* chunk[chunk_size];
     size_t chunk_len;
     size_t chunk_pos;
 
@@ -461,15 +619,13 @@ struct quip_in_t_
 
     size_t readlen_idx, readlen_off;
 
-    bool end_of_stream;
+    /* run length encoded quality scheme guesses */
+    char*     qual_scheme_vals;
+    uint32_t* qual_scheme_lens;
+    size_t qual_scheme_count, qual_scheme_size;
+    size_t qual_scheme_idx, qual_scheme_off;
 
-    /* decoding sequences depend on the quality scores being decoded,
-     * so when running multiple threads, we need to make sure the
-     * quality decode keeps up with the sequence decoder. This is
-     * facilitated here. */
-    uint32_t decoded_quals;
-    pthread_mutex_t seq_decode_mut;
-    pthread_cond_t  seq_decode_cond;
+    bool end_of_stream;
 };
 
 
@@ -497,32 +653,24 @@ static void* seq_decompressor_thread(void* ctx)
 
     size_t readlen_idx = D->readlen_idx;
     size_t readlen_off = D->readlen_off;
+
     size_t n; /* read length */
     size_t cnt = D->pending_reads >= chunk_size ?
                     chunk_size : D->pending_reads;
     size_t i;
 
     for (i = 0; i < cnt; ) {
-
-        pthread_mutex_lock(&D->seq_decode_mut);
-        if (i < D->decoded_quals) {
-            pthread_mutex_unlock(&D->seq_decode_mut);
-            n = D->readlen_vals[readlen_idx];
-            if (++readlen_off >= D->readlen_lens[readlen_idx]) {
-                readlen_off = 0;
-                readlen_idx++;
-            }
-
-            disassembler_read(D->disassembler, D->chunk[i], n);
-            D->seq_crc = crc64_update(
-                (uint8_t*) D->chunk[i]->seq.s,
-                D->chunk[i]->seq.n, D->seq_crc);
-            ++i;
+        n = D->readlen_vals[readlen_idx];
+        if (++readlen_off >= D->readlen_lens[readlen_idx]) {
+            readlen_off = 0;
+            readlen_idx++;
         }
-        else {
-            pthread_cond_wait(&D->seq_decode_cond, &D->seq_decode_mut);
-            pthread_mutex_unlock(&D->seq_decode_mut);
-        }
+
+        disassembler_read(D->disassembler, D->chunk[i], n);
+        D->seq_crc = crc64_update(
+            (uint8_t*) D->chunk[i]->seq.s,
+            D->chunk[i]->seq.n, D->seq_crc);
+        ++i;
     }
 
     return NULL;
@@ -535,6 +683,10 @@ static void* qual_decompressor_thread(void* ctx)
 
     size_t readlen_idx = D->readlen_idx;
     size_t readlen_off = D->readlen_off;
+
+    size_t qual_scheme_idx = D->qual_scheme_idx;
+    size_t qual_scheme_off = D->qual_scheme_off;
+
     size_t n; /* read length */
     size_t cnt = D->pending_reads >= chunk_size ?
                     chunk_size : D->pending_reads;
@@ -546,11 +698,15 @@ static void* qual_decompressor_thread(void* ctx)
             readlen_idx++;
         }
 
+        if (++qual_scheme_off >= D->qual_scheme_lens[qual_scheme_idx]) {
+            qual_scheme_off = 0;
+            qual_scheme_idx++;
+            if (qual_scheme_idx < D->qual_scheme_count) {
+                qualenc_set_base_qual(D->qualenc, D->qual_scheme_vals[qual_scheme_idx]);
+            }
+        }
+
         qualenc_decode(D->qualenc, D->chunk[i], n);
-        pthread_mutex_lock(&D->seq_decode_mut);
-        D->decoded_quals++;
-        pthread_mutex_unlock(&D->seq_decode_mut);
-        pthread_cond_signal(&D->seq_decode_cond);
 
         D->qual_crc = crc64_update(
             (uint8_t*) D->chunk[i]->qual.s,
@@ -640,12 +796,14 @@ quip_in_t* quip_in_alloc(quip_reader_t reader, void* reader_data)
     D->readlen_vals = malloc_or_die(D->readlen_size * sizeof(uint32_t));
     D->readlen_lens = malloc_or_die(D->readlen_size * sizeof(uint32_t));
 
+    D->qual_scheme_size  = 1;
+    D->qual_scheme_count = 0;
+    D->qual_scheme_vals = malloc_or_die(D->qual_scheme_size * sizeof(char));
+    D->qual_scheme_lens = malloc_or_die(D->qual_scheme_size * sizeof(uint32_t));
+
     D->id_crc   = D->exp_id_crc   = 0;
     D->seq_crc  = D->exp_seq_crc  = 0;
     D->qual_crc = D->exp_qual_crc = 0;
-
-    pthread_mutex_init(&D->seq_decode_mut, NULL);
-    pthread_cond_init(&D->seq_decode_cond, NULL);
 
     D->end_of_stream = false;
 
@@ -678,8 +836,10 @@ void quip_in_free(quip_in_t* D)
     free(D->qualbuf);
     free(D->idbuf);
     free(D->seqbuf);
-    pthread_mutex_destroy(&D->seq_decode_mut);
-    pthread_cond_destroy(&D->seq_decode_cond);
+    free(D->readlen_vals);
+    free(D->readlen_lens);
+    free(D->qual_scheme_vals);
+    free(D->qual_scheme_lens);
     free(D);
 }
 
@@ -697,11 +857,11 @@ static void quip_in_read_block_header(quip_in_t* D)
 
     /* read run length encoded read lengths */
     uint32_t cnt = 0;
-    uint32_t val, len;
+    uint32_t readlen_val, readlen_len;
     D->readlen_count = 0;
     while (cnt < D->pending_reads) {
-        val = read_uint32(D->reader, D->reader_data);
-        len = read_uint32(D->reader, D->reader_data);
+        readlen_val = read_uint32(D->reader, D->reader_data);
+        readlen_len = read_uint32(D->reader, D->reader_data);
 
         if (D->readlen_count >= D->readlen_size) {
             while (D->readlen_count >= D->readlen_size) D->readlen_size *= 2;
@@ -711,11 +871,34 @@ static void quip_in_read_block_header(quip_in_t* D)
                     D->readlen_lens, D->readlen_size * sizeof(uint32_t));
         }
 
-        D->readlen_vals[D->readlen_count] = val;
-        D->readlen_lens[D->readlen_count] = len;
+        D->readlen_vals[D->readlen_count] = readlen_val;
+        D->readlen_lens[D->readlen_count] = readlen_len;
 
         D->readlen_count++;
-        cnt += len;
+        cnt += readlen_len;
+    }
+
+    /* read run length encoded quality scheme guesses */
+    cnt = 0;
+    char     qual_scheme_val;
+    uint32_t qual_scheme_len;
+    D->qual_scheme_count = 0;
+    while (cnt < D->pending_reads) {
+        qual_scheme_val = (char) read_uint8(D->reader, D->reader_data);
+        qual_scheme_len = read_uint32(D->reader, D->reader_data);
+
+        if (D->qual_scheme_count >= D->qual_scheme_size) {
+            while (D->qual_scheme_count >= D->qual_scheme_size) D->qual_scheme_size *= 2;
+            D->qual_scheme_vals = realloc_or_die(
+                    D->qual_scheme_vals, D->qual_scheme_size * sizeof(char));
+            D->qual_scheme_lens = realloc_or_die(
+                    D->qual_scheme_lens, D->qual_scheme_size * sizeof(uint32_t));
+        }
+
+        D->qual_scheme_vals[D->qual_scheme_count] = qual_scheme_val;
+        D->qual_scheme_lens[D->qual_scheme_count] = qual_scheme_len;
+        D->qual_scheme_count++;
+        cnt += qual_scheme_len;
     }
 
     /* read id byte count */
@@ -782,6 +965,15 @@ static void quip_in_read_block_header(quip_in_t* D)
     D->readlen_idx = 0;
     D->readlen_off = 0;
 
+    D->qual_scheme_off = 0;
+    D->qual_scheme_idx = 0;
+    /* skip over any quality schemes that were not used */
+    while (D->qual_scheme_idx < D->qual_scheme_count - 1 &&
+           D->qual_scheme_lens[D->qual_scheme_idx] == 0) {
+        D->qual_scheme_idx++;
+    }
+    qualenc_set_base_qual(D->qualenc, D->qual_scheme_vals[D->qual_scheme_idx]);
+
     D->id_crc   = 0;
     D->seq_crc  = 0;
     D->qual_crc = 0;
@@ -829,22 +1021,20 @@ seq_t* quip_in_read(quip_in_t* D)
         qualenc_start_decoder(D->qualenc);
     }
 
-    /* launch threads to decode 1000 reads */
+    /* launch threads to decode a chunk of reads */
     pthread_t id_thread, seq_thread, qual_thread;
-
-    D->decoded_quals = 0;
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-    pthread_create(&id_thread,   &attr, id_decompressor_thread,   (void*) D);
-    pthread_create(&seq_thread,  &attr, seq_decompressor_thread,  (void*) D);
-    pthread_create(&qual_thread, &attr, qual_decompressor_thread, (void*) D);
+    pthread_create_or_die(&id_thread,   &attr, id_decompressor_thread,   (void*) D);
+    pthread_create_or_die(&seq_thread,  &attr, seq_decompressor_thread,  (void*) D);
+    pthread_create_or_die(&qual_thread, &attr, qual_decompressor_thread, (void*) D);
 
-    pthread_join(id_thread,   NULL);
-    pthread_join(seq_thread,  NULL);
-    pthread_join(qual_thread, NULL);
+    pthread_join_or_die(id_thread,   NULL);
+    pthread_join_or_die(seq_thread,  NULL);
+    pthread_join_or_die(qual_thread, NULL);
 
     pthread_attr_destroy(&attr);
 
@@ -859,6 +1049,11 @@ seq_t* quip_in_read(quip_in_t* D)
             D->readlen_off = 0;
             D->readlen_idx++;
         }
+
+        if (++D->qual_scheme_off >= D->qual_scheme_lens[D->qual_scheme_idx]) {
+            D->qual_scheme_off = 0;
+            D->qual_scheme_idx++;
+        }
     }
     
     return D->chunk[D->chunk_pos++];
@@ -870,6 +1065,7 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
     memset(l, 0, sizeof(quip_list_t));
     uint32_t block_reads;
     uint32_t readlen_count;
+    uint32_t qual_scheme_count;
     uint64_t n;
 
     uint64_t block_bytes;
@@ -903,6 +1099,13 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
             read_uint32(reader, reader_data); /* read length */
             readlen_count += read_uint32(reader, reader_data);
             l->header_bytes += 8;
+        }
+
+        qual_scheme_count = 0;
+        while (qual_scheme_count < block_reads) {
+            read_uint8(reader, reader_data); /* base_qual */
+            qual_scheme_count += read_uint32(reader, reader_data);
+            l->header_bytes += 6;
         }
 
         block_bytes = 0;

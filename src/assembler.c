@@ -152,7 +152,7 @@ assembler_t* assembler_alloc(
 
         A->N = 0;
 
-        A->B = bloom_alloc(4097152, 8);
+        A->B = bloom_alloc(3000000, 8);
 
         A->x = twobit_alloc();
 
@@ -631,7 +631,9 @@ size_t assembler_finish(assembler_t* A)
         bytes += 4;
 
         /* write the supercontig */
-        seqenc_encode_twobit_seq(A->seqenc, A->supercontig);
+        if (twobit_len(A->supercontig) > 0) {
+            seqenc_encode_twobit_seq(A->seqenc, A->supercontig);
+        }
 
         index_contigs(A);
 

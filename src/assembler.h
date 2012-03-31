@@ -1,7 +1,7 @@
 /*
  * This file is part of quip.
  *
- * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ * Copyright (c) 2012 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
  */
 
@@ -42,7 +42,7 @@ typedef struct disassembler_t_ disassembler_t;
 disassembler_t* disassembler_alloc(quip_reader_t reader, void* reader_data);
 void            disassembler_free(disassembler_t*);
 
-void disassembler_read(disassembler_t*, seq_t* x, size_t n);
+void disassembler_read(disassembler_t*, short_read_t* x, size_t n);
 void disassembler_reset(disassembler_t*);
 
 

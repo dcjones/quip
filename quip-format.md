@@ -53,6 +53,10 @@ Block Header
     |    Read Len.  |    Run Len.   |  ...
     +---+---+---+---+---+---+---+---+
 
+    +---+---+---+---+---+
+    | Q |    Run Len.   |  ...  (Where Q is assumed the base quality score.)
+    +---+---+---+---+---+        
+
     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
     | Uncomp. Bytes |  Comp. Bytes  |        CRC64 Checksum         |   (ID chunk description)
     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
@@ -68,8 +72,10 @@ Block Header
     A block header consists of a 4-byte integer giving the number of reads in
     the block, followed by a 4-byte integer giving the number of bases.
 
-    Next read-lengths are listed using run-length encoded.
+    Read-lengths are listed using run-length encoding.
 
+    Guesses at the quality score scheme are encoded using run length encoding.
+    
     Following this, 4-byte uncompressed and compressed byte counts and 8-byte
     checksums are given for read IDs, sequences, and quality scores,
     respectively.

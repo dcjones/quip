@@ -15,7 +15,6 @@
 #define QUIP_IDENC
 
 #include "quip.h"
-#include "quip_parse.h"
 #include <stdint.h>
 
 
@@ -24,12 +23,12 @@ typedef struct idenc_t_ idenc_t;
 idenc_t* idenc_alloc_encoder(quip_writer_t writer, void* writer_data);
 void     idenc_free(idenc_t*);
 
-void idenc_encode(idenc_t*, const seq_t*);
+void idenc_encode(idenc_t*, const short_read_t*);
 size_t idenc_finish(idenc_t*);
 void   idenc_flush(idenc_t*);
 
 idenc_t* idenc_alloc_decoder(quip_reader_t reader, void* reader_data);
-void     idenc_decode(idenc_t*, seq_t*);
+void     idenc_decode(idenc_t*, short_read_t*);
 
 void     idenc_start_decoder(idenc_t*);
 void     idenc_reset_decoder(idenc_t*);

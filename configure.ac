@@ -1,5 +1,5 @@
 
-AC_INIT([quip], [0.1], [dcjones@cs.washington.ed])
+AC_INIT([quip], [1.0.0], [dcjones@cs.washington.ed])
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 

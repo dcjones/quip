@@ -25,8 +25,6 @@
 #define O_BINARY 0
 #endif 
 
-static const char qual_first = 33;
-
 const char* prog_name;
 
 
@@ -196,11 +194,6 @@ static FILE* open_fout(const char* fn)
  * rescales the quality scores to printable characters. */
 static void fastq_print(FILE* f, seq_t* seq)
 {
-    size_t i;
-    for (i = 0; i < seq->qual.n; ++i) {
-        seq->qual.s[i] += qual_first;
-    }
-
     fprintf(f, "@%s\n%s\n+\n%s\n",
             seq->id1.s,
             seq->seq.s,
