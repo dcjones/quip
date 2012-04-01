@@ -1,5 +1,6 @@
 #include <string.h>
 #include <unistd.h>
+#include <inttypes.h>
 // #include "faidx.h"
 #include "sam.h"
 
@@ -39,14 +40,12 @@ static void append_header_text(bam_header_t *header, char* text, int len)
 
 samfile_t* samopen_out(quip_writer_t writer, void* writer_data, bool binary, void* aux)
 {
-
 	samfile_t *fp;
 	fp = (samfile_t*)calloc(1, sizeof(samfile_t));
 
 	fp->header = bam_header_dup((const bam_header_t*)aux);
 
 	if (binary) { // binary
-		int i;
 		fp->type |= TYPE_BAM;
 		fp->x.bam = bam_open_out(writer, writer_data);
 		if (fp->x.bam == 0) goto open_err_ret;
@@ -55,22 +54,12 @@ samfile_t* samopen_out(quip_writer_t writer, void* writer_data, bool binary, voi
 	} else { // text
 		// open file
 
-		/* TODO we need to replace all this fwrite stuff
-		 * with calls to writer/writer_data.
+		fp->x.tamw.writer      = writer;
+		fp->x.tamw.writer_data = writer_data;
+		fp->type |= BAM_OFDEC<<2;
 
-		   Fuck. They call fprintf also, which means
-		   we need to replace this with calls to snprintf. */
-
-
-		fp->x.tamw = strcmp(fn, "-")? fopen(fn, "w") : stdout;
-		if (fp->x.tamr == 0) goto open_err_ret;
-
-
-		if (strchr(mode, 'X')) fp->type |= BAM_OFSTR<<2;
-		else if (strchr(mode, 'x')) fp->type |= BAM_OFHEX<<2;
-		else fp->type |= BAM_OFDEC<<2;
 		// write header
-		if (strchr(mode, 'h')) {
+		if (aux) {
 			int i;
 			bam_header_t *alt;
 			// parse the header text 
@@ -79,13 +68,20 @@ samfile_t* samopen_out(quip_writer_t writer, void* writer_data, bool binary, voi
 			sam_header_parse(alt);
 			alt->l_text = 0; alt->text = 0;
 			// check if there are @SQ lines in the header
-			fwrite(fp->header->text, 1, fp->header->l_text, fp->x.tamw); // FIXME: better to skip the trailing NULL
+			writer(writer_data, (uint8_t*) fp->header->text, fp->header->l_text);
+
 			if (alt->n_targets) { // then write the header text without dumping ->target_{name,len}
 				if (alt->n_targets != fp->header->n_targets && bam_verbose >= 1)
 					fprintf(stderr, "[samopen] inconsistent number of target sequences. Output the text header.\n");
 			} else { // then dump ->target_{name,len}
+				char target_len_str[11];
 				for (i = 0; i < fp->header->n_targets; ++i)
-					fprintf(fp->x.tamw, "@SQ\tSN:%s\tLN:%d\n", fp->header->target_name[i], fp->header->target_len[i]);
+					writer(writer_data, (uint8_t*) "@SQ\tSN:", 7);
+					writer(writer_data, (uint8_t*) fp->header->target_name[i], strlen(fp->header->target_name[i]));
+					writer(writer_data, (uint8_t*) "\tLN:", 4);
+					snprintf(target_len_str, sizeof(target_len_str), "%"PRIu32, fp->header->target_len[i]);
+					writer(writer_data, (uint8_t*) target_len_str, strlen(target_len_str));
+					writer(writer_data, (uint8_t*) "\n", 1);
 			}
 			bam_header_destroy(alt);
 		}
@@ -112,10 +108,7 @@ samfile_t* samopen_in(quip_reader_t reader, void* reader_data, bool binary, void
 		if (fp->x.bam == 0) goto open_err_ret;
 		fp->header = bam_header_read(fp->x.bam);
 	} else { // text
-		/* TODO:
-		   replace all the sam_open bullshit */
-
-		fp->x.tamr = sam_open(fn);
+		fp->x.tamr = sam_open_in(reader, reader_data);
 		if (fp->x.tamr == 0) goto open_err_ret;
 		fp->header = sam_header_read(fp->x.tamr);
 		if (fp->header->n_targets == 0) { // no @SQ fields
@@ -144,8 +137,7 @@ void samclose(samfile_t *fp)
 	if (fp == 0) return;
 	if (fp->header) bam_header_destroy(fp->header);
 	if (fp->type & TYPE_BAM) bam_close(fp->x.bam);
-	else if (fp->type & TYPE_READ) sam_close(fp->x.tamr);
-	else fclose(fp->x.tamw);
+	else sam_close(fp->x.tamr);
 	free(fp);
 }
 
@@ -163,7 +155,8 @@ int samwrite(samfile_t *fp, const bam1_t *b)
 	else {
 		char *s = bam_format1_core(fp->header, b, fp->type>>2&3);
 		int l = strlen(s);
-		fputs(s, fp->x.tamw); fputc('\n', fp->x.tamw);
+		fp->x.tamw.writer(fp->x.tamw.writer_data, (uint8_t*) s, strlen(s));
+		fp->x.tamw.writer(fp->x.tamw.writer_data, (uint8_t*) "\n", 1);
 		free(s);
 		return l + 1;
 	}

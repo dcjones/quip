@@ -284,6 +284,20 @@ extern "C" {
 	/*! @abstract TAM file handler */
 	typedef struct __tamFile_t *tamFile;
 
+    /* Wrap the quip IO api to coerce it into working with
+     * the samtools code. */
+    typedef struct quip_in_stream_t_ {
+        quip_reader_t reader;
+        void* reader_data;
+    } quip_in_stream_t;
+
+    
+    typedef struct quip_out_stream_t_ {
+        quip_writer_t writer;
+        void* writer_data;
+    } quip_out_stream_t;
+
+
 	/*!
 	  @abstract   Open a SAM file for reading, either uncompressed or compressed by gzip/zlib.
 	  @param  fn  SAM file name
@@ -296,6 +310,8 @@ extern "C" {
 	  @param  fp  SAM file handler
 	 */
 	void sam_close_in(tamFile fp);
+
+    void sam_close(tamFile fp);
 
 	/*!
 	  @abstract      Read one alignment from a SAM file handler

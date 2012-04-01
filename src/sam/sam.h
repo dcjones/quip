@@ -26,8 +26,8 @@ typedef struct {
 	int type;
 	union {
 		tamFile tamr;
+		quip_out_stream_t tamw;
 		bamFile bam;
-		FILE *tamw;
 	} x;
 	bam_header_t *header;
 } samfile_t;

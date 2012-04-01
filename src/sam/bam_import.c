@@ -15,22 +15,10 @@
 #include "khash.h"
 
 
-/* Wrap the quip IO api to coerce it into working with
- * the samtools code. */
-typedef struct quip_in_stream_t_ {
-	quip_reader_t reader;
-	void* reader_data;
-} quip_in_stream_t;
-
 static size_t quip_read_in_stream(quip_in_stream_t* in, uint8_t* data, size_t size)
 {
 	return in->reader(in->reader_data, data, size);
 }
-
-typedef struct quip_out_stream_t_ {
-	quip_writer_t writer;
-	void* writer_data;
-} quip_out_stream_t;
 
 KSTREAM_INIT(quip_in_stream_t*, quip_read_in_stream, 16384)
 KHASH_MAP_INIT_STR(ref, uint64_t)
@@ -497,7 +485,7 @@ tamFile sam_open_in(quip_reader_t reader, void* reader_data)
 	return fp;
 }
 
-void sam_close_in(tamFile fp)
+void sam_close(tamFile fp)
 {
 	if (fp) {
 		ks_destroy(fp->ks);
