@@ -20,6 +20,7 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 #ifndef O_BINARY
 #define O_BINARY 0
 #endif 
