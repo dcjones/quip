@@ -21,6 +21,9 @@ AC_TYPE_SIZE_T
 
 AC_HEADER_STDBOOL
 
+# TODO: if zlib is not found, compiile without BAM support
+AC_CHECK_LIB(z, compress, , AC_MSG_ERROR([zlib is required but not was not found.]))
+
 # Check if the compiler has a builtin prefetch function
 AC_LANG(C)
 AC_MSG_CHECKING([for __builtin_prefetch])

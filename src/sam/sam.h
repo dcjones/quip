@@ -82,15 +82,6 @@ extern "C" {
 	 */
 	int samwrite(samfile_t *fp, const bam1_t *b);
 
-	/*!
-	  @abstract     Get the pileup for a whole alignment file
-	  @param  fp    file handler
-	  @param  mask  mask transferred to bam_plbuf_set_mask()
-	  @param  func  user defined function called in the pileup process
-	  #param  data  user provided data for func()
-	 */
-	int sampileup(samfile_t *fp, int mask, bam_pileup_f func, void *data);
-
 #ifdef __cplusplus
 }
 #endif

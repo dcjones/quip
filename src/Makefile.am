@@ -1,30 +1,36 @@
 
-SUBDIRS = sam
-
 lib_LIBRARIES = libquip.a
 
 libquip_a_SOURCES = \
           version.h \
-          ac.h            ac.c \
-          assembler.h     assembler.c \
-          bloom.h         bloom.c \
-          dist.h          dist.c \
-          crc64.h         crc64.c \
-          idenc.h         idenc.c \
-          kmer.h          kmer.c \
-          kmerhash.h      kmerhash.c \
-          misc.h          misc.c \
-          seqenc.h        seqenc.c \
-          seqenc_prior.h  seqenc_prior.c \
-          seqset.h        seqset.c \
-          twobit.h        twobit.c \
-          qualenc.h       qualenc.c \
-          quiplib.c       quip.h \
-          fastqfmt.h      fastqfmt.c \
-          samfmt.h        samfmt.c \
-          quipfmt.h       quipfmt.c
-
-libquip_a_LIBADD = sam/libsam.a
+          ac.h              ac.c \
+          assembler.h       assembler.c \
+          bloom.h           bloom.c \
+          dist.h            dist.c \
+          crc64.h           crc64.c \
+          idenc.h           idenc.c \
+          kmer.h            kmer.c \
+          kmerhash.h        kmerhash.c \
+          misc.h            misc.c \
+          seqenc.h          seqenc.c \
+          seqenc_prior.h    seqenc_prior.c \
+          seqset.h          seqset.c \
+          twobit.h          twobit.c \
+          qualenc.h         qualenc.c \
+          quiplib.c         quip.h \
+          fastqfmt.h        fastqfmt.c \
+          samfmt.h          samfmt.c \
+          quipfmt.h         quipfmt.c \
+          sam/bam.h         sam/bam.c \
+          sam/sam.h         sam/sam.c \
+          sam/bgzf.h        sam/bgzf.c \
+          sam/sam_header.h  sam/sam_header.c \
+          sam/kstring.h     sam/kstring.c \
+          sam/bam_endian.h \
+          sam/bam_import.c \
+          sam/bam_aux.c \
+          sam/khash.h \
+          sam/kseq.h
 
 bin_PROGRAMS = quip
 
@@ -49,4 +55,5 @@ install-exec-hook :
 		$(LN_S) $$target $$link; \
 	done
 
+EXTRADIST = sam/COPYING
 

@@ -34,8 +34,17 @@ void str_free(str_t* str)
 void str_copy(str_t* dest, const str_t* src)
 {
     str_reserve(dest, src->n + 1);
-    memcpy(dest->s, src->s, (src->n + 1) * sizeof(unsigned char));
+    memcpy(dest->s, src->s, src->n + 1);
     dest->n = src->n;
+}
+
+
+void str_copy_cstr(str_t* dest, const char* src, size_t n)
+{
+    str_reserve(dest, n + 1);
+    memcpy(dest->s, src, n + 1);
+    dest->s[n] = '\0';
+    dest->n = n;
 }
 
 
