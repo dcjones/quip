@@ -296,7 +296,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
 
 
-void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
+void assembler_add_seq(assembler_t* A, const uint8_t* seq, size_t seqlen)
 {
     if (A->quick) {
         seqenc_encode_char_seq(A->seqenc, seq, seqlen);
@@ -318,10 +318,10 @@ void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
         }
 
         if (has_N) {
-            A->ord[A->N++] = seqset_inc_eb(A->S, seq);
+            A->ord[A->N++] = seqset_inc_eb(A->S, (char*) seq);
         }
         else {
-            twobit_copy_n(A->x, seq, seqlen);
+            twobit_copy_n(A->x, (char*) seq, seqlen);
             A->ord[A->N++] = seqset_inc_tb(A->S, A->x);
         }
     }
@@ -340,7 +340,7 @@ void assembler_add_seq(assembler_t* A, const char* seq, size_t seqlen)
             seqenc_encode_char_seq(A->seqenc, seq, seqlen);
         }
         else {
-            twobit_copy_n(A->x, seq, seqlen);
+            twobit_copy_n(A->x, (char*) seq, seqlen);
             align_read(A, A->x);
         }
 
@@ -521,7 +521,7 @@ static void align_to_contigs(assembler_t* A,
         }
         else {
             ebseq = xs[A->ord[i]].seq.eb;
-            seqenc_encode_char_seq(A->seqenc, ebseq, strlen(ebseq));
+            seqenc_encode_char_seq(A->seqenc, (uint8_t*) ebseq, strlen(ebseq));
         }
     }
 
@@ -712,7 +712,7 @@ void disassembler_free(disassembler_t* D)
 }
 
 
-void disassembler_read(disassembler_t* D, seq_t* x, size_t n)
+void disassembler_read(disassembler_t* D, short_read_t* x, size_t n)
 {
     if (D->init_state) {
         uint32_t supercontig_len = read_uint32(D->reader, D->reader_data);

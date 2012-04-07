@@ -205,7 +205,7 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
 
 
 
-void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
+void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
 {
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_SEQUENCE);
 
@@ -215,21 +215,21 @@ void seqenc_encode_char_seq(seqenc_t* E, const char* x, size_t len)
 
     /* encode leading positions. */
     for (i = 0; i < len - 1 && i / 2 < prefix_len; i += 2) {
-        uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
+        uv = (chartokmer[x[i]] << 2) | chartokmer[x[i + 1]];
         cond_dist16_encode(E->ac, &E->cs0[i/2], ctx, uv);
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
     /* encode trailing positions. */
     for (; i < len - 1; i += 2) {
-        uv = (chartokmer[(uint8_t) x[i]] << 2) | chartokmer[(uint8_t) x[i + 1]];
+        uv = (chartokmer[x[i]] << 2) | chartokmer[x[i + 1]];
         cond_dist16_encode(E->ac, &E->cs, ctx, uv);
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
     /* handle odd read lengths */
     if (i == len - 1) {
-        uv = chartokmer[(uint8_t) x[i]];
+        uv = chartokmer[x[i]];
         cond_dist16_encode(E->ac, &E->cs, ctx, uv);
     }
 
@@ -324,10 +324,10 @@ void seqenc_prepare_decoder(seqenc_t* E, uint32_t supercontig_len)
 
 
 
-static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
+static void seqenc_decode_seq(seqenc_t* E, short_read_t* x, size_t n)
 {
     if (n == 0) return;
-    while (n >= x->seq.size) fastq_expand_str(&x->seq);
+    str_reserve(&x->seq, n + 1);
 
     kmer_t uv, u, v;
     uint32_t ctx = 0;
@@ -371,9 +371,9 @@ static void seqenc_decode_seq(seqenc_t* E, seq_t* x, size_t n)
 }
 
 
-static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t qlen)
+static void seqenc_decode_alignment(seqenc_t* E, short_read_t* x, size_t qlen)
 {
-    while (qlen >= x->seq.size) fastq_expand_str(&x->seq);
+    str_reserve(&x->seq, qlen + 1);
 
     uint8_t  strand = dist2_decode(E->ac, &E->d_aln_strand);
     uint32_t spos   = dist_decode_uint32(E->ac, &E->d_contig_off);
@@ -404,7 +404,8 @@ static void seqenc_decode_alignment(seqenc_t* E, seq_t* x, size_t qlen)
 
 static void seqenc_decode_supercontig(seqenc_t* E)
 {
-    seq_t* seq = fastq_alloc_seq();
+    short_read_t seq;
+    short_read_init(&seq);
 
 #ifdef NDEBUG
     dist2_decode(E->ac, &E->d_type);
@@ -412,22 +413,22 @@ static void seqenc_decode_supercontig(seqenc_t* E)
     assert(dist2_decode(E->ac, &E->d_type) == SEQENC_TYPE_SEQUENCE);
 #endif
 
-    seqenc_decode_seq(E, seq, E->expected_supercontig_len);
+    seqenc_decode_seq(E, &seq, E->expected_supercontig_len);
 
     twobit_t* supercontig = twobit_alloc_n(E->expected_supercontig_len);
-    twobit_copy_n(supercontig, seq->seq.s, E->expected_supercontig_len);
+    twobit_copy_n(supercontig, (char*) seq.seq.s, E->expected_supercontig_len);
 
     seqenc_set_supercontig(E, supercontig);
 
     twobit_free(supercontig);
-    fastq_free_seq(seq);
+    short_read_free(&seq);
 
     E->expected_supercontig_len = 0;
 }
 
 
 
-void seqenc_decode(seqenc_t* E, seq_t* x, size_t n)
+void seqenc_decode(seqenc_t* E, short_read_t* x, size_t n)
 {
     if (E->expected_supercontig_len > 0) seqenc_decode_supercontig(E);
 

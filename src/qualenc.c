@@ -52,7 +52,7 @@ struct qualenc_t_
 {
     ac_t* ac;
     cond_dist64_t cs;
-    char base_qual;
+    uint8_t base_qual;
 };
 
 
@@ -120,7 +120,7 @@ static inline int intmin2(int a, int b)
 }
 
 
-void qualenc_encode(qualenc_t* E, const seq_t* x)
+void qualenc_encode(qualenc_t* E, const short_read_t* x)
 {
     union {
         uint64_t ui64;
@@ -131,9 +131,9 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
     int delta = 0; 
     int qdiff;
-    char q;
+    uint8_t q;
 
-    char* qs = x->qual.s;
+    uint8_t* qs = x->qual.s;
     size_t n = x->qual.n;
 
     /* this is: ceil(n / pos_bins) */
@@ -151,7 +151,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
         qprev.ui64 <<= 8;
         qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
-        qprev.ui8[0] = q_bin_map1[(uint8_t) q];
+        qprev.ui8[0] = q_bin_map1[q];
 
         if (qdiff < -1 || qdiff >= 1) {
             delta += 1;
@@ -175,7 +175,7 @@ void qualenc_encode(qualenc_t* E, const seq_t* x)
 
         qprev.ui64 <<= 8;
         qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
-        qprev.ui8[0] = q_bin_map1[(uint8_t) q];
+        qprev.ui8[0] = q_bin_map1[q];
     }
 }
 
@@ -191,12 +191,12 @@ void qualenc_flush(qualenc_t* E)
 }
 
 
-void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
+void qualenc_decode(qualenc_t* E, short_read_t* seq, size_t n)
 {
     str_t* qual = &seq->qual;
-    while (n >= qual->size) fastq_expand_str(qual);
+    str_reserve(qual, n + 1);
     qual->n = 0;
-    char* qs = seq->qual.s;
+    uint8_t* qs = seq->qual.s;
 
     union {
         uint64_t ui64;
@@ -222,7 +222,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
 
         qprev.ui64 <<= 8;
         qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
-        qprev.ui8[0] = q_bin_map1[(uint8_t) qs[i]];
+        qprev.ui8[0] = q_bin_map1[qs[i]];
         qs[i] += E->base_qual;
 
         if (qdiff < -1 || qdiff >= 1) {
@@ -244,7 +244,7 @@ void qualenc_decode(qualenc_t* E, seq_t* seq, size_t n)
 
         qprev.ui64 <<= 8;
         qprev.ui8[1] = q_bin_map2[qprev.ui8[1]];
-        qprev.ui8[0] = q_bin_map1[(uint8_t) qs[i]];
+        qprev.ui8[0] = q_bin_map1[qs[i]];
         qs[i] += E->base_qual;
     }
 

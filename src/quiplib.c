@@ -31,6 +31,14 @@ void str_free(str_t* str)
 }
 
 
+void str_copy(str_t* dest, const str_t* src)
+{
+    str_reserve(dest, src->n + 1);
+    memcpy(dest->s, src->s, (src->n + 1) * sizeof(unsigned char));
+    dest->n = src->n;
+}
+
+
 void cigar_init(cigar_t* cig)
 {
     cig->n    = 0;
@@ -71,6 +79,7 @@ void short_read_init(short_read_t* sr)
     str_init(&sr->aux);
 }
 
+
 void short_read_free(short_read_t* sr)
 {
     if (sr) {
@@ -81,6 +90,19 @@ void short_read_free(short_read_t* sr)
         str_free(&sr->aux);
         free(sr);
     }
+}
+
+
+void short_read_copy(short_read_t* dest, const short_read_t* src)
+{
+    str_copy(&dest->id,   &src->id);
+    str_copy(&dest->seq,  &src->seq);
+    str_copy(&dest->qual, &src->qual);
+    dest->flags = src->flags;
+    str_copy(&dest->seqname, &src->seqname);
+    dest->strand = src->strand;
+    dest->pos    = src->pos;
+    str_copy(&dest->aux, &src->aux);
 }
 
 

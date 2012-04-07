@@ -31,7 +31,7 @@ void         assembler_free(assembler_t*);
 
 void assembler_clear_contigs(assembler_t*);
 
-void assembler_add_seq(assembler_t*, const char* seq, size_t seqlen);
+void assembler_add_seq(assembler_t*, const uint8_t* seq, size_t seqlen);
 size_t assembler_finish(assembler_t* A);
 void   assembler_flush(assembler_t* A);
 

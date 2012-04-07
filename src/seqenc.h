@@ -1,7 +1,7 @@
 /*
  * This file is part of quip.
  *
- * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ * Copyright (c) 2012 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
  */
 
@@ -34,7 +34,7 @@ void seqenc_set_supercontig(seqenc_t*, const twobit_t* supercontig);
  * consensus sequence. */
 void seqenc_get_supercontig_consensus(seqenc_t*, twobit_t* supercontig);
 
-void seqenc_encode_char_seq(seqenc_t*, const char*, size_t len);
+void seqenc_encode_char_seq(seqenc_t*, const uint8_t*, size_t len);
 void seqenc_encode_twobit_seq(seqenc_t*, const twobit_t*);
 
 void seqenc_encode_alignment(
@@ -49,7 +49,7 @@ void   seqenc_flush(seqenc_t* E);
  * considered as the supercontig. */
 void seqenc_prepare_decoder(seqenc_t* E, uint32_t supercontig_len);
 
-void seqenc_decode(seqenc_t* E, seq_t* seq, size_t n);
+void seqenc_decode(seqenc_t* E, short_read_t* seq, size_t n);
 
 void seqenc_start_decoder(seqenc_t* E);
 void seqenc_reset_decoder(seqenc_t* E);

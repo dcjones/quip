@@ -11,7 +11,6 @@
 #include "assembler.h"
 #include "kmer.h"
 #include "misc.h"
-#include "quip_parse.h"
 #include <getopt.h>
 #include <errno.h>
 #include <stdbool.h>

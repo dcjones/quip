@@ -64,6 +64,7 @@ typedef struct
 void str_init(str_t*);
 void str_reserve(str_t*, size_t);
 void str_free(str_t*);
+void str_copy(str_t* dest, const str_t* src);
 
 
 /* A series of CIGAR (edit) operations. */
@@ -110,6 +111,7 @@ typedef struct short_read_t_
 
 void short_read_init(short_read_t*);
 void short_read_free(short_read_t*);
+void short_read_copy(short_read_t* dest, const short_read_t* src);
 
 
  /* All input and output in quip are performed by a simple callback interface.

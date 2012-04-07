@@ -50,21 +50,21 @@ typedef struct {
 
 
 /* tokenization of ids */
-const char* next_id_token(const char* id, tok_type_t* t)
+const uint8_t* next_id_token(const uint8_t* id, tok_type_t* t)
 {
-    const char* s = id;
+    const uint8_t* s = id;
 
     if (*s == '\0') {
         ++s;
         *t = ID_TOK_STR;
     }
-    else if (issep[(uint8_t) *s]) {
+    else if (issep[*s]) {
         ++s;
-        while ((size_t) (s - id) < max_group_len && issep[(uint8_t) *s]) ++s;
+        while ((size_t) (s - id) < max_group_len && issep[*s]) ++s;
 
         if ((size_t) (s - id) < max_group_len && !('1' <= *s && *s <= '9')) {
             while ((size_t) (s - id) < max_group_len &&
-                   *s != '\0' && !issep[(uint8_t) *s]) ++s;
+                   *s != '\0' && !issep[*s]) ++s;
         }
 
         *t = ID_TOK_STR;
@@ -77,7 +77,7 @@ const char* next_id_token(const char* id, tok_type_t* t)
     else {
         ++s;
         while ((size_t) (s - id) < max_group_len &&
-               *s != '\0' && !issep[(uint8_t) *s]) ++s;
+               *s != '\0' && !issep[*s]) ++s;
         *t = ID_TOK_STR;
     }
 
@@ -112,7 +112,7 @@ struct idenc_t_
     size_t max_group_cnt;
 
     /* previous id string */
-    char* lastid;
+    uint8_t* lastid;
     size_t lastid_len, lastid_size;
 
     /* previous id token stream */
@@ -215,12 +215,12 @@ static void idenc_add_group(idenc_t* E)
 }
 
 
-static void encode_str(idenc_t* E, size_t i, const char* str, tok_t* tok)
+static void encode_str(idenc_t* E, size_t i, const uint8_t* str, tok_t* tok)
 {
     /* previous id string */
     size_t prev_tok_len = E->toks_len > i ? E->toks[i].len : 0;
-    const char* t = E->toks_len > i ? E->lastid + E->toks[i].pos : NULL;
-    const char* s = str + tok->pos;
+    const uint8_t* t = E->toks_len > i ? E->lastid + E->toks[i].pos : NULL;
+    const uint8_t* s = str + tok->pos;
 
     size_t j = 0; /* string offset */
     while (j < tok->len && j < prev_tok_len && s[j] == t[j]) ++j;
@@ -247,9 +247,9 @@ static void encode_str(idenc_t* E, size_t i, const char* str, tok_t* tok)
 }
 
 
-static void encode_num(idenc_t* E, size_t i, const  char* str, tok_t* tok)
+static void encode_num(idenc_t* E, size_t i, const uint8_t* str, tok_t* tok)
 {
-    const char* s = str + tok->pos;
+    const uint8_t* s = str + tok->pos;
     char* last;
 
     /* is this the same the number that was previously encoded:
@@ -263,11 +263,11 @@ static void encode_num(idenc_t* E, size_t i, const  char* str, tok_t* tok)
         return;
     }
 
-    uint64_t off, x = strtoull(s, &last, 10);
+    uint64_t off, x = strtoull((char*) s, &last, 10);
 
     /* if conversion to 64-bit unsigned int was not possible,
        encode the number as as string. */
-    if (x == ULLONG_MAX || last != s + tok->len) {
+    if (x == ULLONG_MAX || last != (char*) s + tok->len) {
         tok->type = ID_TOK_STR;
         encode_str(E, i, str, tok);
         return;
@@ -296,22 +296,22 @@ static void encode_num(idenc_t* E, size_t i, const  char* str, tok_t* tok)
 
 
 
-void idenc_encode(idenc_t* E, const seq_t* seq)
+void idenc_encode(idenc_t* E, const short_read_t* seq)
 {
     size_t i; /* token number */
-    const char *s, *t;
-    t = seq->id1.s;
+    const uint8_t *s, *t;
+    t = seq->id.s;
     tok_t tok;
 
-    for (i = 0, s = seq->id1.s; true; ++i, s = t) {
+    for (i = 0, s = seq->id.s; true; ++i, s = t) {
         if (i + 1 > E->max_group_cnt) idenc_add_group(E);
 
         t = next_id_token(s, &tok.type);
-        tok.pos = s - seq->id1.s;
+        tok.pos = s - seq->id.s;
         tok.len = t - s;
 
-        if      (tok.type == ID_TOK_STR) encode_str(E, i, seq->id1.s, &tok);
-        else if (tok.type == ID_TOK_NUM) encode_num(E, i, seq->id1.s, &tok);
+        if      (tok.type == ID_TOK_STR) encode_str(E, i, seq->id.s, &tok);
+        else if (tok.type == ID_TOK_NUM) encode_num(E, i, seq->id.s, &tok);
 
         if (E->toks_size <= i) {
             E->toks_size += 1;
@@ -323,21 +323,21 @@ void idenc_encode(idenc_t* E, const seq_t* seq)
     }
 
 
-    if (E->lastid_size < seq->id1.n + 1) {
-        E->lastid_size = seq->id1.n + 1;
+    if (E->lastid_size < seq->id.n + 1) {
+        E->lastid_size = seq->id.n + 1;
         free(E->lastid);
-        E->lastid = malloc_or_die((seq->id1.n + 1) * sizeof(char));
+        E->lastid = malloc_or_die((seq->id.n + 1) * sizeof(uint8_t));
     }
-    memcpy(E->lastid, seq->id1.s, (seq->id1.n + 1) * sizeof(char));
-    E->lastid_len = seq->id1.n + 1;
+    memcpy(E->lastid, seq->id.s, (seq->id.n + 1) * sizeof(uint8_t));
+    E->lastid_len = seq->id.n + 1;
 
     E->toks_len = i - 1;
 }
 
 
-void idenc_decode(idenc_t* E, seq_t* seq)
+void idenc_decode(idenc_t* E, short_read_t* seq)
 {
-    str_t* id = &seq->id1; /* for convenience */
+    str_t* id = &seq->id; /* for convenience */
     size_t i; /* token number */
     size_t j; /* offset into id */
     uint32_t matches, mismatches;
@@ -351,7 +351,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
         type = dist4_decode(E->ac, &E->d_type[i]);
 
         if (type == ID_GROUP_MATCH) {
-            while (id->size <= j + E->toks[i].len) fastq_expand_str(id);
+            str_reserve(id, j + E->toks[i].len + 1);
             memcpy(id->s + j, E->lastid + E->toks[i].pos, E->toks[i].len);
 
             tok.type = ID_TOK_STR;
@@ -367,7 +367,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             tok.pos  = j;
             tok.len  = matches + mismatches;;
 
-            while (id->size <= j + matches + mismatches) fastq_expand_str(id);
+            str_reserve(id, j + matches + mismatches + 1);
             if (matches > 0) {
                 memcpy(id->s + j, E->lastid + E->toks[i].pos, matches);
                 j += matches;
@@ -389,7 +389,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             tok.type = ID_TOK_NUM;
             tok.pos  = j;
             tok.num  = E->toks[i].num + off;
-            tok.len  = snprintf(id->s + j, 20, "%"PRIu64, tok.num);
+            tok.len  = snprintf((char*) id->s + j, 20, "%"PRIu64, tok.num);
             j += tok.len;
         }
         else if (type == ID_GROUP_NUM) {
@@ -402,7 +402,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             tok.type = ID_TOK_NUM;
             tok.pos  = j;
             tok.num  = dist_decode_uint64(E->ac, &E->d_num[i]);
-            tok.len  = snprintf(id->s + j, 20, "%"PRIu64, tok.num);
+            tok.len  = snprintf((char*) id->s + j, 20, "%"PRIu64, tok.num);
             j += tok.len;
         }
 
@@ -415,15 +415,15 @@ void idenc_decode(idenc_t* E, seq_t* seq)
         if (id->s[tok.pos] == '\0') break;
     }
 
-    seq->id1.n = j - 1;
+    seq->id.n = j - 1;
 
-    if (E->lastid_size < seq->id1.n + 1) {
-        E->lastid_size = seq->id1.n + 1;
+    if (E->lastid_size < seq->id.n + 1) {
+        E->lastid_size = seq->id.n + 1;
         free(E->lastid);
-        E->lastid = malloc_or_die((seq->id1.n + 1) * sizeof(char));
+        E->lastid = malloc_or_die((seq->id.n + 1) * sizeof(char));
     }
-    memcpy(E->lastid, seq->id1.s, (seq->id1.n + 1) * sizeof(char));
-    E->lastid_len = seq->id1.n + 1;
+    memcpy(E->lastid, seq->id.s, (seq->id.n + 1) * sizeof(char));
+    E->lastid_len = seq->id.n + 1;
 
     E->toks_len = i - 1;
 }

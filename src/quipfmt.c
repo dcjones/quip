@@ -167,7 +167,7 @@ static void pthread_create_or_die(
 struct quip_out_t_
 {
     /* sequence buffers */
-    short_read_t* chunk[chunk_size];
+    short_read_t chunk[chunk_size];
     size_t chunk_len;
 
     /* function for writing compressed data */
@@ -218,10 +218,10 @@ static void* id_compressor_thread(void* ctx)
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
-        idenc_encode(C->idenc, C->chunk[i]);
+        idenc_encode(C->idenc, &C->chunk[i]);
         C->id_crc = crc64_update(
-            (uint8_t*) C->chunk[i]->id1.s,
-            C->chunk[i]->id1.n, C->id_crc);
+            C->chunk[i].id.s,
+            C->chunk[i].id.n, C->id_crc);
     }
 
     return NULL;
@@ -233,10 +233,10 @@ static void* seq_compressor_thread(void* ctx)
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
-        assembler_add_seq(C->assembler, C->chunk[i]->seq.s, C->chunk[i]->seq.n);
+        assembler_add_seq(C->assembler, C->chunk[i].seq.s, C->chunk[i].seq.n);
         C->seq_crc = crc64_update(
-            (uint8_t*) C->chunk[i]->seq.s,
-            C->chunk[i]->seq.n, C->seq_crc);
+            C->chunk[i].seq.s,
+            C->chunk[i].seq.n, C->seq_crc);
     }
 
     return NULL;
@@ -248,10 +248,10 @@ static void* qual_compressor_thread(void* ctx)
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
-        qualenc_encode(C->qualenc, C->chunk[i]);
+        qualenc_encode(C->qualenc, &C->chunk[i]);
         C->qual_crc = crc64_update(
-            (uint8_t*) C->chunk[i]->qual.s,
-            C->chunk[i]->qual.n, C->qual_crc);
+            C->chunk[i].qual.s,
+            C->chunk[i].qual.n, C->qual_crc);
     }
 
     return NULL;
@@ -266,7 +266,7 @@ quip_out_t* quip_out_alloc(quip_writer_t writer, void* writer_data, bool quick)
 
     size_t i;
     for (i = 0; i < chunk_size; ++i) {
-        C->chunk[i] = fastq_alloc_seq();
+        short_read_init(&C->chunk[i]);
     }
     C->chunk_len = 0;
 
@@ -421,13 +421,13 @@ static void update_qual_scheme_guess(quip_out_t* C)
     char min_qual = '~';
     char max_qual = '!';
     for (i = 0; i < C->chunk_len; ++i) {
-        for (j = 0; j < C->chunk[i]->qual.n; ++j) {
-            if (C->chunk[i]->qual.s[j] < min_qual) {
-                min_qual = C->chunk[i]->qual.s[j];
+        for (j = 0; j < C->chunk[i].qual.n; ++j) {
+            if (C->chunk[i].qual.s[j] < min_qual) {
+                min_qual = C->chunk[i].qual.s[j];
             }
 
-            if (C->chunk[i]->qual.s[j] > max_qual) {
-                max_qual = C->chunk[i]->qual.s[j];
+            if (C->chunk[i].qual.s[j] > max_qual) {
+                max_qual = C->chunk[i].qual.s[j];
             }
         }
     }
@@ -482,12 +482,12 @@ static void quip_out_flush_chunk(quip_out_t* C)
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
-        quip_out_add_readlen(C, C->chunk[i]->seq.n);
-        C->id_bytes   += C->chunk[i]->id1.n;
-        C->qual_bytes += C->chunk[i]->qual.n;
-        C->seq_bytes  += C->chunk[i]->seq.n;
-        C->buffered_bases += C->chunk[i]->seq.n;
-        C->total_bases    += C->chunk[i]->seq.n;
+        quip_out_add_readlen(C, C->chunk[i].seq.n);
+        C->id_bytes   += C->chunk[i].id.n;
+        C->qual_bytes += C->chunk[i].qual.n;
+        C->seq_bytes  += C->chunk[i].seq.n;
+        C->buffered_bases += C->chunk[i].seq.n;
+        C->total_bases    += C->chunk[i].seq.n;
     }
 
     C->buffered_reads += C->chunk_len;
@@ -504,7 +504,7 @@ static void quip_out_flush_chunk(quip_out_t* C)
 }
 
 
-int quip_out_readseq(quip_out_t* C, fastq_t* parser)
+void quip_out_addseq(quip_out_t* C, short_read_t* seq)
 {
     if (C->buffered_bases > block_size) {
         quip_out_flush_block(C);
@@ -514,24 +514,7 @@ int quip_out_readseq(quip_out_t* C, fastq_t* parser)
         quip_out_flush_chunk(C);
     }
 
-    int r = fastq_next(parser, C->chunk[C->chunk_len]);
-
-    if (r > 0) C->chunk_len++;
-    return r;
-}
-
-
-void quip_out_addseq(quip_out_t* C, seq_t* seq)
-{
-    if (C->buffered_bases > block_size) {
-        quip_out_flush_block(C);
-    }
-
-    if (C->chunk_len == chunk_size) {
-        quip_out_flush_chunk(C);
-    }
-
-    fastq_copy_seq(C->chunk[C->chunk_len++], seq);
+    short_read_copy(&C->chunk[C->chunk_len++], seq);
 }
 
 
@@ -554,7 +537,7 @@ void quip_out_free(quip_out_t* C)
 
     size_t i;
     for (i = 0; i < chunk_size; ++i) {
-        fastq_free_seq(C->chunk[i]);
+        short_read_free(&C->chunk[i]);
     }
 
     idenc_free(C->idenc);
@@ -571,7 +554,7 @@ void quip_out_free(quip_out_t* C)
 struct quip_in_t_
 {
     /* sequence buffers */
-    short_read_t* chunk[chunk_size];
+    short_read_t chunk[chunk_size];
     size_t chunk_len;
     size_t chunk_pos;
 
@@ -637,10 +620,10 @@ static void* id_decompressor_thread(void* ctx)
                     chunk_size : D->pending_reads;
     size_t i;
     for (i = 0; i < cnt; ++i) {
-        idenc_decode(D->idenc, D->chunk[i]);
+        idenc_decode(D->idenc, &D->chunk[i]);
         D->id_crc = crc64_update(
-            (uint8_t*) D->chunk[i]->id1.s,
-            D->chunk[i]->id1.n, D->id_crc);
+            D->chunk[i].id.s,
+            D->chunk[i].id.n, D->id_crc);
     }
 
     return NULL;
@@ -666,10 +649,10 @@ static void* seq_decompressor_thread(void* ctx)
             readlen_idx++;
         }
 
-        disassembler_read(D->disassembler, D->chunk[i], n);
+        disassembler_read(D->disassembler, &D->chunk[i], n);
         D->seq_crc = crc64_update(
-            (uint8_t*) D->chunk[i]->seq.s,
-            D->chunk[i]->seq.n, D->seq_crc);
+            D->chunk[i].seq.s,
+            D->chunk[i].seq.n, D->seq_crc);
         ++i;
     }
 
@@ -706,11 +689,11 @@ static void* qual_decompressor_thread(void* ctx)
             }
         }
 
-        qualenc_decode(D->qualenc, D->chunk[i], n);
+        qualenc_decode(D->qualenc, &D->chunk[i], n);
 
         D->qual_crc = crc64_update(
-            (uint8_t*) D->chunk[i]->qual.s,
-            D->chunk[i]->qual.n, D->qual_crc);
+            D->chunk[i].qual.s,
+            D->chunk[i].qual.n, D->qual_crc);
     }
 
     return NULL;
@@ -764,7 +747,7 @@ quip_in_t* quip_in_alloc(quip_reader_t reader, void* reader_data)
 
     size_t i;
     for (i = 0; i < chunk_size; ++i) {
-        D->chunk[i] = fastq_alloc_seq();
+        short_read_init(&D->chunk[i]);
     }
     D->chunk_len = 0;
     D->chunk_pos = 0;
@@ -827,7 +810,7 @@ void quip_in_free(quip_in_t* D)
 {
     size_t i;
     for (i = 0; i < chunk_size; ++i) {
-        fastq_free_seq(D->chunk[i]);
+        short_read_free(&D->chunk[i]);
     }
 
     idenc_free(D->idenc);
@@ -981,10 +964,10 @@ static void quip_in_read_block_header(quip_in_t* D)
 }
 
 
-seq_t* quip_in_read(quip_in_t* D)
+short_read_t* quip_in_read(quip_in_t* D)
 {
     if (D->chunk_pos < D->chunk_len) {
-        return D->chunk[D->chunk_pos++];
+        return &D->chunk[D->chunk_pos++];
     }
 
     if (D->end_of_stream) return NULL;
@@ -1056,7 +1039,7 @@ seq_t* quip_in_read(quip_in_t* D)
         }
     }
     
-    return D->chunk[D->chunk_pos++];
+    return &D->chunk[D->chunk_pos++];
 }
 
 
