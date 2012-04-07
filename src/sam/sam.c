@@ -1,7 +1,6 @@
 #include <string.h>
 #include <unistd.h>
 #include <inttypes.h>
-// #include "faidx.h"
 #include "sam.h"
 
 #define TYPE_BAM  1

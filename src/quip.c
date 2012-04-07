@@ -8,6 +8,9 @@
 
 #include "config.h"
 #include "quip.h"
+#include "quipfmt.h"
+#include "fastqfmt.h"
+#include "samfmt.h"
 #include "assembler.h"
 #include "kmer.h"
 #include "misc.h"
@@ -17,6 +20,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include <inttypes.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -28,31 +32,40 @@
 const char* prog_name;
 
 
-bool force_flag      = false;
-bool quick_flag      = false;
-bool stdout_flag     = false;
+bool force_flag  = false;
+bool quick_flag  = false;
+bool stdout_flag = false;
 
 enum {
-    QUIP_CMD_COMPRESS,
-    QUIP_CMD_DECOMPRESS,
+    QUIP_CMD_CONVERT,
     QUIP_CMD_LIST,
-    QUIP_CMD_TEST
-} quip_cmd = QUIP_CMD_COMPRESS;
+} quip_cmd = QUIP_CMD_CONVERT;
+
+quip_fmt_t in_fmt  = QUIP_FMT_UNDEFINED;
+quip_fmt_t out_fmt = QUIP_FMT_UNDEFINED;
+
 
 void print_help()
 {
     printf(
 "Usage: quip [OPTION]... [FILE]...\n"
-"Compress or decompress FASTQ sequence files with extreme prejudice.\n\n"
-"  -d, --decompress   decompress\n"
-"  -t, --test         test compressed file integrity\n"
-"  -l, --list         list total number of reads and bases\n"
-"  -c, --stdout       write on standard output\n"
-"  -f, --force        allow overwriting of output files, etc\n"
-"  -q, --quick        compress quicker, at a lower compression ratio\n"
-"  -v, --verbose      output a great deal of useless information\n"
-"  -h, --help         print this message\n"
-"  -V, --version      display program version\n\n"
+"Compress, decompress, or convert high-throughput\n"
+"sequencing data with extreme prejudice.\n\n"
+"Options:\n"
+"  -i, --input=FORMAT, --from=FORMAT\n"
+"                       input format (guessed by default)\n"
+"  -o, --output=FORMAT, --to=FORMAT\n"
+"                       output format (guessed by default)\n"
+"  -d, --decompress     decompress (equivalent to '--input=quip')\n"
+"  -t, --test           test compressed file integrity\n"
+"  -l, --list           list total number of reads and bases\n"
+"  -c, --stdout         write on standard output\n"
+"  -f, --force          allow overwriting of output files, etc\n"
+"  -q, --quick          compress quicker, at a lower compression ratio\n"
+"  -v, --verbose        output a great deal of useless information\n"
+"  -h, --help           print this message\n"
+"  -V, --version        display program version\n\n"
+"FORMAT is one of: quip, fastq, sam, bam\n"
 "Report bugs to <dcjones@cs.washington.edu>.\n");
 }
 
@@ -189,18 +202,64 @@ static FILE* open_fout(const char* fn)
 
 
 
-
-/* Note this function alters the input seq_t. Specifically, it
- * rescales the quality scores to printable characters. */
-static void fastq_print(FILE* f, seq_t* seq)
+static int quip_cmd_convert(char** fns, size_t fn_count)
 {
-    fprintf(f, "@%s\n%s\n+\n%s\n",
-            seq->id1.s,
-            seq->seq.s,
-            seq->qual.s);
+    if (stdout_flag) {
+        SET_BINARY_MODE(stdout);
+    }
+
+    if (fn_count == 0) {
+        if (in_fmt == QUIP_FMT_UNDEFINED) {
+            fprintf(stderr, "%s: stdin: Assuming input is FASTQ.\n", prog_name);
+            in_fmt = QUIP_FMT_FASTQ;
+        }
+
+        if (out_fmt = QUIP_FMT_UNDEFINED) {
+            if (in_fmt == QUIP_FMT_QUIP) {
+                out_fmt = QUIP_FMT_SAM;
+            }
+            else out_fmt = QUIP_FMT_QUIP;
+        }
+
+        void* in;
+        void* out;
+
+        /*
+
+        This would be awesome if we could guess the input format
+        by reading into it. But this is a messy road to go down.
+
+        In most cases we can guess from the file suffix. The only
+        case where this isn't so is when data is being piped.
+
+        */
+
+        /* If in_fmt == QUIP_FMT_UNDEFINED:
+                Assume FASTQ.
+
+           If out_fmt == QUIP_FMT_UNDEFINED:
+                Assume QUIP.
+        */
+
+
+        /* If output type is QUIP or BAM, and isatty(fileno(stdout))
+           then complain.
+        */
+    }
+    else {
+        size_t i;
+        for (i = 0; i < fn_count; ++i) {
+
+        }
+    }
+
+    return 0;
 }
 
 
+
+
+#if 0
 static int quip_cmd_compress(char** fns, size_t fn_count)
 {
     if (stdout_flag) {
@@ -364,6 +423,7 @@ static int quip_cmd_decompress(char** fns, size_t fn_count, bool dryrun)
 
     return EXIT_SUCCESS;
 }
+#endif
 
 
 static void quip_print_list(const char* fn, quip_list_t* l)
@@ -424,10 +484,28 @@ static int quip_cmd_list(char** fns, size_t fn_count)
 }
 
 
+static quip_fmt_t parse_format(const char* fmtstr)
+{
+    /* we might need something more sophisticated
+     * when more formats are supported. */
+    switch (tolower(fmtstr[0])) {
+        case 'q': return QUIP_FMT_QUIP;
+        case 'f': return QUIP_FMT_FASTQ;
+        case 's': return QUIP_FMT_SAM;
+        case 'b': return QUIP_FMT_BAM;
+        default:  return QUIP_FMT_UNDEFINED;
+    }
+}
+
+
 int main(int argc, char* argv[])
 {
     static struct option long_options[] = 
     {
+        {"input",      required_argument, NULL, 'i'},
+        {"from",       required_argument, NULL, 'i'},
+        {"output",     required_argument, NULL, 'o'},
+        {"to",         required_argument, NULL, 'o'},
         {"list",       no_argument, NULL, 'l'},
         {"test",       no_argument, NULL, 't'},
         {"quick",      no_argument, NULL, 'q'},
@@ -454,10 +532,9 @@ int main(int argc, char* argv[])
 
     /* default to decompress when invoked under the name 'unquip' */
     if (strcmp(prog_name, "unquip") == 0) {
-        quip_cmd = QUIP_CMD_DECOMPRESS;
+        in_fmt = QUIP_FMT_QUIP;
     }
     else if (strcmp(prog_name, "quipcat") == 0) {
-        quip_cmd = QUIP_CMD_DECOMPRESS;
         stdout_flag = true;
     }
     
@@ -467,12 +544,21 @@ int main(int argc, char* argv[])
         if (opt == -1) break;
 
         switch (opt) {
+            case 'i':
+                in_fmt = parse_format(optarg);
+                break;
+
+            case 'o':
+                out_fmt = parse_format(optarg);
+                break;
+
             case 'l':
                 quip_cmd = QUIP_CMD_LIST;
                 break;
 
             case 't':
-                quip_cmd = QUIP_CMD_TEST;
+                in_fmt  = QUIP_FMT_QUIP;
+                out_fmt = QUIP_FMT_NULL;
                 break;
 
             case 'q':
@@ -484,7 +570,7 @@ int main(int argc, char* argv[])
                 break;
 
             case 'd':
-                quip_cmd = QUIP_CMD_DECOMPRESS;
+                in_fmt = QUIP_FMT_QUIP;
                 break;
 
             case 'f':
@@ -516,20 +602,12 @@ int main(int argc, char* argv[])
 
     int ret;
     switch (quip_cmd) {
-        case QUIP_CMD_COMPRESS:
-            ret = quip_cmd_compress(argv + optind, argc - optind);
+        case QUIP_CMD_CONVERT:
+            ret = quip_cmd_convert(argv + optind, argc - optind);
             break;
 
-        case QUIP_CMD_DECOMPRESS:
-            ret = quip_cmd_decompress(argv + optind, argc - optind, false);
-            break;
-
-        case QUIP_CMD_LIST:
+       case QUIP_CMD_LIST:
             ret = quip_cmd_list(argv + optind, argc - optind);
-            break;
-
-        case QUIP_CMD_TEST:
-            ret = quip_cmd_decompress(argv + optind, argc - optind, true);
             break;
     }
 

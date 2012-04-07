@@ -131,6 +131,9 @@ quip_out_t* quip_out_open(
             out->x.fastq = quip_fastq_out_open(writer, writer_data, opts);
             break;
 
+        case QUIP_FMT_BAM:
+            opts |= QUIP_OPT_SAM_BAM;
+
         case QUIP_FMT_SAM:
             out->x.sam = quip_sam_out_open(writer, writer_data, opts);
             break;
@@ -138,6 +141,14 @@ quip_out_t* quip_out_open(
         case QUIP_FMT_QUIP:
             out->x.quip = quip_quip_out_open(writer, writer_data, opts);
             break;
+
+        case QUIP_FMT_UNDEFINED:
+            fprintf(stderr, "Undefined format given.\n");
+            exit(EXIT_FAILURE);
+
+        case QUIP_FMT_NULL:
+            fprintf(stderr, "Null format given.\n");
+            exit(EXIT_FAILURE);
     }
 
     return out;
@@ -152,6 +163,7 @@ void quip_out_close(quip_out_t* out)
             if (out->x.fastq) quip_fastq_out_close(out->x.fastq);
             break;
 
+        case QUIP_FMT_BAM:
         case QUIP_FMT_SAM:
             if (out->x.sam) quip_sam_out_close(out->x.sam);
             break;
@@ -159,6 +171,8 @@ void quip_out_close(quip_out_t* out)
         case QUIP_FMT_QUIP:
             if (out->x.quip) quip_quip_out_close(out->x.quip);
             break;
+
+        default: break;
     }
 
     free(out);
@@ -172,6 +186,7 @@ void quip_write(quip_out_t* out, short_read_t* sr)
             quip_fastq_write(out->x.fastq, sr);
             break;
 
+        case QUIP_FMT_BAM:
         case QUIP_FMT_SAM:
             quip_sam_write(out->x.sam, sr);
             break;
@@ -179,6 +194,8 @@ void quip_write(quip_out_t* out, short_read_t* sr)
         case QUIP_FMT_QUIP:
             quip_quip_write(out->x.quip, sr);
             break;
+
+        default: break;
     }
 }
 
@@ -208,6 +225,7 @@ quip_in_t* quip_in_open(
             in->x.fastq = quip_fastq_in_open(reader, reader_data, opts);
             break;
 
+        case QUIP_FMT_BAM:
         case QUIP_FMT_SAM:
             in->x.sam = quip_sam_in_open(reader, reader_data, opts);
             break;
@@ -215,6 +233,8 @@ quip_in_t* quip_in_open(
         case QUIP_FMT_QUIP:
             in->x.quip = quip_quip_in_open(reader, reader_data, opts);
             break;
+
+        default: break;
     }
 
     return in;
@@ -228,6 +248,7 @@ void quip_in_close(quip_in_t* in)
             if (in->x.fastq) quip_fastq_in_close(in->x.fastq);
             break;
 
+        case QUIP_FMT_BAM:
         case QUIP_FMT_SAM:
             if (in->x.sam) quip_sam_in_close(in->x.sam);
             break;
@@ -235,6 +256,8 @@ void quip_in_close(quip_in_t* in)
         case QUIP_FMT_QUIP:
             if (in->x.quip) quip_quip_in_close(in->x.quip);
             break;
+
+        default: break;
     }
 
     free(in);
@@ -247,11 +270,14 @@ short_read_t* quip_read(quip_in_t* in)
         case QUIP_FMT_FASTQ:
             return quip_fastq_read(in->x.fastq);
 
+        case QUIP_FMT_BAM:
         case QUIP_FMT_SAM:
             return quip_sam_read(in->x.sam);
 
         case QUIP_FMT_QUIP:
             return quip_quip_read(in->x.quip);
+
+        default: break;
     }
 
     return NULL;

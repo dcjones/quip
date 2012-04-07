@@ -164,7 +164,7 @@ static void pthread_create_or_die(
 
 
 
-struct quip_out_t_
+struct quip_quip_out_t_
 {
     /* sequence buffers */
     short_read_t chunk[chunk_size];
@@ -214,7 +214,7 @@ struct quip_out_t_
 
 static void* id_compressor_thread(void* ctx)
 {
-    quip_out_t* C = (quip_out_t*) ctx;
+    quip_quip_out_t* C = (quip_quip_out_t*) ctx;
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
@@ -229,7 +229,7 @@ static void* id_compressor_thread(void* ctx)
 
 static void* seq_compressor_thread(void* ctx)
 {
-    quip_out_t* C = (quip_out_t*) ctx;
+    quip_quip_out_t* C = (quip_quip_out_t*) ctx;
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
@@ -244,7 +244,7 @@ static void* seq_compressor_thread(void* ctx)
 
 static void* qual_compressor_thread(void* ctx)
 {
-    quip_out_t* C = (quip_out_t*) ctx;
+    quip_quip_out_t* C = (quip_quip_out_t*) ctx;
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
@@ -258,9 +258,13 @@ static void* qual_compressor_thread(void* ctx)
 }
 
 
-quip_out_t* quip_out_alloc(quip_writer_t writer, void* writer_data, bool quick)
+quip_quip_out_t* quip_quip_out_open(
+    quip_writer_t writer, void* writer_data,
+    quip_opt_t opts)
 {
-    quip_out_t* C = malloc_or_die(sizeof(quip_out_t));
+    quip_quip_out_t* C = malloc_or_die(sizeof(quip_quip_out_t));
+
+    bool quick = (opts & QUIP_OPT_QUIP_ASSEMBLY_FREE) != 0;
     C->writer = writer;
     C->writer_data = writer_data;
 
@@ -308,7 +312,7 @@ quip_out_t* quip_out_alloc(quip_writer_t writer, void* writer_data, bool quick)
     return C;
 }
 
-static void quip_out_add_readlen(quip_out_t* C, size_t l)
+static void quip_out_add_readlen(quip_quip_out_t* C, size_t l)
 {
     if (C->readlen_count == 0 || C->readlen_vals[C->readlen_count - 1] != l) {
         if (C->readlen_count >= C->readlen_size) {
@@ -328,7 +332,7 @@ static void quip_out_add_readlen(quip_out_t* C, size_t l)
 }
 
 
-void quip_out_flush_block(quip_out_t* C)
+void quip_out_flush_block(quip_quip_out_t* C)
 {
     if (quip_verbose) {
         fprintf(stderr, "writing a block of %zu compressed bases...\n", C->buffered_bases);
@@ -414,7 +418,7 @@ void quip_out_flush_block(quip_out_t* C)
 
 /* Ensure the proper quality score scheme is used for the
  * current chunk. */
-static void update_qual_scheme_guess(quip_out_t* C)
+static void update_qual_scheme_guess(quip_quip_out_t* C)
 {
     size_t i, j;
     char last_base_qual = C->qual_scheme_vals[C->qual_scheme_count - 1];
@@ -467,7 +471,7 @@ static void update_qual_scheme_guess(quip_out_t* C)
 }
 
 
-static void quip_out_flush_chunk(quip_out_t* C)
+static void quip_out_flush_chunk(quip_quip_out_t* C)
 {
     update_qual_scheme_guess(C);
 
@@ -504,7 +508,7 @@ static void quip_out_flush_chunk(quip_out_t* C)
 }
 
 
-void quip_out_addseq(quip_out_t* C, short_read_t* seq)
+void quip_quip_write(quip_quip_out_t* C, short_read_t* seq)
 {
     if (C->buffered_bases > block_size) {
         quip_out_flush_block(C);
@@ -518,7 +522,7 @@ void quip_out_addseq(quip_out_t* C, short_read_t* seq)
 }
 
 
-void quip_out_finish(quip_out_t* C)
+void quip_out_finish(quip_quip_out_t* C)
 {
     if (C->finished) return;
     if (C->chunk_len > 0) quip_out_flush_chunk(C);
@@ -531,7 +535,7 @@ void quip_out_finish(quip_out_t* C)
 }
 
 
-void quip_out_free(quip_out_t* C)
+void quip_quip_out_close(quip_quip_out_t* C)
 {
     if (!C->finished) quip_out_finish(C);
 
@@ -551,7 +555,7 @@ void quip_out_free(quip_out_t* C)
 }
 
 
-struct quip_in_t_
+struct quip_quip_in_t_
 {
     /* sequence buffers */
     short_read_t chunk[chunk_size];
@@ -614,7 +618,7 @@ struct quip_in_t_
 
 static void* id_decompressor_thread(void* ctx)
 {
-    quip_in_t* D = (quip_in_t*) ctx;
+    quip_quip_in_t* D = (quip_quip_in_t*) ctx;
 
     size_t cnt = D->pending_reads >= chunk_size ?
                     chunk_size : D->pending_reads;
@@ -632,7 +636,7 @@ static void* id_decompressor_thread(void* ctx)
 
 static void* seq_decompressor_thread(void* ctx)
 {
-    quip_in_t* D = (quip_in_t*) ctx;
+    quip_quip_in_t* D = (quip_quip_in_t*) ctx;
 
     size_t readlen_idx = D->readlen_idx;
     size_t readlen_off = D->readlen_off;
@@ -662,7 +666,7 @@ static void* seq_decompressor_thread(void* ctx)
 
 static void* qual_decompressor_thread(void* ctx)
 {
-    quip_in_t* D = (quip_in_t*) ctx;
+    quip_quip_in_t* D = (quip_quip_in_t*) ctx;
 
     size_t readlen_idx = D->readlen_idx;
     size_t readlen_off = D->readlen_off;
@@ -702,7 +706,7 @@ static void* qual_decompressor_thread(void* ctx)
 
 static size_t qual_buf_reader(void* param, uint8_t* data, size_t size)
 {
-    quip_in_t* C = (quip_in_t*) param;
+    quip_quip_in_t* C = (quip_quip_in_t*) param;
 
     size_t cnt = 0;
     while (cnt < size && C->qualbuf_pos < C->qualbuf_len) {
@@ -714,7 +718,7 @@ static size_t qual_buf_reader(void* param, uint8_t* data, size_t size)
 
 static size_t id_buf_reader(void* param, uint8_t* data, size_t size)
 {
-    quip_in_t* C = (quip_in_t*) param;
+    quip_quip_in_t* C = (quip_quip_in_t*) param;
 
     size_t cnt = 0;
     while (cnt < size && C->idbuf_pos < C->idbuf_len) {
@@ -727,7 +731,7 @@ static size_t id_buf_reader(void* param, uint8_t* data, size_t size)
 
 static size_t seq_buf_reader(void* param, uint8_t* data, size_t size)
 {
-    quip_in_t* C = (quip_in_t*) param;
+    quip_quip_in_t* C = (quip_quip_in_t*) param;
 
     size_t cnt = 0;
     while (cnt < size && C->seqbuf_pos < C->seqbuf_len) {
@@ -738,9 +742,10 @@ static size_t seq_buf_reader(void* param, uint8_t* data, size_t size)
 }
 
 
-quip_in_t* quip_in_alloc(quip_reader_t reader, void* reader_data)
+quip_quip_in_t* quip_quip_in_open(
+    quip_reader_t reader, void* reader_data, ATTRIB_UNUSED quip_opt_t opts)
 {
-    quip_in_t* D = malloc_or_die(sizeof(quip_in_t));
+    quip_quip_in_t* D = malloc_or_die(sizeof(quip_quip_in_t));
 
     D->reader = reader;
     D->reader_data = reader_data;
@@ -806,7 +811,7 @@ quip_in_t* quip_in_alloc(quip_reader_t reader, void* reader_data)
 }
 
 
-void quip_in_free(quip_in_t* D)
+void quip_quip_in_close(quip_quip_in_t* D)
 {
     size_t i;
     for (i = 0; i < chunk_size; ++i) {
@@ -827,7 +832,7 @@ void quip_in_free(quip_in_t* D)
 }
 
 
-static void quip_in_read_block_header(quip_in_t* D)
+static void quip_in_read_block_header(quip_quip_in_t* D)
 {
     D->pending_reads = read_uint32(D->reader, D->reader_data);
     if (D->pending_reads == 0) {
@@ -964,7 +969,7 @@ static void quip_in_read_block_header(quip_in_t* D)
 }
 
 
-short_read_t* quip_in_read(quip_in_t* D)
+short_read_t* quip_quip_read(quip_quip_in_t* D)
 {
     if (D->chunk_pos < D->chunk_len) {
         return &D->chunk[D->chunk_pos++];

@@ -148,8 +148,11 @@ typedef size_t (*quip_reader_t) (void* reader_data, uint8_t* data, size_t size);
  */
 typedef enum quip_fmt_t_
 {
+    QUIP_FMT_UNDEFINED,
+    QUIP_FMT_NULL,
     QUIP_FMT_FASTQ,
     QUIP_FMT_SAM,
+    QUIP_FMT_BAM,
     QUIP_FMT_QUIP
 } quip_fmt_t;
 
