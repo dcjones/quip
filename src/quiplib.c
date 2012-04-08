@@ -85,6 +85,7 @@ void short_read_init(short_read_t* sr)
     str_init(&sr->seqname);
     sr->strand = 0;
     sr->pos    = 0;
+    cigar_init(&sr->cigar);
     str_init(&sr->aux);
 }
 
@@ -235,6 +236,8 @@ quip_in_t* quip_in_open(
             break;
 
         case QUIP_FMT_BAM:
+            opts |= QUIP_OPT_SAM_BAM;
+
         case QUIP_FMT_SAM:
             in->x.sam = quip_sam_in_open(reader, reader_data, opts);
             break;

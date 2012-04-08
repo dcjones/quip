@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -452,11 +453,13 @@ int bgzf_check_EOF(ATTRIB_UNUSED BGZF *fp)
 {
     /* quip I/O behaves like a pipe, so we cannot seek to check
      * if the file as the proper EOF magic. */
+    errno = ESPIPE;
     return -1;
 }
 
 int64_t bgzf_seek(ATTRIB_UNUSED BGZF* fp, ATTRIB_UNUSED int64_t pos, ATTRIB_UNUSED int where)
 {
     /* quip I/O behaves like a pipe, so we cannot seek. */
+    errno = ESPIPE;
     return -1;
 }

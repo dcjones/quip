@@ -39,7 +39,7 @@ void quip_fastq_out_close(quip_fastq_out_t* out)
 
 void quip_fastq_write(quip_fastq_out_t* out, short_read_t* sr)
 {
-    size_t size_needed = sr->id.n + sr->seq.n + sr->qual.n + 6;
+    size_t size_needed = sr->id.n + sr->seq.n + sr->qual.n + 7;
 
     if (size_needed > out->buflen) {
         out->buflen = size_needed;
@@ -161,6 +161,7 @@ static void fastq_in_get_line(quip_fastq_in_t* in, str_t* s)
 
 short_read_t* quip_fastq_read(quip_fastq_in_t* in)
 {
+    fprintf(stderr, "(quip_fastq_read)\n");
     if (in->state == STATE_EOF) return NULL;
 
     while (true) {

@@ -46,6 +46,7 @@ void quip_sam_out_close(quip_sam_out_t* out)
 
 void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
 {
+    fprintf(stderr, "(quip_sam_write)\n");
     // TODO
 }
 
@@ -104,8 +105,16 @@ short_read_t* quip_sam_read(quip_sam_in_t* in)
     for (i = 0; i < readlen; ++i) {
         in->r.seq.s[i] = bam_nt16_rev_table[bam1_seqi(bamseq, i)];
     }
+    in->r.seq.s[readlen] = '\0';
+    in->r.seq.n = readlen;
 
-    str_copy_cstr(&in->r.qual, (char*) bam1_qual(in->b),  in->b->core.l_qseq);
+    str_reserve(&in->r.qual, readlen + 1);
+    uint8_t* bamqual = (uint8_t*) bam1_qual(in->b);
+    for (i = 0; i < readlen; ++i) {
+        in->r.qual.s[i] = bamqual[i] + 33;
+    }
+    in->r.qual.s[readlen] = '\0';
+    in->r.qual.n = readlen;
 
     in->r.flags  = (uint32_t) in->b->core.flag;
     in->r.strand = bam1_strand(in->b);
@@ -118,15 +127,21 @@ short_read_t* quip_sam_read(quip_sam_in_t* in)
             strlen(in->f->header->target_name[in->b->core.tid]));
     }
 
+
+    uint32_t* samcigar = bam1_cigar(in->b);
+    size_t cigarlen = in->b->core.n_cigar;
+    cigar_reserve(&in->r.cigar, cigarlen);
+
+    for (i = 0; i < cigarlen; ++i) {
+        in->r.cigar.ops[i]  = samcigar[i] & BAM_CIGAR_MASK;
+        in->r.cigar.lens[i] = samcigar[i] >> BAM_CIGAR_SHIFT;
+    }
+    in->r.cigar.n = cigarlen;
+
     str_copy_cstr(&in->r.aux,
         (char*) bam1_aux(in->b),
         in->b->l_aux);
 
-
-    /* TODO:
-        cigar
-        Other things? Look at the sam specification.
-    */
 
     return &in->r;
 }

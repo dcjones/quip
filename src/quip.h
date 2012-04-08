@@ -104,6 +104,7 @@ typedef struct short_read_t_
     str_t    seqname;
     uint8_t  strand;
     uint32_t pos;
+    cigar_t  cigar;
 
     /* auxiliary SAM fields */
     str_t aux;

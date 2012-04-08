@@ -208,43 +208,38 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         SET_BINARY_MODE(stdout);
     }
 
+    quip_in_t*  in;
+    quip_out_t* out;
+
+
     if (fn_count == 0) {
         if (in_fmt == QUIP_FMT_UNDEFINED) {
             fprintf(stderr, "%s: stdin: Assuming input is FASTQ.\n", prog_name);
             in_fmt = QUIP_FMT_FASTQ;
         }
 
-        if (out_fmt = QUIP_FMT_UNDEFINED) {
+        if (out_fmt == QUIP_FMT_UNDEFINED) {
             if (in_fmt == QUIP_FMT_QUIP) {
                 out_fmt = QUIP_FMT_SAM;
             }
             else out_fmt = QUIP_FMT_QUIP;
         }
 
-        void* in;
-        void* out;
+        if (!force_flag && (out_fmt == QUIP_FMT_BAM || out_fmt == QUIP_FMT_QUIP) &&
+            isatty(fileno(stdout)))
+        {
+            fprintf(stderr,
+                "%s: refusing to write compressed data to your terminal screen.\n\n"
+                "Use -f is you really want to do this. (Hint: you don't.)\n",
+                prog_name);
+            return EXIT_FAILURE;
+        }
 
-        /*
+        in  = quip_in_open(block_reader,  (void*) stdin,  in_fmt, 0);
+        out = quip_out_open(block_writer, (void*) stdout, out_fmt, 0);
 
-        This would be awesome if we could guess the input format
-        by reading into it. But this is a messy road to go down.
-
-        In most cases we can guess from the file suffix. The only
-        case where this isn't so is when data is being piped.
-
-        */
-
-        /* If in_fmt == QUIP_FMT_UNDEFINED:
-                Assume FASTQ.
-
-           If out_fmt == QUIP_FMT_UNDEFINED:
-                Assume QUIP.
-        */
-
-
-        /* If output type is QUIP or BAM, and isatty(fileno(stdout))
-           then complain.
-        */
+        while (quip_pipe(in, out));
+        fflush(stdout);
     }
     else {
         size_t i;
