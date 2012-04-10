@@ -77,7 +77,6 @@ AC_CHECK_HEADER(getopt.h, ,
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
-                 src/sam/Makefile
                  extra/Makefile
                  src/version.h])
 

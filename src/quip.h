@@ -174,6 +174,18 @@ typedef enum quip_fmt_t_
 typedef uint32_t quip_opt_t;
 
 
+/* 
+ * Certain formats carry with the auxiliary data.
+ * This is a container to facilitate passing this
+ * around.
+ */
+typedef struct quip_aux_t_
+{
+    quip_fmt_t fmt;
+    void* aux;
+} quip_aux_t;
+
+
 /*
  * Writing short read data in a variety of formats.
  */
@@ -181,10 +193,11 @@ typedef uint32_t quip_opt_t;
 typedef struct quip_out_t_ quip_out_t;
 
 quip_out_t* quip_out_open(
-              quip_writer_t writer,
-              void*         writer_data,
-              quip_fmt_t    format,
-              quip_opt_t    opts);
+              quip_writer_t     writer,
+              void*             writer_data,
+              quip_fmt_t        format,
+              quip_opt_t        opts,
+              const quip_aux_t* aux);
 
 void quip_out_close(quip_out_t*);
 
@@ -208,6 +221,8 @@ quip_in_t* quip_in_open(
 
 
 void quip_in_close(quip_in_t*);
+
+void quip_get_aux(quip_in_t*, quip_aux_t*);
 
 /*
  * Get one read from the input stream. Output NULL if there are none.

@@ -210,6 +210,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
 
     quip_in_t*  in;
     quip_out_t* out;
+    quip_aux_t  aux;
 
 
     if (fn_count == 0) {
@@ -236,7 +237,8 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         }
 
         in  = quip_in_open(block_reader,  (void*) stdin,  in_fmt, 0);
-        out = quip_out_open(block_writer, (void*) stdout, out_fmt, 0);
+        quip_get_aux(in, &aux);
+        out = quip_out_open(block_writer, (void*) stdout, out_fmt, 0, &aux);
 
         while (quip_pipe(in, out));
         fflush(stdout);
@@ -534,7 +536,7 @@ int main(int argc, char* argv[])
     }
     
     while (1) {
-        opt = getopt_long(argc, argv, "ltqcdfvhV", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "ioltqcdfvhV", long_options, &opt_idx);
 
         if (opt == -1) break;
 

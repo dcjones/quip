@@ -13,9 +13,10 @@
 typedef struct quip_sam_out_t_ quip_sam_out_t;
 
 quip_sam_out_t* quip_sam_out_open(
-                    quip_writer_t writer,
-                    void*         writer_data,
-                    quip_opt_t    opts);
+                    quip_writer_t     writer,
+                    void*             writer_data,
+                    quip_opt_t        opts,
+                    const quip_aux_t* aux);
 
 void quip_sam_out_close(quip_sam_out_t*);
 void quip_sam_write(quip_sam_out_t*, short_read_t*);
@@ -29,6 +30,7 @@ quip_sam_in_t* quip_sam_in_open(
                     quip_opt_t opts);
 
 void quip_sam_in_close(quip_sam_in_t*);
+void quip_sam_get_aux(quip_sam_in_t*, quip_aux_t*);
 short_read_t* quip_sam_read(quip_sam_in_t*);
 
 

@@ -128,10 +128,11 @@ struct quip_out_t_
 
 
 quip_out_t* quip_out_open(
-              quip_writer_t writer,
-              void*         writer_data,
-              quip_fmt_t    fmt,
-              quip_opt_t    opts)
+              quip_writer_t     writer,
+              void*             writer_data,
+              quip_fmt_t        fmt,
+              quip_opt_t        opts,
+              const quip_aux_t* aux)
 {
     quip_out_t* out = malloc_or_die(sizeof(quip_out_t));
     out->fmt = fmt;
@@ -145,7 +146,7 @@ quip_out_t* quip_out_open(
             opts |= QUIP_OPT_SAM_BAM;
 
         case QUIP_FMT_SAM:
-            out->x.sam = quip_sam_out_open(writer, writer_data, opts);
+            out->x.sam = quip_sam_out_open(writer, writer_data, opts, aux);
             break;
 
         case QUIP_FMT_QUIP:
@@ -273,6 +274,21 @@ void quip_in_close(quip_in_t* in)
     }
 
     free(in);
+}
+
+
+void quip_get_aux(quip_in_t* in, quip_aux_t* aux)
+{
+    aux->fmt = in->fmt;
+
+    switch (in->fmt) {
+        case QUIP_FMT_BAM:
+        case QUIP_FMT_SAM:
+            quip_sam_get_aux(in->x.sam, aux);
+            break;
+
+        default: break;
+    }
 }
 
 

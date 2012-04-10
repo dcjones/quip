@@ -74,13 +74,14 @@ samfile_t* samopen_out(quip_writer_t writer, void* writer_data, bool binary, voi
 					fprintf(stderr, "[samopen] inconsistent number of target sequences. Output the text header.\n");
 			} else { // then dump ->target_{name,len}
 				char target_len_str[11];
-				for (i = 0; i < fp->header->n_targets; ++i)
+				for (i = 0; i < fp->header->n_targets; ++i) {
 					writer(writer_data, (uint8_t*) "@SQ\tSN:", 7);
 					writer(writer_data, (uint8_t*) fp->header->target_name[i], strlen(fp->header->target_name[i]));
 					writer(writer_data, (uint8_t*) "\tLN:", 4);
 					snprintf(target_len_str, sizeof(target_len_str), "%"PRIu32, fp->header->target_len[i]);
 					writer(writer_data, (uint8_t*) target_len_str, strlen(target_len_str));
 					writer(writer_data, (uint8_t*) "\n", 1);
+				}
 			}
 			bam_header_destroy(alt);
 		}

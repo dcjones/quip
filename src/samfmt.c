@@ -11,18 +11,29 @@ struct quip_sam_out_t_
 
 
 quip_sam_out_t* quip_sam_out_open(
-    quip_writer_t writer,
-    void*         writer_data,
-    quip_opt_t    opts)
+    quip_writer_t     writer,
+    void*             writer_data,
+    quip_opt_t        opts,
+    const quip_aux_t* aux)
 {
     quip_sam_out_t* out = malloc_or_die(sizeof(quip_sam_out_t));
 
     bool binary = (opts & QUIP_OPT_SAM_BAM) != 0;
 
-    /* TODO: we somehow need to retain the aux field. Otherwise
-       we will lose the header after decompressing. */
+    if (aux->fmt == QUIP_FMT_SAM || aux->fmt == QUIP_FMT_BAM) {
+        out->f = samopen_out(writer, writer_data, binary, aux->aux);
+    }
+    else {
+        bam_header_t* header = bam_header_init();
+        const char* default_header_text = "@HD\tVN:1.0\tSO:unsorted\n";
+        header->l_text = header->n_text = strlen(default_header_text);
+        header->text = malloc_or_die(header->l_text + 1);
+        memcpy(header->text, default_header_text, header->l_text + 1);
 
-    out->f = samopen_out(writer, writer_data, binary, NULL);
+        out->f = samopen_out(writer, writer_data, binary, (void*) header);
+
+        bam_header_destroy(header);
+    }
 
     if (out->f == NULL) {
         fprintf(stderr, "Unable to open SAM/BAM output stream.\n");
@@ -47,7 +58,14 @@ void quip_sam_out_close(quip_sam_out_t* out)
 void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
 {
     fprintf(stderr, "(quip_sam_write)\n");
+
     // TODO
+
+    /* One issue with SAM/BAM conversions is that
+       we have to lookup to tid for each read.
+       Maybe this isn't a big deal though. I don't
+       want to add another field to the read structure.
+    */
 }
 
 
@@ -91,6 +109,14 @@ void quip_sam_in_close(quip_sam_in_t* in)
     }
 }
 
+
+void quip_sam_get_aux(quip_sam_in_t* in, quip_aux_t* aux)
+{
+    aux->fmt = QUIP_FMT_SAM;
+    aux->aux = (void*) in->f->header;
+}
+
+
 short_read_t* quip_sam_read(quip_sam_in_t* in)
 {
     if (samread(in->f, in->b) <= 0) return NULL;
@@ -126,7 +152,6 @@ short_read_t* quip_sam_read(quip_sam_in_t* in)
             in->f->header->target_name[in->b->core.tid],
             strlen(in->f->header->target_name[in->b->core.tid]));
     }
-
 
     uint32_t* samcigar = bam1_cigar(in->b);
     size_t cigarlen = in->b->core.n_cigar;

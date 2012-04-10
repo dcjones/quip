@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 
 struct quip_fastq_out_t_
 {
@@ -47,7 +48,7 @@ void quip_fastq_write(quip_fastq_out_t* out, short_read_t* sr)
     }
 
     snprintf(out->buf, size_needed, "@%s\n%s\n+\n%s\n", sr->id.s, sr->seq.s, sr->qual.s);
-    out->writer(out->writer_data, (uint8_t*) out->buf, size_needed);
+    out->writer(out->writer_data, (uint8_t*) out->buf, size_needed - 1);
 }
 
 
@@ -122,7 +123,7 @@ static void fastq_in_refill(quip_fastq_in_t* in)
 
 static void fastq_in_get_line(quip_fastq_in_t* in, str_t* s)
 {
-    s->n = 0;
+    if (s) s->n = 0;
 
     size_t i = 0;
     while (1) {
@@ -164,11 +165,17 @@ short_read_t* quip_fastq_read(quip_fastq_in_t* in)
     fprintf(stderr, "(quip_fastq_read)\n");
     if (in->state == STATE_EOF) return NULL;
 
+
+
     while (true) {
         /* read more, if needed */
         if (*in->c == '\0' ) {
             fastq_in_refill(in);
             if (in->state == STATE_EOF) return NULL;
+            continue;
+        }
+        else if (isspace(*in->c)) {
+            in->c++;
             continue;
         }
 
