@@ -162,10 +162,7 @@ static void fastq_in_get_line(quip_fastq_in_t* in, str_t* s)
 
 short_read_t* quip_fastq_read(quip_fastq_in_t* in)
 {
-    fprintf(stderr, "(quip_fastq_read)\n");
     if (in->state == STATE_EOF) return NULL;
-
-
 
     while (true) {
         /* read more, if needed */

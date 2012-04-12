@@ -100,6 +100,7 @@ int32_t bam_get_tid(const bam_header_t *header, const char *seq_name)
 {
 	khint_t k;
 	khash_t(s) *h = (khash_t(s)*)header->hash;
+	if (h == NULL) return -1;
 	k = kh_get(s, h, seq_name);
 	return k == kh_end(h)? -1 : kh_value(h, k);
 }
