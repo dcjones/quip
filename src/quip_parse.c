@@ -31,6 +31,15 @@ void fastq_expand_str(str_t* s)
 }
 
 
+void fastq_reserve_str(str_t* s, size_t size)
+{
+    if (size > s->size) {
+        s->size = size;
+        s->s = realloc_or_die(s->s, s->size);
+    }
+}
+
+
 seq_t* fastq_alloc_seq()
 {
     seq_t* seq = malloc_or_die(sizeof(seq_t));

@@ -22,6 +22,7 @@ typedef struct
 } str_t;
 
 void fastq_expand_str(str_t* s);
+void fastq_reserve_str(str_t* s, size_t n);
 
 
 typedef struct

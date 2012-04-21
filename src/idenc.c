@@ -230,7 +230,7 @@ static void encode_str(idenc_t* E, size_t i, const char* str, tok_t* tok)
         cond_dist128_init(&E->d_str_char[i], 128);
     }
 
-    if (j == tok->len) {
+    if (tok->len == prev_tok_len && j == tok->len) {
         dist4_encode(E->ac, &E->d_type[i], ID_GROUP_MATCH);
     }
     else {
@@ -351,7 +351,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
         type = dist4_decode(E->ac, &E->d_type[i]);
 
         if (type == ID_GROUP_MATCH) {
-            while (id->size <= j + E->toks[i].len) fastq_expand_str(id);
+            fastq_reserve_str(id, j + E->toks[i].len);
             memcpy(id->s + j, E->lastid + E->toks[i].pos, E->toks[i].len);
 
             tok.type = ID_TOK_STR;
@@ -367,7 +367,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             tok.pos  = j;
             tok.len  = matches + mismatches;;
 
-            while (id->size <= j + matches + mismatches) fastq_expand_str(id);
+            fastq_reserve_str(id, j + matches + mismatches);
             if (matches > 0) {
                 memcpy(id->s + j, E->lastid + E->toks[i].pos, matches);
                 j += matches;
@@ -384,6 +384,8 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             }
         }
         else if (type == ID_GROUP_NUM_OFF) {
+            fastq_reserve_str(id, j + 20);
+
             off = dist16_decode(E->ac, &E->d_off[i]);
 
             tok.type = ID_TOK_NUM;
@@ -393,6 +395,7 @@ void idenc_decode(idenc_t* E, seq_t* seq)
             j += tok.len;
         }
         else if (type == ID_GROUP_NUM) {
+            fastq_reserve_str(id, j + 20);
 
             /* lazy initialization of d_num */
             if (E->d_num[i].n == 0) {
