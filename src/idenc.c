@@ -230,7 +230,7 @@ static void encode_str(idenc_t* E, size_t i, const uint8_t* str, tok_t* tok)
         cond_dist128_init(&E->d_str_char[i], 128);
     }
 
-    if (j == tok->len) {
+    if (tok->len == prev_tok_len && j == tok->len) {
         dist4_encode(E->ac, &E->d_type[i], ID_GROUP_MATCH);
     }
     else {
@@ -384,6 +384,8 @@ void idenc_decode(idenc_t* E, short_read_t* seq)
             }
         }
         else if (type == ID_GROUP_NUM_OFF) {
+            str_reserve(id, j + 20);
+
             off = dist16_decode(E->ac, &E->d_off[i]);
 
             tok.type = ID_TOK_NUM;
@@ -393,6 +395,7 @@ void idenc_decode(idenc_t* E, short_read_t* seq)
             j += tok.len;
         }
         else if (type == ID_GROUP_NUM) {
+            str_reserve(id, j + 20);
 
             /* lazy initialization of d_num */
             if (E->d_num[i].n == 0) {
