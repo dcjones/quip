@@ -241,6 +241,10 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         out = quip_out_open(block_writer, (void*) stdout, out_fmt, 0, &aux);
 
         while (quip_pipe(in, out));
+
+        quip_out_close(out);
+        quip_in_close(in);
+
         fflush(stdout);
     }
     else {

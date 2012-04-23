@@ -108,12 +108,11 @@ typedef struct short_read_t_
     str_t    seqname;
     uint8_t  strand;
     uint32_t pos;
-    uint8_t  mapq;
+    uint8_t  map_qual;
     cigar_t  cigar;
 
-    /* for efficiency, mseq.n == 0 when the mate sequence is that same */
-    str_t    mseq;
-    uint32_t mpos;
+    str_t    mate_seqname;
+    uint32_t mate_pos;
     int32_t  tlen;
 
     /* auxiliary SAM fields */

@@ -3,6 +3,8 @@
 #include <inttypes.h>
 #include "sam.h"
 
+void bam_init_header_hash(bam_header_t *header);
+
 #define TYPE_BAM  1
 #define TYPE_READ 2
 
@@ -21,6 +23,9 @@ bam_header_t *bam_header_dup(const bam_header_t *h0)
 		h->target_len[i] = h0->target_len[i];
 		h->target_name[i] = strdup(h0->target_name[i]);
 	}
+
+	bam_init_header_hash(h);
+
 	return h;
 }
 static void append_header_text(bam_header_t *header, char* text, int len)
@@ -136,8 +141,8 @@ void samclose(samfile_t *fp)
 {
 	if (fp == 0) return;
 	if (fp->header) bam_header_destroy(fp->header);
-	if (fp->type & TYPE_BAM) bam_close(fp->x.bam);
-	else sam_close(fp->x.tamr);
+	if (fp->type & 1) bam_close(fp->x.bam);
+	else if (fp->type == 2) sam_close(fp->x.tamr);
 	free(fp);
 }
 

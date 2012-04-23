@@ -4,6 +4,7 @@
 #include "sam/sam.h"
 #include "sam/kseq.h"
 #include <inttypes.h>
+#include <assert.h>
 
 struct quip_sam_out_t_
 {
@@ -119,19 +120,19 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
     /* 5. mapq */
     str_reserve_extra(s, 6);
     s->n += snprintf((char*) s->s + s->n, 6, "\t%"PRIu8"\t",
-            aligned ? r->mapq : 255);
+            aligned ? r->map_qual : 255);
 
     /* 6. cigar */
     const char* cigar_chars = "MIDNSHP=X";
     size_t i;
 
     if (aligned && r->cigar.n > 0) {
-        str_reserve_extra(s, r->cigar.n * 4 + 1);
+        str_reserve_extra(s, r->cigar.n * 11 + 1);
         for (i = 0; i < r->cigar.n; ++i) {
-            if (r->cigar.ops[i] > 7) continue;
-            s->n += snprintf((char*) s->s + s->n, 5, "%c%"PRIu32,
-                        cigar_chars[r->cigar.ops[i]],
-                        r->cigar.lens[i]);
+            if (r->cigar.ops[i] > 8) continue;
+            s->n += snprintf((char*) s->s + s->n, 12, "%"PRIu32"%c",
+                        r->cigar.lens[i],
+                        cigar_chars[r->cigar.ops[i]]);
         }
     }
     else {
@@ -139,14 +140,9 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
     }
 
     /* 7. rnext */
-    if (aligned) {
-        if (r->mseq.n == 0) {
-            str_append_cstr(s, "\t=");
-        }
-        else {
-            str_append_cstr(s, "\t");
-            str_append(s, &r->mseq);
-        }
+    if (aligned && r->mate_seqname.n > 0) {
+        str_append_cstr(s, "\t");
+        str_append(s, &r->mate_seqname);
     }
     else {
         str_append_cstr(s, "\t*");
@@ -155,7 +151,7 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
     /* 8. pnext */
     if (aligned) {
         str_reserve_extra(s, 12);
-        s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32, r->mpos + 1);
+        s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32, r->mate_pos + 1);
     }
     else {
         str_append_cstr(s, "\t0");
@@ -260,6 +256,7 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
                     str_reserve_extra(s, 2);
                     s->s[s->n++] = *a++;
                 }
+                a++;
                 break;
 
             case 'B':
@@ -366,6 +363,7 @@ void quip_sam_in_close(quip_sam_in_t* in)
         samclose(in->f);
         bam_destroy1(in->b);
         short_read_free(&in->r);
+        free(in);
     }
 }
 
@@ -402,9 +400,10 @@ short_read_t* quip_sam_read(quip_sam_in_t* in)
     in->r.qual.s[readlen] = '\0';
     in->r.qual.n = readlen;
 
-    in->r.flags  = (uint32_t) in->b->core.flag;
-    in->r.strand = bam1_strand(in->b);
-    in->r.pos    = in->b->core.pos;
+    in->r.flags    = (uint32_t) in->b->core.flag;
+    in->r.strand   = bam1_strand(in->b);
+    in->r.pos      = in->b->core.pos;
+    in->r.map_qual = in->b->core.qual;
 
     if (in->f->header && in->b->core.tid >= 0) {
         str_copy_cstr(
@@ -412,6 +411,24 @@ short_read_t* quip_sam_read(quip_sam_in_t* in)
             in->f->header->target_name[in->b->core.tid],
             strlen(in->f->header->target_name[in->b->core.tid]));
     }
+    else in->r.seqname.n = 0;
+
+    if (in->f->header && in->b->core.mtid >= 0) {
+        if (in->b->core.mtid == in->b->core.tid) {
+            in->r.mate_seqname.n = 0;
+            str_append_cstr(&in->r.mate_seqname, "=");
+        }
+        else {
+            str_copy_cstr(
+                &in->r.mate_seqname,
+                in->f->header->target_name[in->b->core.mtid],
+                strlen(in->f->header->target_name[in->b->core.mtid]));
+        }
+    }
+    else in->r.mate_seqname.n = 0;
+
+    in->r.mate_pos = in->b->core.mpos;
+
 
     uint32_t* samcigar = bam1_cigar(in->b);
     size_t cigarlen = in->b->core.n_cigar;
@@ -425,7 +442,7 @@ short_read_t* quip_sam_read(quip_sam_in_t* in)
 
     str_copy_cstr(&in->r.aux,
         (char*) bam1_aux(in->b),
-        in->b->l_aux);
+        ((uint8_t*) in->b->data + in->b->data_len) - (uint8_t*) bam1_aux(in->b));
 
 
     return &in->r;

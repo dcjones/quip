@@ -7,6 +7,8 @@
 #include "kstring.h"
 #include "sam_header.h"
 
+void bam_init_header_hash(bam_header_t *header);
+
 int bam_is_be = 0, bam_verbose = 2;
 char *bam_flag2char_table = "pPuUrR12sfd\0\0\0\0\0";
 
@@ -105,6 +107,9 @@ bam_header_t *bam_header_read(bamFile fp)
 		bam_read(fp, &header->target_len[i], 4);
 		if (bam_is_be) bam_swap_endian_4p(&header->target_len[i]);
 	}
+
+	bam_init_header_hash(header);
+
 	return header;
 }
 

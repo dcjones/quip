@@ -122,16 +122,16 @@ void short_read_init(short_read_t* sr)
     str_init(&sr->id);
     str_init(&sr->seq);
     str_init(&sr->qual);
-    sr->flags = BAM_FUNMAP;
     str_init(&sr->seqname);
-    sr->strand = 0;
-    sr->pos    = 0;
-    sr->mapq   = 255;
-    str_init(&sr->mseq);
-    sr->mpos   = 0;
-    sr->tlen   = 0;
-    cigar_init(&sr->cigar);
+    str_init(&sr->mate_seqname);
     str_init(&sr->aux);
+    cigar_init(&sr->cigar);
+    sr->flags    = BAM_FUNMAP;
+    sr->strand   = 0;
+    sr->pos      = 0;
+    sr->map_qual = 255;
+    sr->mate_pos = 0;
+    sr->tlen     = 0;
 }
 
 
@@ -142,9 +142,8 @@ void short_read_free(short_read_t* sr)
         str_free(&sr->seq);
         str_free(&sr->qual);
         str_free(&sr->seqname);
-        str_free(&sr->mseq);
+        str_free(&sr->mate_seqname);
         str_free(&sr->aux);
-        free(sr);
     }
 }
 
@@ -154,16 +153,16 @@ void short_read_copy(short_read_t* dest, const short_read_t* src)
     str_copy(&dest->id,   &src->id);
     str_copy(&dest->seq,  &src->seq);
     str_copy(&dest->qual, &src->qual);
-    dest->flags = src->flags;
     str_copy(&dest->seqname, &src->seqname);
-    dest->strand = src->strand;
-    dest->pos    = src->pos;
-    dest->mapq   = src->mapq;
-    cigar_copy(&dest->cigar, &src->cigar);
-    str_copy(&dest->mseq, &src->mseq);
-    dest->mpos   = src->mpos;
-    dest->tlen   = src->tlen;
+    str_copy(&dest->mate_seqname, &src->mate_seqname);
     str_copy(&dest->aux, &src->aux);
+    cigar_copy(&dest->cigar, &src->cigar);
+    dest->flags    = src->flags;
+    dest->strand   = src->strand;
+    dest->pos      = src->pos;
+    dest->map_qual = src->map_qual;
+    dest->mate_pos = src->mate_pos;
+    dest->tlen     = src->tlen;
 }
 
 
