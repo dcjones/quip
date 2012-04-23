@@ -2,6 +2,8 @@
 #include "samfmt.h"
 #include "misc.h"
 #include "sam/sam.h"
+#include "sam/kseq.h"
+#include <inttypes.h>
 
 struct quip_sam_out_t_
 {
@@ -81,43 +83,247 @@ void quip_sam_out_close(quip_sam_out_t* out)
 
 void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
 {
-    fprintf(stderr, "(quip_sam_write)\n");
+    /* Packing SAM data into a bam1_t is complicated. Instead, I output a read
+     * formatted in the SAM format to a temporary buffer and let samtools do the
+     * conversion. */
 
-    /* 
-        TODO:
-        I think the best bet here is to write the read in SAM
-        format, then invoke sam_read1 somehow.
-   */
+    bool aligned = !(r->flags & BAM_FUNMAP);
 
-    /* compute maximum size needed */
-    size_t len = 0;
-    len += r->id.n;
-    len +=  5; /* flag */
-    len += 10; /* tid */
-    len += 10; /* pos */
-    len += 3;  /* map qual */
-    len += r->cigar.n * (1 + 10);
-    len += 10; /* mtid */
-    len += 10; /* mpos */
-    len += 10; /* isize */
-    len += r->seq.n;
-    len += r->qual.n;
+    str_t* s = &out->sambuf; /* for convenience */
+    s->n = 0;
 
-    str_reserve(&out->sambuf, len + 1);
+    /* 1. qname */
+    str_append(s, &r->id);
 
-    out->sambuf.s[i]
+    /* 2. flag */
+    str_reserve_extra(s, 12);
+    s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32"\t", r->flags);
 
-    snprintf(out->sambuf.s, out->sambuf.size,
-        "%s\t"
+    /* 3. rname */
+    if (aligned) {
+        str_append(s, &r->seqname);
+    }
+    else {
+        str_append_cstr(s, "*");
+    }
 
+    /* 4. pos */
+    if (aligned) {
+        str_reserve_extra(s, 12);
+        s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32, r->pos + 1);
+    }
+    else {
+        str_append_cstr(s, "\t0");
+    }
 
-    // len += ; // aux // TODO
+    /* 5. mapq */
+    str_reserve_extra(s, 6);
+    s->n += snprintf((char*) s->s + s->n, 6, "\t%"PRIu8"\t",
+            aligned ? r->mapq : 255);
 
+    /* 6. cigar */
+    const char* cigar_chars = "MIDNSHP=X";
+    size_t i;
 
-    // test sam entry
-    // out->sambuf_next = "read00001\t0\t*\t6511\t255\t33M\t*\t0\t0\tCCAATAGCAGGTCATAAAGGCACCTAAGAAACC\tFC>II9D28+60,=&2I:2+;+*%1+)$()'\"+\n";
+    if (aligned && r->cigar.n > 0) {
+        str_reserve_extra(s, r->cigar.n * 4 + 1);
+        for (i = 0; i < r->cigar.n; ++i) {
+            if (r->cigar.ops[i] > 7) continue;
+            s->n += snprintf((char*) s->s + s->n, 5, "%c%"PRIu32,
+                        cigar_chars[r->cigar.ops[i]],
+                        r->cigar.lens[i]);
+        }
+    }
+    else {
+        str_append_cstr(s, "*");
+    }
+
+    /* 7. rnext */
+    if (aligned) {
+        if (r->mseq.n == 0) {
+            str_append_cstr(s, "\t=");
+        }
+        else {
+            str_append_cstr(s, "\t");
+            str_append(s, &r->mseq);
+        }
+    }
+    else {
+        str_append_cstr(s, "\t*");
+    }
+
+    /* 8. pnext */
+    if (aligned) {
+        str_reserve_extra(s, 12);
+        s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32, r->mpos + 1);
+    }
+    else {
+        str_append_cstr(s, "\t0");
+    }
+
+    /* 9. tlen */
+    str_reserve_extra(s, 13);
+    s->n += snprintf((char*) s->s + s->n, 13, "\t%"PRId32,
+                aligned ? r->tlen : 0);
+
+    /* 10. seq */
+    if (r->seq.n > 0) {
+        str_append_cstr(s, "\t");
+        str_append(s, &r->seq);
+    }
+    else {
+        str_append_cstr(s, "\t*");
+    }
+
+    /* 11. qual */
+    if (r->qual.n > 0) {
+        str_append_cstr(s, "\t");
+        str_append(s, &r->qual);
+    }
+    else {
+        str_append_cstr(s, "\t*");
+    }
+
+    /* 12. aux */
+    uint8_t* a = (uint8_t*) r->aux.s;
+    while (a < r->aux.s + r->aux.n) {
+        uint8_t type, subtype, key[2];
+        uint32_t array_len;
+        key[0] = a[0]; key[1] = a[1];
+        a += 2;
+        type = *a;
+        a += 1;
+
+        str_reserve_extra(s, 5);
+        s->n += snprintf((char*) s->s + s->n, 5, "\t%c%c:",
+                (char) key[0], (char) key[1]);
+
+        switch ((char) type) {
+            case 'A':
+                str_reserve_extra(s, 4);
+                s->n += snprintf((char*) s->s + s->n, 4, "A:%c", (char) *a++);
+                break;
+
+            case 'C':
+                str_reserve_extra(s, 6);
+                s->n += snprintf((char*) s->s + s->n, 6, "i:%"PRIu8, *(uint8_t*) a);
+                a++;
+                break;
+
+            case 'c':
+                str_reserve_extra(s, 7);
+                s->n += snprintf((char*) s->s + s->n, 7, "i:%"PRId8, *(int8_t*) a);
+                a++;
+                break;
+
+            case 'S':
+                str_reserve_extra(s, 8);
+                s->n += snprintf((char*) s->s + s->n, 8, "i:%"PRIu16, *(uint16_t*) a);
+                a += 2;
+                break;
+
+            case 's':
+                str_reserve_extra(s, 9);
+                s->n += snprintf((char*) s->s + s->n, 9, "i:%"PRId16, *(int16_t*) a);
+                a += 2;
+                break;
+
+            case 'I':
+                str_reserve_extra(s, 13);
+                s->n += snprintf((char*) s->s + s->n, 13, "i:%"PRIu32, *(uint32_t*) a);
+                a += 4;
+                break;
+
+            case 'i':
+                str_reserve_extra(s, 14);
+                s->n += snprintf((char*) s->s + s->n, 14, "i:%"PRId32, *(int32_t*) a);
+                a += 4;
+                break;
+
+            case 'f':
+                str_reserve_extra(s, 20);
+                s->n += snprintf((char*) s->s + s->n, 20, "f:%g", *(float*) a);
+                a += 4;
+                break;
+
+            case 'd':
+                str_reserve_extra(s, 40);
+                s->n += snprintf((char*) s->s + s->n, 40, "d:%lg", *(double*) a);
+                a += 8;
+                break;
+
+            case 'Z':
+            case 'H':
+                str_reserve_extra(s, 3);
+                s->n += snprintf((char*) s->s + s->n, 3, "%c:", type);
+                while (*a) {
+                    str_reserve_extra(s, 2);
+                    s->s[s->n++] = *a++;
+                }
+                break;
+
+            case 'B':
+                subtype = *a++;
+                memcpy(&array_len, a, 4);
+                a += 4;
+                str_reserve_extra(s, 4);
+                s->n += snprintf((char*) s->s + s->n, 4, "%c:%c", type, subtype);
+
+                for (i = 0; i < array_len; ++i) {
+                    str_append_cstr(s, ",");
+                    switch (subtype) {
+                        case 'c':
+                            str_reserve_extra(s, 7);
+                            s->n += snprintf((char*) s->s + s->n, 7, "i:%"PRId8, *(int8_t*) a);
+                            a++;
+                            break;
+
+                        case 'C':
+                            str_reserve_extra(s, 6);
+                            s->n += snprintf((char*) s->s + s->n, 6, "i:%"PRIu8, *(uint8_t*) a);
+                            a++;
+                            break;
+
+                        case 'S':
+                            str_reserve_extra(s, 8);
+                            s->n += snprintf((char*) s->s + s->n, 8, "i:%"PRIu16, *(uint16_t*) a);
+                            a += 2;
+                            break;
+
+                        case 'i':
+                            str_reserve_extra(s, 14);
+                            s->n += snprintf((char*) s->s + s->n, 14, "i:%"PRId32, *(int32_t*) a);
+                            a += 4;
+                            break;
+
+                        case 'I':
+                            str_reserve_extra(s, 13);
+                            s->n += snprintf((char*) s->s + s->n, 13, "i:%"PRIu32, *(uint32_t*) a);
+                            a += 4;
+                            break;
+
+                        case 'f':
+                            str_reserve_extra(s, 20);
+                            s->n += snprintf((char*) s->s + s->n, 20, "f:%g", *(float*) a);
+                            a += 4;
+                            break;
+
+                        default:
+                            break;
+                    }
+                }
+
+                break;
+
+            default:
+                break; // skip unknown aux type
+        }
+    }
+
+    s->s[s->n] = '\0';
 
     out->sambuf_next = out->sambuf.s;
+    sam_rewind(out->sambuf_file);
     sam_read1(out->sambuf_file, out->f->header, out->b);
     samwrite(out->f, out->b);
 }

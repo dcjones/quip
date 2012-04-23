@@ -25,6 +25,33 @@ void str_reserve(str_t* str, size_t size)
     }
 }
 
+
+void str_reserve_extra(str_t* str, size_t size)
+{
+    if (str->n + size > str->size) {
+        str->size = str->n + size;
+        str->s = realloc_or_die(str->s, str->size * sizeof(char));
+    }
+}
+
+
+void str_append(str_t* a, const str_t* b)
+{
+    str_reserve_extra(a, b->n);
+    memcpy(a->s + a->n, b->s, b->n);
+    a->n += b->n;
+}
+
+
+void str_append_cstr(str_t* a, const char* b)
+{
+    size_t len = strlen(b);
+    str_reserve_extra(a, len);
+    memcpy(a->s + a->n, b, len);
+    a->n += len;
+}
+
+
 void str_free(str_t* str)
 {
     if (str) free(str->s);
@@ -76,6 +103,20 @@ void cigar_free(cigar_t* cig)
 }
 
 
+void cigar_copy(cigar_t* dest, const cigar_t* src)
+{
+    if (dest->size < src->size) {
+        dest->size = src->size;
+        dest->ops  = realloc_or_die(dest->ops,  dest->size * sizeof(uint8_t));
+        dest->lens = realloc_or_die(dest->lens, dest->size * sizeof(uint32_t));
+    }
+
+    memcpy(dest->ops,  src->ops,  src->n * sizeof(uint8_t));
+    memcpy(dest->lens, src->lens, src->n * sizeof(uint32_t));
+    dest->n = src->n;
+}
+
+
 void short_read_init(short_read_t* sr)
 {
     str_init(&sr->id);
@@ -85,6 +126,10 @@ void short_read_init(short_read_t* sr)
     str_init(&sr->seqname);
     sr->strand = 0;
     sr->pos    = 0;
+    sr->mapq   = 255;
+    str_init(&sr->mseq);
+    sr->mpos   = 0;
+    sr->tlen   = 0;
     cigar_init(&sr->cigar);
     str_init(&sr->aux);
 }
@@ -97,6 +142,7 @@ void short_read_free(short_read_t* sr)
         str_free(&sr->seq);
         str_free(&sr->qual);
         str_free(&sr->seqname);
+        str_free(&sr->mseq);
         str_free(&sr->aux);
         free(sr);
     }
@@ -112,6 +158,11 @@ void short_read_copy(short_read_t* dest, const short_read_t* src)
     str_copy(&dest->seqname, &src->seqname);
     dest->strand = src->strand;
     dest->pos    = src->pos;
+    dest->mapq   = src->mapq;
+    cigar_copy(&dest->cigar, &src->cigar);
+    str_copy(&dest->mseq, &src->mseq);
+    dest->mpos   = src->mpos;
+    dest->tlen   = src->tlen;
     str_copy(&dest->aux, &src->aux);
 }
 

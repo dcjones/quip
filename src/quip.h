@@ -63,6 +63,9 @@ typedef struct
 
 void str_init(str_t*);
 void str_reserve(str_t*, size_t);
+void str_reserve_extra(str_t*, size_t);
+void str_append(str_t*, const str_t*);
+void str_append_cstr(str_t*, const char*);
 void str_free(str_t*);
 void str_copy(str_t* dest, const str_t* src);
 void str_copy_cstr(str_t* dest, const char* src, size_t n);
@@ -81,6 +84,7 @@ typedef struct cigar_t_
 void cigar_init(cigar_t*);
 void cigar_reserve(cigar_t*, size_t);
 void cigar_free(cigar_t*);
+void cigar_copy(cigar_t*, const cigar_t*);
 
 
 /* A read, either aligned or unaligned. */
@@ -104,7 +108,13 @@ typedef struct short_read_t_
     str_t    seqname;
     uint8_t  strand;
     uint32_t pos;
+    uint8_t  mapq;
     cigar_t  cigar;
+
+    /* for efficiency, mseq.n == 0 when the mate sequence is that same */
+    str_t    mseq;
+    uint32_t mpos;
+    int32_t  tlen;
 
     /* auxiliary SAM fields */
     str_t aux;

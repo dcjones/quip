@@ -766,4 +766,6 @@ static inline int bam_aux_type2size(int x)
 }
 
 
+void sam_rewind(tamFile fp);
+
 #endif

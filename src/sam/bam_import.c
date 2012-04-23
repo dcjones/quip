@@ -493,3 +493,9 @@ void sam_close(tamFile fp)
 		free(fp);
 	}
 }
+
+void sam_rewind(tamFile fp)
+{
+    ks_rewind(fp->ks);
+}
+
