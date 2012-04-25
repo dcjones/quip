@@ -6,7 +6,7 @@
 
 struct twobit_t_
 {
-    size_t len; /* length of stored sequnce */
+    size_t len; /* length of stored sequence */
     size_t n;   /* space (number of kmers) allocated in seq */
     kmer_t* seq;
 };
@@ -30,6 +30,13 @@ void twobit_reserve(twobit_t* s, size_t seqlen)
         memset(s->seq + s->n, 0, (new_n - s->n) * sizeof(kmer_t));
         s->n = new_n;
     }
+}
+
+
+void twobit_free_reserve(twobit_t* s)
+{
+    s->n = kmers_needed(s->len);
+    s->seq = realloc_or_die(s->seq, s->n * sizeof(kmer_t));
 }
 
 
@@ -119,6 +126,19 @@ void twobit_append_n(twobit_t* s, const char* seqstr, size_t seqlen)
     }
 
     s->len += seqlen;
+}
+
+
+void twobit_append_char(twobit_t* s, char a)
+{
+    twobit_reserve(s, 1);
+    kmer_t c = chartokmer[(uint8_t) a];
+
+    size_t idx = s->len / (4 * sizeof(kmer_t));
+    size_t off = s->len % (4 * sizeof(kmer_t));
+
+    s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 << (2 * off))) | (c << (2 * off));
+    s->len++;
 }
 
 

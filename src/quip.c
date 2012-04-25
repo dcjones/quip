@@ -14,6 +14,7 @@
 #include "assembler.h"
 #include "kmer.h"
 #include "misc.h"
+#include "seqmap.h"
 #include <getopt.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -31,7 +32,6 @@
 
 const char* prog_name;
 
-
 bool force_flag  = false;
 bool quick_flag  = false;
 bool stdout_flag = false;
@@ -43,6 +43,8 @@ enum {
 
 quip_fmt_t in_fmt  = QUIP_FMT_UNDEFINED;
 quip_fmt_t out_fmt = QUIP_FMT_UNDEFINED;
+
+const char* ref_fn = NULL;
 
 
 void print_help()
@@ -208,6 +210,20 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         SET_BINARY_MODE(stdout);
     }
 
+    seqmap_t* ref = NULL;
+    if (ref_fn != NULL) {
+        FILE* ref_f = fopen(ref_fn, "rb");
+        if (ref_f == NULL) {
+            fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, ref_fn);
+            return EXIT_FAILURE;
+        }
+
+        seqmap_t* ref = seqmap_alloc();
+        seqmap_read_fasta(ref, ref_f);
+        fclose(ref_f);
+    }
+
+
     quip_in_t*  in;
     quip_out_t* out;
     quip_aux_t  aux;
@@ -254,177 +270,10 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         }
     }
 
+    if (ref) seqmap_free(ref);
+
     return 0;
 }
-
-
-
-
-#if 0
-static int quip_cmd_compress(char** fns, size_t fn_count)
-{
-    if (stdout_flag) {
-        SET_BINARY_MODE(stdout);
-    }
-
-    if (!force_flag && (stdout_flag || fn_count == 0) && isatty(fileno(stdout))) {
-        fprintf(stderr,
-            "%s: refusing to write compressed data to your terminal screen.\n\n"
-            "Use -f is you really want to do this. (Hint: you don't.)\n",
-            prog_name);
-        return EXIT_FAILURE;
-    }
-
-    const char* fn;
-    char* out_fn;
-    FILE *fin, *fout;
-    size_t i;
-
-    fastq_t* fq;
-
-    quip_out_t* C;
-
-    if (fn_count == 0) {
-        C = quip_out_alloc(block_writer, stdout, quick_flag);
-
-        fq = fastq_open(stdin);
-
-        while (quip_out_readseq(C, fq));
-
-        fastq_close(fq);
-        quip_out_free(C);
-    }
-    else {
-        for (i = 0; i < fn_count; ++i) {
-            fn = fns[i];
-            fin = open_fin(fn);
-            if (!fin) continue;
-
-            if (stdout_flag) fout = stdout;
-            else {
-                out_fn = malloc_or_die((strlen(fn) + 4) * sizeof(char));
-                sprintf(out_fn, "%s.qp", fn);
-                fout = open_fout(out_fn);
-                free(out_fn);
-
-                if (fout == NULL) {
-                    fclose(fin);
-                    continue;
-                }
-            }
-
-            /* We do our own buffering, so we use unbuffered
-             * streams to avoid unnecessary copying. */
-            setvbuf(fin,  NULL, _IONBF, 0);
-            setvbuf(fout, NULL, _IONBF, 0);
-
-            C = quip_out_alloc(block_writer, fout, quick_flag);
-
-            fq = fastq_open(fin);
-
-            while (quip_out_readseq(C, fq));
-
-            quip_out_finish(C);
-
-            fastq_close(fq);
-            fclose(fin);
-
-            quip_out_free(C);
-            if (!stdout_flag) fclose(fout);
-        }
-    }
-
-    return EXIT_SUCCESS;
-}
-
-
-static int quip_cmd_decompress(char** fns, size_t fn_count, bool dryrun)
-{
-    const char* fn;
-    FILE* fin;
-    FILE* fout;
-    char* out_fn = NULL;
-    size_t fn_len;
-    size_t i;
-
-    const size_t outbuf_size = 1048576;
-    char* outbuf = malloc_or_die(outbuf_size * sizeof(char));
-
-    seq_t* r;
-    quip_in_t* D;
-
-    if (fn_count == 0) {
-        D = quip_in_alloc(block_reader, stdin);
-
-        while ((r = quip_in_read(D))) {
-            if (!dryrun) fastq_print(stdout, r);
-        }
-
-        quip_in_free(D);
-    }
-    else {
-        for (i = 0; i < fn_count; ++i) {
-            fn = fns[i];
-            fn_len = strlen(fn);
-
-            if (fn_len < 3 || memcmp(fn + (fn_len - 3), ".qp", 3) != 0) {
-                fprintf(stderr, "%s: %s: Unknown suffix -- ignored.\n",
-                        prog_name, fn);
-                continue;
-            }
-
-            fin = open_fin(fn);
-            if (!fin) continue;
-
-            if (dryrun) fout = NULL;
-            else if (stdout_flag) fout = stdout;
-            else {
-                out_fn = malloc_or_die((fn_len - 2) * sizeof(char));
-                memcpy(out_fn, fn, fn_len - 3);
-                out_fn[fn_len - 2] = '\0';
-                fout = open_fout(out_fn);
-                free(out_fn);
-
-                if (fout == NULL) {
-                    fclose(fin);
-                    continue;
-                }
-            }
-
-
-            /* We do our own buffering for input, so we
-             * use unbuffered streams to avoid unnecessary
-             * copying. */
-            setvbuf(fin,  NULL, _IONBF, 0);
-
-            /* Output streams do benefit from buffering.
-             * We use a very large to hopefully improve the
-             * throughput of many small writes.
-             */
-            if (!dryrun) setvbuf(fout, outbuf, _IOFBF, outbuf_size);
-
-
-            D = quip_in_alloc(block_reader, fin);
-
-            while ((r = quip_in_read(D))) {
-                if (!dryrun) fastq_print(fout, r);
-            }
-
-            fclose(fin);
-
-            quip_in_free(D);
-
-            fflush(fout);
-            if (!stdout_flag && !dryrun) fclose(fout);
-        }
-    }
-
-
-    free(outbuf);
-
-    return EXIT_SUCCESS;
-}
-#endif
 
 
 static void quip_print_list(const char* fn, quip_list_t* l)
@@ -507,6 +356,7 @@ int main(int argc, char* argv[])
         {"from",       required_argument, NULL, 'i'},
         {"output",     required_argument, NULL, 'o'},
         {"to",         required_argument, NULL, 'o'},
+        {"reference",  required_argument, NULL, 'r'},
         {"list",       no_argument, NULL, 'l'},
         {"test",       no_argument, NULL, 't'},
         {"quick",      no_argument, NULL, 'q'},
@@ -540,7 +390,7 @@ int main(int argc, char* argv[])
     }
     
     while (1) {
-        opt = getopt_long(argc, argv, "ioltqcdfvhV", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "i:o:r:ltqcdfvhV", long_options, &opt_idx);
 
         if (opt == -1) break;
 
@@ -551,6 +401,10 @@ int main(int argc, char* argv[])
 
             case 'o':
                 out_fmt = parse_format(optarg);
+                break;
+
+            case 'r':
+                ref_fn = optarg;
                 break;
 
             case 'l':

@@ -52,6 +52,13 @@ void str_append_cstr(str_t* a, const char* b)
 }
 
 
+void str_append_char(str_t* a, char c)
+{
+    str_reserve_extra(a, 1);
+    a->s[a->n++] = c;
+}
+
+
 void str_free(str_t* str)
 {
     if (str) free(str->s);
