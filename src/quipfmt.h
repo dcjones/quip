@@ -14,9 +14,11 @@
 typedef struct quip_quip_out_t_ quip_quip_out_t;
 
 quip_quip_out_t* quip_quip_out_open(
-                    quip_writer_t writer,
-                    void*         writer_data,
-                    quip_opt_t    opts);
+                    quip_writer_t     writer,
+                    void*             writer_data,
+                    quip_opt_t        opts,
+                    const quip_aux_t* aux,
+                    const seqmap_t*   ref);
 
 void quip_quip_out_close(quip_quip_out_t*);
 void quip_quip_write(quip_quip_out_t*, short_read_t*);
@@ -25,9 +27,10 @@ void quip_quip_write(quip_quip_out_t*, short_read_t*);
 typedef struct quip_quip_in_t_ quip_quip_in_t;
 
 quip_quip_in_t* quip_quip_in_open(
-                    quip_reader_t reader,
-                    void*         reader_data,
-                    quip_opt_t opts);
+                    quip_reader_t   reader,
+                    void*           reader_data,
+                    quip_opt_t      opts,
+                    const seqmap_t* ref);
 
 void quip_quip_in_close(quip_quip_in_t*);
 short_read_t* quip_quip_read(quip_quip_in_t*);

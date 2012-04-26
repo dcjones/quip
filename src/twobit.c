@@ -2,6 +2,7 @@
 #include "twobit.h"
 #include "kmer.h"
 #include "misc.h"
+#include "crc64.h"
 #include <string.h>
 
 struct twobit_t_
@@ -297,6 +298,11 @@ void twobit_revcomp(twobit_t* dest, const twobit_t* src)
     dest->len = src->len;
 }
 
+
+uint64_t twobit_crc64_update(const twobit_t* s, uint64_t crc)
+{
+    return crc64_update((uint8_t*) s->seq, kmers_needed(s->len) * sizeof(kmer_t), crc);
+}
 
 
 /*

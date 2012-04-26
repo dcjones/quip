@@ -1,6 +1,7 @@
 
 #include "quip.h"
 #include "misc.h"
+#include "seqmap.h"
 #include "quipfmt.h"
 #include "fastqfmt.h"
 #include "samfmt.h"
@@ -189,7 +190,8 @@ quip_out_t* quip_out_open(
               void*             writer_data,
               quip_fmt_t        fmt,
               quip_opt_t        opts,
-              const quip_aux_t* aux)
+              const quip_aux_t* aux,
+              const seqmap_t*   ref)
 {
     quip_out_t* out = malloc_or_die(sizeof(quip_out_t));
     out->fmt = fmt;
@@ -207,7 +209,7 @@ quip_out_t* quip_out_open(
             break;
 
         case QUIP_FMT_QUIP:
-            out->x.quip = quip_quip_out_open(writer, writer_data, opts);
+            out->x.quip = quip_quip_out_open(writer, writer_data, opts, aux, ref);
             break;
 
         case QUIP_FMT_UNDEFINED:
@@ -280,10 +282,11 @@ struct quip_in_t_
 
 
 quip_in_t* quip_in_open(
-              quip_reader_t reader,
-              void*         reader_data,
-              quip_fmt_t    fmt,
-              quip_opt_t    opts)
+              quip_reader_t   reader,
+              void*           reader_data,
+              quip_fmt_t      fmt,
+              quip_opt_t      opts,
+              const seqmap_t* ref)
 {
     quip_in_t* in = malloc_or_die(sizeof(quip_in_t));
     in->fmt = fmt;
@@ -301,7 +304,7 @@ quip_in_t* quip_in_open(
             break;
 
         case QUIP_FMT_QUIP:
-            in->x.quip = quip_quip_in_open(reader, reader_data, opts);
+            in->x.quip = quip_quip_in_open(reader, reader_data, opts, ref);
             break;
 
         default: break;

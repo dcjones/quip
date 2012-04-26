@@ -100,6 +100,9 @@ struct assembler_t_
     twobit_t* supercontig;
     twobit_t* supercontig_rc;
 
+    /* reference, for reference based alignment */
+    const seqmap_t* ref;
+
     /* should we try attempt to assemble contigs with the current batch of reads
      * */
     bool assemble_batch;
@@ -110,8 +113,12 @@ static void build_kmer_hash(assembler_t* A);
 
 
 assembler_t* assembler_alloc(
-        quip_writer_t writer, void* writer_data,
-        size_t assemble_k, size_t align_k, bool quick)
+        quip_writer_t   writer,
+        void*           writer_data,
+        size_t          assemble_k,
+        size_t          align_k,
+        bool            quick,
+        const seqmap_t* ref)
 {
     assembler_t* A = malloc_or_die(sizeof(assembler_t));
     memset(A, 0, sizeof(assembler_t));
@@ -120,6 +127,7 @@ assembler_t* assembler_alloc(
 
     A->writer = writer;
     A->writer_data = writer_data;
+    A->ref = ref;
 
     A->assemble_k = assemble_k;
     A->align_k    = align_k;
@@ -296,12 +304,26 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
 
 
-void assembler_add_seq(assembler_t* A, const uint8_t* seq, size_t seqlen)
+void assembler_add_seq(assembler_t* A, const short_read_t* seq)
 {
     if (A->quick) {
-        seqenc_encode_char_seq(A->seqenc, seq, seqlen);
+        if (seq->flags & BAM_FUNMAP == 0) {
+            // TODO: reference based compression
+        }
+        else {
+            seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
+        }
     }
     else if (A->assemble_batch) {
+
+        /* Shit, this might get ugly.
+
+        Here I am saving a block of reads to assemble. But what can I do
+        with the aligned reads? If I add their sequences to the sequence set,
+        I will lose all the other stuff I need to compress, but if I write
+        them immediately I will screw the whole thing up.
+        */
+
         if (A->N == A->ord_size) {
             A->ord_size *= 2;
             A->ord = realloc_or_die(A->ord, A->ord_size * sizeof(uint32_t));
@@ -310,18 +332,18 @@ void assembler_add_seq(assembler_t* A, const uint8_t* seq, size_t seqlen)
         /* does the read contain non-nucleotide characters ? */
         size_t i;
         bool has_N = false;
-        for (i = 0; i < seqlen; ++i) {
-            if (seq[i] == 'N') {
+        for (i = 0; i < seq->seq.n; ++i) {
+            if (seq->seq.s[i] == 'N') {
                 has_N = true;
                 break;
             }
         }
 
         if (has_N) {
-            A->ord[A->N++] = seqset_inc_eb(A->S, (char*) seq);
+            A->ord[A->N++] = seqset_inc_eb(A->S, (char*) seq->seq.s);
         }
         else {
-            twobit_copy_n(A->x, (char*) seq, seqlen);
+            twobit_copy_n(A->x, (char*) seq->seq.s, seq->seq.n);
             A->ord[A->N++] = seqset_inc_tb(A->S, A->x);
         }
     }
@@ -329,18 +351,18 @@ void assembler_add_seq(assembler_t* A, const uint8_t* seq, size_t seqlen)
         /* does the read contain non-nucleotide characters ? */
         size_t i;
         bool has_N = false;
-        for (i = 0; i < seqlen; ++i) {
-            if (seq[i] == 'N') {
+        for (i = 0; i < seq->seq.n; ++i) {
+            if (seq->seq.s[i] == 'N') {
                 has_N = true;
                 break;
             }
         }
 
         if (has_N) {
-            seqenc_encode_char_seq(A->seqenc, seq, seqlen);
+            seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
         }
         else {
-            twobit_copy_n(A->x, (char*) seq, seqlen);
+            twobit_copy_n(A->x, (char*) seq->seq.s, seq->seq.n);
             align_read(A, A->x);
         }
 

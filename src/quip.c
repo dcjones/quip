@@ -252,9 +252,9 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
             return EXIT_FAILURE;
         }
 
-        in  = quip_in_open(block_reader,  (void*) stdin,  in_fmt, 0);
+        in  = quip_in_open(block_reader,  (void*) stdin,  in_fmt, 0, ref);
         quip_get_aux(in, &aux);
-        out = quip_out_open(block_writer, (void*) stdout, out_fmt, 0, &aux);
+        out = quip_out_open(block_writer, (void*) stdout, out_fmt, 0, &aux, ref);
 
         while (quip_pipe(in, out));
 

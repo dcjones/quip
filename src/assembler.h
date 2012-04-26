@@ -25,13 +25,18 @@
 typedef struct assembler_t_ assembler_t;
 
 assembler_t* assembler_alloc(
-        quip_writer_t writer, void* writer_data,
-        size_t assemble_k, size_t align_k, bool quick);
-void         assembler_free(assembler_t*);
+        quip_writer_t   writer,
+        void*           writer_data,
+        size_t          assemble_k,
+        size_t          align_k,
+        bool            quick,
+        const seqmap_t* ref);
+
+void assembler_free(assembler_t*);
 
 void assembler_clear_contigs(assembler_t*);
 
-void assembler_add_seq(assembler_t*, const uint8_t* seq, size_t seqlen);
+void   assembler_add_seq(assembler_t*, const short_read_t* seq);
 size_t assembler_finish(assembler_t* A);
 void   assembler_flush(assembler_t* A);
 

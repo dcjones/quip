@@ -2,6 +2,7 @@
 #include "seqmap.h"
 #include "quip.h"
 #include "misc.h"
+#include "crc64.h"
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -11,6 +12,7 @@ typedef struct named_seq_t_
 {
     char* seqname;
     twobit_t* seq;
+    uint64_t  crc;
 } named_seq_t;
 
 
@@ -80,6 +82,24 @@ static void fasta_unexpected_char(char c)
 {
     fprintf(stderr, "quip: error parsing fasta file: unexpected character '%c'\n", c);
     exit(EXIT_FAILURE);
+}
+
+
+static void check_unique(const seqmap_t* M)
+{
+    /* If there are more than one sequence going by the same name,
+     * this will cause major problems. Check to make sure this is not
+     * the case.
+     */
+
+    size_t i;
+    for (i = 1; i < M->n; ++i) {
+        if (strcmp(M->seqs[i].seqname, M->seqs[i - 1].seqname) == 0) {
+            fprintf(stderr, "quip: reference contains multiple sequences of the same name: %s\n",
+                            M->seqs[i].seqname);
+            exit(EXIT_FAILURE);
+        }
+    }
 }
 
 
@@ -166,13 +186,14 @@ void seqmap_read_fasta(seqmap_t* M, FILE* fasta_f)
     if (seq != NULL) twobit_free_reserve(seq);
 
     qsort(M->seqs, M->n, sizeof(named_seq_t), named_seq_cmp);
+    check_unique(M);
 
     str_free(&seqname);
     free(buf);
 }
 
 
-const twobit_t* seqmap_get(seqmap_t* M, const char* seqname)
+const twobit_t* seqmap_get(const seqmap_t* M, const char* seqname)
 {
     if (M->n == 0) return NULL;
 
@@ -191,5 +212,18 @@ const twobit_t* seqmap_get(seqmap_t* M, const char* seqname)
     }
 
     return strcmp(seqname, M->seqs[i].seqname) == 0 ? M->seqs[i].seq : NULL;
+}
+
+
+uint64_t seqmap_crc64(const seqmap_t* M)
+{
+    uint64_t crc = 0;
+    size_t i;
+    for (i = 0; i < M->n; ++i) {
+        crc = crc64_update((uint8_t*) M->seqs[i].seqname, strlen(M->seqs[i].seqname), crc);
+        crc = twobit_crc64_update(M->seqs[i].seq, crc);
+    }
+
+    return crc;
 }
 

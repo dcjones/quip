@@ -4,7 +4,9 @@
 #include "misc.h"
 #include "qualenc.h"
 #include "idenc.h"
+#include "seqmap.h"
 #include "crc64.h"
+#include "sam/bam.h"
 #include <stdint.h>
 #include <string.h>
 #include <pthread.h>
@@ -13,7 +15,7 @@
 static const uint8_t quip_header_magic[6] = 
     {0xff, 'Q', 'U', 'I', 'P', 0x00};
 
-static const uint8_t quip_header_version = 0x01;
+static const uint8_t quip_header_version = 0x02;
 
 static const size_t assembler_k = 25;
 static const size_t aligner_k   = 12;
@@ -174,6 +176,9 @@ struct quip_quip_out_t_
     quip_writer_t writer;
     void* writer_data;
 
+    /* reference, NULL if we are not doing reference-based compression */
+    const seqmap_t* ref;
+
     /* algorithms to compress ids, qualities, and sequences, resp. */
     idenc_t*     idenc;
     qualenc_t*   qualenc;
@@ -233,7 +238,7 @@ static void* seq_compressor_thread(void* ctx)
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
-        assembler_add_seq(C->assembler, C->chunk[i].seq.s, C->chunk[i].seq.n);
+        assembler_add_seq(C->assembler, &C->chunk[i]);
         C->seq_crc = crc64_update(
             C->chunk[i].seq.s,
             C->chunk[i].seq.n, C->seq_crc);
@@ -259,14 +264,19 @@ static void* qual_compressor_thread(void* ctx)
 
 
 quip_quip_out_t* quip_quip_out_open(
-    quip_writer_t writer, void* writer_data,
-    quip_opt_t opts)
+    quip_writer_t writer,
+    void* writer_data,
+    quip_opt_t opts,
+    const quip_aux_t* aux,
+    const seqmap_t* ref)
 {
     quip_quip_out_t* C = malloc_or_die(sizeof(quip_quip_out_t));
 
     bool quick = (opts & QUIP_OPT_QUIP_ASSEMBLY_FREE) != 0;
+    bool ref_based = ref != NULL;
     C->writer = writer;
     C->writer_data = writer_data;
+    C->ref = ref;
 
     size_t i;
     for (i = 0; i < chunk_size; ++i) {
@@ -301,11 +311,30 @@ quip_quip_out_t* quip_quip_out_open(
 
     C->idenc     = idenc_alloc_encoder(writer, (void*) writer_data);
     C->qualenc   = qualenc_alloc_encoder(writer, (void*) writer_data);
-    C->assembler = assembler_alloc(writer, (void*) writer_data, assembler_k, aligner_k, quick);
+    C->assembler = assembler_alloc(writer, (void*) writer_data, assembler_k, aligner_k, quick, ref);
 
     /* write header */
     C->writer(C->writer_data, quip_header_magic, 6);
-    C->writer(C->writer_data, &quip_header_version, 1);
+
+    uint8_t version_byte = quip_header_version | ((ref_based ? 1 : 0) << 7);
+    C->writer(C->writer_data, &version_byte, 1);
+
+    /* write reference hash */
+    if (ref_based) {
+        uint64_t ref_hash = seqmap_crc64(ref);
+        write_uint64(C->writer, C->writer_data, ref_hash);
+    }
+
+    /* write aux data, when applicable */
+    if (aux != NULL && (aux->fmt == QUIP_FMT_SAM || aux->fmt == QUIP_FMT_BAM)) {
+        bam_header_t* bh = (bam_header_t*) aux->aux;
+        write_uint64(C->writer, C->writer_data, bh->l_text);
+        C->writer(C->writer_data, (uint8_t*) bh->text, bh->l_text);
+    }
+    else {
+        write_uint8(C->writer, C->writer_data, (uint8_t) QUIP_FMT_NULL);
+        write_uint64(C->writer, C->writer_data, 0);
+    }
 
     C->finished = false;
 
@@ -743,7 +772,8 @@ static size_t seq_buf_reader(void* param, uint8_t* data, size_t size)
 
 
 quip_quip_in_t* quip_quip_in_open(
-    quip_reader_t reader, void* reader_data, ATTRIB_UNUSED quip_opt_t opts)
+    quip_reader_t reader, void* reader_data,
+    ATTRIB_UNUSED quip_opt_t opts, const seqmap_t* ref)
 {
     quip_quip_in_t* D = malloc_or_die(sizeof(quip_quip_in_t));
 

@@ -183,6 +183,7 @@ typedef enum quip_fmt_t_
 
 typedef uint32_t quip_opt_t;
 
+typedef struct seqmap_t_ seqmap_t;
 
 /* 
  * Certain formats carry with the auxiliary data.
@@ -207,7 +208,8 @@ quip_out_t* quip_out_open(
               void*             writer_data,
               quip_fmt_t        format,
               quip_opt_t        opts,
-              const quip_aux_t* aux);
+              const quip_aux_t* aux,
+              const seqmap_t*   ref);
 
 void quip_out_close(quip_out_t*);
 
@@ -224,10 +226,11 @@ void quip_write(quip_out_t*, short_read_t*);
 typedef struct quip_in_t_ quip_in_t;
 
 quip_in_t* quip_in_open(
-              quip_reader_t reader,
-              void*         reader_data,
-              quip_fmt_t    format,
-              quip_opt_t    opts);
+              quip_reader_t   reader,
+              void*           reader_data,
+              quip_fmt_t      format,
+              quip_opt_t      opts,
+              const seqmap_t* ref);
 
 
 void quip_in_close(quip_in_t*);

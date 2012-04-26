@@ -1,14 +1,14 @@
 /*
  * This file is part of quip.
  *
- * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ * Copyright (c) 2012 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
  */
 
 
 /*
  * seqset:
- * Sets of nucleotide sequnces.
+ * Fixed size set of nucleotide sequences with associated counts.
  */
 
 

@@ -35,8 +35,30 @@ Which in hexidecimal is,
 
           FF 51 55 49 50 00
 
-The seventh and last byte of the header is a number used to identify the version
-of the file format.
+The seventh and last byte of the header `V` is a number used to identify the
+version of the file format.
+
+The high-order bit of `V` is set if reference-based compression is used. If
+this is the case, then the next 8-bytes give a hash of the reference sequence
+set used in the compression.
+
+    +---+---+---+---+---+---+---+---+
+    |  Reference Sequence Checksum  |
+    +---+---+---+---+---+---+---+---+
+
+
+Auxiliary Data
+--------------
+
+This is followed by axillary data used in the compression. In particular, the
+header of a compressed SAM/BAM file.
+
+    +---+---+----+---+---+---+---+---+---+---+ ... +---+
+    | T |        Aux. Data Length        |  Aux. Data  |
+    +---+---+----+---+---+---+---+---+---+---+ ... +---+
+
+Where `T` is a code giving the source format of the auxiliary data.
+
 
 
 Block Header
@@ -106,16 +128,11 @@ Compressed ids are pure arithmetic coded data.
 Compressed Sequence Chunk
 -------------------------
 
-    +---+---+---+---+---+ ... +---+
-    |  Contig Len   |    Data     |
-    +---+---+---+---+---+ ... +---+
+    +---+ ... +---+
+    |    Data     |
+    +---+ ... +---+
 
-The compressed sequence chunk is lead by a 4-byte unsigned integer giving
-the length of the supercontig---a single contig formed by concatenating
-each of the seperately assembled contigs.
-
-This number may be zero, indicating that assembly based compression is not
-being used.
+Compressed sequences are pure arithmetic coded data.
 
 
 Compressed Quality Chunk
