@@ -61,9 +61,6 @@ struct seqenc_t_
 
     /* contig motifs used to compress nucleotides in alignments */
     cond_dist4_t supercontig_motif;
-
-    /* length of the supercontig to be decoded */
-    size_t expected_supercontig_len;
 };
 
 
@@ -116,7 +113,6 @@ static void seqenc_init(seqenc_t* E)
 
     cond_dist256_init(&E->d_contig_off, 9 * 256);
 
-    E->expected_supercontig_len = 0;
     memset(&E->supercontig_motif, 0, sizeof(cond_dist4_t));
 }
 
@@ -317,13 +313,6 @@ void seqenc_get_supercontig_consensus(seqenc_t* E, twobit_t* supercontig)
 }
 
 
-void seqenc_prepare_decoder(seqenc_t* E, uint32_t supercontig_len)
-{
-    E->expected_supercontig_len = supercontig_len;
-}
-
-
-
 static void seqenc_decode_seq(seqenc_t* E, short_read_t* x, size_t n)
 {
     if (n == 0) return;
@@ -402,36 +391,9 @@ static void seqenc_decode_alignment(seqenc_t* E, short_read_t* x, size_t qlen)
 }
 
 
-static void seqenc_decode_supercontig(seqenc_t* E)
-{
-    short_read_t seq;
-    short_read_init(&seq);
-
-#ifdef NDEBUG
-    dist2_decode(E->ac, &E->d_type);
-#else
-    assert(dist2_decode(E->ac, &E->d_type) == SEQENC_TYPE_SEQUENCE);
-#endif
-
-    seqenc_decode_seq(E, &seq, E->expected_supercontig_len);
-
-    twobit_t* supercontig = twobit_alloc_n(E->expected_supercontig_len);
-    twobit_copy_n(supercontig, (char*) seq.seq.s, E->expected_supercontig_len);
-
-    seqenc_set_supercontig(E, supercontig);
-
-    twobit_free(supercontig);
-    short_read_free(&seq);
-
-    E->expected_supercontig_len = 0;
-}
-
-
 
 void seqenc_decode(seqenc_t* E, short_read_t* x, size_t n)
 {
-    if (E->expected_supercontig_len > 0) seqenc_decode_supercontig(E);
-
     uint32_t type = dist2_decode(E->ac, &E->d_type);
 
     if (type == SEQENC_TYPE_SEQUENCE) seqenc_decode_seq(E, x, n);

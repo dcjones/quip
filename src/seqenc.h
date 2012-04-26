@@ -45,10 +45,6 @@ void seqenc_encode_alignment(
 size_t seqenc_finish(seqenc_t* E);
 void   seqenc_flush(seqenc_t* E);
 
-/* Optionally called to inform the decoder that the next sequence should be
- * considered as the supercontig. */
-void seqenc_prepare_decoder(seqenc_t* E, uint32_t supercontig_len);
-
 void seqenc_decode(seqenc_t* E, short_read_t* seq, size_t n);
 
 void seqenc_start_decoder(seqenc_t* E);

@@ -17,9 +17,6 @@ static const uint8_t quip_header_magic[6] =
 
 static const uint8_t quip_header_version = 0x02;
 
-static const size_t assembler_k = 25;
-static const size_t aligner_k   = 12;
-
 /* maximum number of bases per block */
 static const size_t block_size = 65000000;
 
@@ -311,7 +308,7 @@ quip_quip_out_t* quip_quip_out_open(
 
     C->idenc     = idenc_alloc_encoder(writer, (void*) writer_data);
     C->qualenc   = qualenc_alloc_encoder(writer, (void*) writer_data);
-    C->assembler = assembler_alloc(writer, (void*) writer_data, assembler_k, aligner_k, quick, ref);
+    C->assembler = assembler_alloc(writer, (void*) writer_data, quick, ref);
 
     /* write header */
     C->writer(C->writer_data, quip_header_magic, 6);
@@ -787,10 +784,6 @@ quip_quip_in_t* quip_quip_in_open(
     D->chunk_len = 0;
     D->chunk_pos = 0;
 
-    D->idenc   = idenc_alloc_decoder(id_buf_reader, (void*) D);
-    D->disassembler = disassembler_alloc(seq_buf_reader, (void*) D);
-    D->qualenc = qualenc_alloc_decoder(qual_buf_reader, (void*) D);
-
     D->qualbuf = NULL;
     D->qualbuf_size = 0;
     D->qualbuf_len  = 0;
@@ -836,6 +829,13 @@ quip_quip_in_t* quip_quip_in_open(
         fprintf(stderr, "Input is an old quip format --- an older version of quip is needed.\n");
         exit(EXIT_FAILURE);
     }
+
+    /* XXX TODO XXX: read the quick flag from the header somehow */
+    bool quick = false;
+
+    D->idenc   = idenc_alloc_decoder(id_buf_reader, (void*) D);
+    D->disassembler = disassembler_alloc(seq_buf_reader, (void*) D, quick, ref);
+    D->qualenc = qualenc_alloc_decoder(qual_buf_reader, (void*) D);
 
     return D;
 }

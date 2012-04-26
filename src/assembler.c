@@ -7,47 +7,38 @@
 #include "seqenc.h"
 #include "seqset.h"
 #include "twobit.h"
+#include "sam/bam.h"
 #include <assert.h>
 #include <limits.h>
 #include <string.h>
 #include <math.h>
 
+/* k-mer used for de bruijn graph assembly */
+static const size_t assemble_k = 25;
+
+/* bitmask for 2-bit encoded k-mers */
+static const kmer_t assemble_kmer_mask = 0x0003fffffffffffful;
+
+/* k-mer size used for seed-and-extend alignment */
+static const size_t align_k = 12;
+
+/* bitmask for 2-bit encoded k-mers */
+static const kmer_t align_kmer_mask = 0x0000000000fffffful;
 
 /* Maximum score for an alignment to be reported, in proportion
  * of positions that mismatch. */
 static const double max_align_score = 0.22;
 
 /* Minimum allowable contig length. */
-static size_t min_contig_len = 200;
+static const size_t min_contig_len = 200;
 
 /* Number of duplicates of a read needed to use it to seed a contig. */
 static const uint32_t min_seed_count = 2;
 
-static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
-{
-    uint8_t bytes[4];
-    size_t cnt = reader(reader_data, bytes, 4);
-
-    if (cnt < 4) {
-        fprintf(stderr, "Unexpected end of file.\n");
-        exit(EXIT_FAILURE);
-    }
-
-    return ((uint32_t) bytes[0] << 24) |
-           ((uint32_t) bytes[1] << 16) |
-           ((uint32_t) bytes[2] << 8) |
-           ((uint32_t) bytes[3]);
-}
-
-
-static void write_uint32(quip_writer_t writer, void* writer_data, uint32_t x)
-{
-    uint8_t bytes[4] = { (uint8_t) (x >> 24),
-                         (uint8_t) (x >> 16),
-                         (uint8_t) (x >> 8),
-                         (uint8_t) x };
-    writer(writer_data, bytes, 4);
-}
+/* Sizes of fixed-size data structures. */
+static const size_t seqset_n = 50000;
+static const size_t bloom_n  = 3000000;
+static const size_t bloom_m  = 8;
 
 
 static bool has_N(const str_t* seq)
@@ -72,23 +63,11 @@ struct assembler_t_
     quip_writer_t writer;
     void* writer_data;
 
-    /* kmer bit-mask used in assembly */
-    kmer_t assemble_kmer_mask;
-
-    /* kmer bit-mask used in alignment */
-    kmer_t align_kmer_mask;
-
     /* read set */
     seqset_t* S;
 
     /* current read */
     twobit_t* x;
-
-    /* k-mer size used for assembly */
-    size_t assemble_k;
-
-    /* k-mer size used for seeds of alignment */
-    size_t align_k;
 
     /* k-mer table used for assembly */
     bloom_t* B;
@@ -106,9 +85,8 @@ struct assembler_t_
     /* reference, for reference based alignment */
     const seqmap_t* ref;
 
-    /* should we try attempt to assemble contigs with the current batch of reads
-     * */
-    bool assemble_batch;
+    /* The initial block is being compressed, in which we assemble unaligned reads. */
+    bool initial_block;
 };
 
 
@@ -118,8 +96,6 @@ static void build_kmer_hash(assembler_t* A);
 assembler_t* assembler_alloc(
         quip_writer_t   writer,
         void*           writer_data,
-        size_t          assemble_k,
-        size_t          align_k,
         bool            quick,
         const seqmap_t* ref)
 {
@@ -131,39 +107,18 @@ assembler_t* assembler_alloc(
     A->writer = writer;
     A->writer_data = writer_data;
     A->ref = ref;
-
-    A->assemble_k = assemble_k;
-    A->align_k    = align_k;
-
-    A->assemble_kmer_mask = 0;
-    size_t i;
-    for (i = 0; i < A->assemble_k; ++i) {
-        A->assemble_kmer_mask = (A->assemble_kmer_mask << 2) | 0x3;
-    }
-
-    A->align_kmer_mask = 0;
-    for (i = 0; i < A->align_k; ++i) {
-        A->align_kmer_mask = (A->align_kmer_mask << 2) | 0x3;
-    }
-
-    /* We delay allocation of the sequence encoder. To keep memory usage under
-     * control we first finish assembling and free the bloom filter before
-     * allocating seqenc. */
-    A->seqenc = NULL;
-
-    A->assemble_batch = true;
+    A->initial_block = true;
 
     /* If we are not assembling, we do not need any of the data structure
      * initialized below. */
     if (!quick) {
-        A->S = seqset_alloc_fixed(50000);
-        A->B = bloom_alloc(3000000, 8);
+        A->S = seqset_alloc_fixed(seqset_n);
+        A->B = bloom_alloc(bloom_n, bloom_m);
         A->x = twobit_alloc();
         A->H = kmerhash_alloc();
     }
-    else {
-        A->seqenc = seqenc_alloc_encoder(writer, writer_data);
-    }
+
+    A->seqenc = seqenc_alloc_encoder(writer, writer_data);
 
     return A;
 }
@@ -172,7 +127,6 @@ assembler_t* assembler_alloc(
 void assembler_free(assembler_t* A)
 {
     seqset_free(A->S);
-    free(A->ord);
     bloom_free(A->B);
     kmerhash_free(A->H);
     twobit_free(A->x);
@@ -183,6 +137,23 @@ void assembler_free(assembler_t* A)
 }
 
 
+/* Count the number of occurrences of each k-mer in a read x */
+static void count_kmers(bloom_t* B, const twobit_t* seq)
+{
+    size_t i, seqlen;
+    kmer_t x, y;
+
+    seqlen = twobit_len(seq);
+    x = 0;
+    for (i = 0; i < seqlen; ++i) {
+        x = ((x << 2) | twobit_get(seq, i)) & assemble_kmer_mask;
+
+        if (i + 1 >= assemble_k) {
+            y = kmer_canonical(x, assemble_k);
+            bloom_add(B, y, 1);
+        }
+    }
+}
 
 
 /* Try desperately to align the given read. If no good alignment is found, just
@@ -217,7 +188,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
     /* Don't try to align any reads that are shorer than the seed length */
     qlen = twobit_len(seq);
-    if ((size_t) qlen < A->align_k) {
+    if ((size_t) qlen < align_k) {
         seqenc_encode_twobit_seq(A->seqenc, seq);
         return false;
     }
@@ -226,16 +197,16 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
     size_t i, j;
     for (i = 0; i < 3 && best_aln_score > 0.0; ++i) {
         if      (i == 0) qpos = 0;
-        else if (i == 1) qpos = 2 * A->align_k; 
-        else if (i == 2) qpos = 4 * A->align_k;
-        if (qpos + A->align_k > (size_t) qlen) qpos = qlen - A->align_k - 1;
+        else if (i == 1) qpos = 2 * align_k; 
+        else if (i == 2) qpos = 4 * align_k;
+        if (qpos + align_k > (size_t) qlen) qpos = qlen - align_k - 1;
 
 
         x = twobit_get_kmer_rev(
                 seq,
                 qpos,
-                A->align_k);
-        y = kmer_canonical(x, A->align_k);
+                align_k);
+        y = kmer_canonical(x, align_k);
 
         poslen = kmerhash_get(A->H, y, &pos);
         poslen = poslen > max_seeds ? max_seeds : poslen;
@@ -249,13 +220,13 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
                     strand = 0;
                 }
                 else {
-                    spos = slen - *pos - A->align_k;
+                    spos = slen - *pos - align_k;
                     strand = 1;
                 }
             }
             else {
                 if (x == y) {
-                    spos = slen + *pos - A->align_k + 1;
+                    spos = slen + *pos - align_k + 1;
                     strand = 1;
                 }
                 else {
@@ -299,7 +270,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
 void assembler_add_seq(assembler_t* A, const short_read_t* seq)
 {
-    if (seq->flags & BAM_FUNMAP == 0) {
+    if ((seq->flags & BAM_FUNMAP) == 0) {
         // TODO: reference based compression
         return;
     }
@@ -307,17 +278,17 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
     if (A->quick) {
         seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
     }
-    else if (A->assemble_batch) {
-        if (!has_N(seq->seq)) {
+    else if (A->initial_block) {
+        if (!has_N(&seq->seq)) {
             twobit_copy_n(A->x, (char*) seq->seq.s, seq->seq.n);
-            seqset_inc_tb(A->S, A->x);
-            count_kmers(A, A->x);
+            seqset_inc(A->S, A->x);
+            count_kmers(A->B, A->x);
         }
 
         seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
     }
     else {
-        if (!has_N(seq->seq)) {
+        if (!has_N(&seq->seq)) {
             twobit_copy_n(A->x, (char*) seq->seq.s, seq->seq.n);
             align_read(A, A->x);
         }
@@ -329,16 +300,16 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
 
 
 
-static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
+static void make_contig(bloom_t* B, twobit_t* seed, twobit_t* contig)
 {
     twobit_clear(contig);
 
 
     /* delete all kmers in the seed */
-    kmer_t x = twobit_get_kmer_rev(seed, 0, A->assemble_k);
+    kmer_t x = twobit_get_kmer_rev(seed, 0, assemble_k);
     size_t i;
-    for (i = A->assemble_k; i < twobit_len(seed); ++i) {
-        bloom_ldec(A->B, kmer_canonical((x << 2) | twobit_get(seed, i), A->assemble_k));
+    for (i = assemble_k; i < twobit_len(seed); ++i) {
+        bloom_ldec(B, kmer_canonical((x << 2) | twobit_get(seed, i), assemble_k));
     }
 
 
@@ -350,26 +321,26 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
 
     /* Greedily append nucleotides to the contig using 
      * approximate k-mer counts stored in the bloom filter. */
-    x = twobit_get_kmer_rev(seed, 0, A->assemble_k);
+    x = twobit_get_kmer_rev(seed, 0, assemble_k);
     while (true) {
-        bloom_ldec(A->B, kmer_canonical(x, A->assemble_k));
+        bloom_ldec(B, kmer_canonical(x, assemble_k));
 
-        x = (x >> 2) & A->assemble_kmer_mask;
+        x = (x >> 2) & assemble_kmer_mask;
         cnt_best = 0;
         for (nt = 0; nt < 4; ++nt) {
-            y = nt << (2 * (A->assemble_k - 1));
-            xc = kmer_canonical(x | y, A->assemble_k);
-            cnt = bloom_get(A->B, xc);
+            y = nt << (2 * (assemble_k - 1));
+            xc = kmer_canonical(x | y, assemble_k);
+            cnt = bloom_get(B, xc);
 
             /* Look ahead two k-mers for a somewhat better
              * greedy choice. */
             cnt2_best = 0;
             for (nt2 = 0; nt2 < 4; ++nt2) {
-                z = (nt2 << (2 * (A->assemble_k - 1))) |
-                    (nt  << (2 * (A->assemble_k - 2))) |
+                z = (nt2 << (2 * (assemble_k - 1))) |
+                    (nt  << (2 * (assemble_k - 2))) |
                     (x >> 2);
-                z &= A->assemble_kmer_mask; 
-                cnt2 = bloom_get(A->B, kmer_canonical(z, A->assemble_k));
+                z &= assemble_kmer_mask; 
+                cnt2 = bloom_get(B, kmer_canonical(z, assemble_k));
                 if (cnt2 > cnt2_best) cnt2_best = cnt2;
             }
 
@@ -380,7 +351,7 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
         }
 
         if (cnt_best > 0) {
-            y = nt_best << (2 * (A->assemble_k - 1));
+            y = nt_best << (2 * (assemble_k - 1));
             x = x | y;
             twobit_append_kmer(contig, nt_best, 1);
         }
@@ -390,21 +361,21 @@ static void make_contig(assembler_t* A, twobit_t* seed, twobit_t* contig)
     twobit_reverse(contig);
     twobit_append_twobit(contig, seed);
 
-    x = twobit_get_kmer_rev(seed, twobit_len(seed) - A->assemble_k, A->assemble_k);
+    x = twobit_get_kmer_rev(seed, twobit_len(seed) - assemble_k, assemble_k);
     while (true) {
-        bloom_ldec(A->B, kmer_canonical(x, A->assemble_k));
+        bloom_ldec(B, kmer_canonical(x, assemble_k));
 
-        x = (x << 2) & A->assemble_kmer_mask;
+        x = (x << 2) & assemble_kmer_mask;
         cnt_best = 0;
         for (nt = 0; nt < 4; ++nt) {
-            xc = kmer_canonical(x | nt, A->assemble_k);
-            cnt = bloom_get(A->B, xc);
+            xc = kmer_canonical(x | nt, assemble_k);
+            cnt = bloom_get(B, xc);
 
             cnt2_best = 0;
             for (nt2 = 0; nt2 < 4; ++nt2) {
                 z = (x << 2) | (nt << 2) | nt2;
-                z &= A->assemble_kmer_mask;
-                cnt2 = bloom_get(A->B, kmer_canonical(z, A->assemble_k));
+                z &= assemble_kmer_mask;
+                cnt2 = bloom_get(B, kmer_canonical(z, assemble_k));
                 if (cnt2 > cnt2_best) cnt2_best = cnt2;
             }
 
@@ -428,24 +399,11 @@ static int seqset_value_cnt_cmp(const void* a_, const void* b_)
     seqset_value_t* a = (seqset_value_t*) a_;
     seqset_value_t* b = (seqset_value_t*) b_;
 
-    if      (a->cnt < b->cnt) return 1;
+    if      (a->cnt < b->cnt) return  1;
     else if (a->cnt > b->cnt) return -1;
-    /* break ties with the index, just to make things deterministic */
-    else if (a->idx < b->idx) return -1;
-    else if (a->idx > b->idx) return 1;
-    else                      return 0;
+    else                      return  0;
 }
 
-
-static int seqset_value_idx_cmp(const void* a_, const void* b_)
-{
-    seqset_value_t* a = (seqset_value_t*) a_;
-    seqset_value_t* b = (seqset_value_t*) b_;
-
-    if      (a->idx < b->idx) return -1;
-    else if (a->idx > b->idx) return 1;
-    else                      return 0;
-}
 
 
 static void build_kmer_hash(assembler_t* A)
@@ -456,12 +414,12 @@ static void build_kmer_hash(assembler_t* A)
     size_t pos;
     kmer_t x = 0, y;
     for (pos = 0; pos < len; ++pos) {
-        x = ((x << 2) | twobit_get(A->supercontig, pos)) & A->align_kmer_mask;
+        x = ((x << 2) | twobit_get(A->supercontig, pos)) & align_kmer_mask;
 
-        if (pos + 1 >= A->align_k) {
-            y = kmer_canonical(x, A->align_k);
-            if (x == y) kmerhash_put(A->H, y, pos + 1 - A->align_k);
-            else        kmerhash_put(A->H, y, - (int32_t) (pos + 2 - A->align_k));
+        if (pos + 1 >= align_k) {
+            y = kmer_canonical(x, align_k);
+            if (x == y) kmerhash_put(A->H, y, pos + 1 - align_k);
+            else        kmerhash_put(A->H, y, - (int32_t) (pos + 2 - align_k));
         }
     }
 }
@@ -480,31 +438,16 @@ static void index_contigs(assembler_t* A)
 
 
 
-/* Count the number of occurrences of each k-mer in a read x */
-static void count_kmers(assembler_t* A, const twobit_t* x)
-{
-    size_t i, j, seqlen;
-    kmer_t x, y;
-
-    seqlen = twobit_len(x);
-    x = 0;
-    for (j = 0; j < seqlen; ++j) {
-        x = ((x << 2) | twobit_get(x, j)) & A->assemble_kmer_mask;
-
-        if (j + 1 >= A->assemble_k) {
-            y = kmer_canonical(x, A->assemble_k);
-            bloom_add(A->B, y, 1);
-        }
-    }
-}
-
-
 /* Heuristically build contigs from k-mers counts and a set of reads */
-static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
+static void make_contigs(
+    twobit_t** supercontig,
+    twobit_t** supercontig_rc,
+    bloom_t* B,
+    seqset_value_t* xs, size_t n)
 {
     if (quip_verbose) fprintf(stderr, "assembling contigs ... ");
 
-    A->supercontig = twobit_alloc();
+    *supercontig = twobit_alloc();
     twobit_t* contig = twobit_alloc();
     size_t len;
 
@@ -512,7 +455,7 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
     size_t i;
     for (i = 0; i < n && xs[i].cnt >= min_seed_count; ++i) {
-        make_contig(A, xs[i].seq, contig);
+        make_contig(B, xs[i].seq, contig);
 
         /* reject over terribly short contigs */
         len = twobit_len(contig);
@@ -520,28 +463,26 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
             continue;
         }
 
-        twobit_append_twobit(A->supercontig, contig);
+        twobit_append_twobit(*supercontig, contig);
         ++contig_cnt;
     }
 
     twobit_free(contig);
 
-    A->supercontig_rc = twobit_alloc_n(twobit_len(A->supercontig));
-    twobit_revcomp(A->supercontig_rc, A->supercontig);
+    *supercontig_rc = twobit_alloc_n(twobit_len(*supercontig));
+    twobit_revcomp(*supercontig_rc, *supercontig);
 
     if (quip_verbose) fprintf(stderr, "done. (%zu contigs, %zunt)\n",
-                              contig_cnt, twobit_len(A->supercontig));
+                              contig_cnt, twobit_len(*supercontig));
 }
 
 
 
 size_t assembler_finish(assembler_t* A)
 {
-    /* TODO: work shall resume here. */
-
     size_t bytes = 0;
 
-    if (!A->quick && A->assemble_batch) {
+    if (!A->quick && A->initial_block) {
 
         /* dump reads and sort by copy number*/
         seqset_value_t* xs = seqset_dump(A->S);
@@ -549,44 +490,25 @@ size_t assembler_finish(assembler_t* A)
 
         size_t n = seqset_size(A->S);
 
-        count_kmers(A, xs, n);
-        make_contigs(A, xs, n);
+        make_contigs(&A->supercontig, &A->supercontig_rc, A->B, xs, n);
 
         /* Free up memory we won't need any more */
         bloom_free(A->B);
         A->B = NULL;
 
         /* Now that we have some memory to spare, bring up the sequence encoder. */
-        A->seqenc = seqenc_alloc_encoder(A->writer, A->writer_data);
         seqenc_set_supercontig(A->seqenc, A->supercontig);
 
-        /* Number of bytes needed to write the contig count and contig lengths */
-        bytes += 4;
-
-        /* write the supercontig */
-        if (twobit_len(A->supercontig) > 0) {
-            seqenc_encode_twobit_seq(A->seqenc, A->supercontig);
-        }
-
         index_contigs(A);
-
-        align_to_contigs(A, xs, n);
 
         free(xs);
         seqset_free(A->S);
         A->S = NULL;
-
-        free(A->ord);
-        A->ord = NULL;
-    }
-    else {
-        /* Zero contigs in the block. */
-        bytes += 4;
     }
 
     bytes += seqenc_finish(A->seqenc);
 
-    if (!A->quick) {
+    if (!A->quick && !A->initial_block) {
         seqenc_get_supercontig_consensus(A->seqenc, A->supercontig);
         index_contigs(A);
     }
@@ -597,41 +519,65 @@ size_t assembler_finish(assembler_t* A)
 
 void assembler_flush(assembler_t* A)
 {
-    /* write supercontig length */
-    if (!A->quick && A->assemble_batch) {
-        write_uint32(A->writer, A->writer_data, twobit_len(A->supercontig));
-
-        /* only assemble the first block. */
-        A->assemble_batch = false;
-    }
-    else {
-        write_uint32(A->writer, A->writer_data, 0);
-    }
-
+    A->initial_block = false;
     seqenc_flush(A->seqenc);
 }
 
 
-
 struct disassembler_t_
 {
-    seqenc_t* seqenc;
+    /* don't actually assemble anything */
+    bool quick;
 
+    /* function to read compressed input */
     quip_reader_t reader;
     void* reader_data;
 
-    bool init_state;
+    /* nucleotide sequence encoder */
+    seqenc_t* seqenc;
+
+    /* assembled contigs and their reverse complements */
+    twobit_t* supercontig;
+    twobit_t* supercontig_rc;
+
+    /* read set */
+    seqset_t* S;
+
+    /* current read */
+    twobit_t* x;
+
+    /* k-mer table used for assembly */
+    bloom_t* B;
+
+    /* reference, for reference based alignment */
+    const seqmap_t* ref;
+
+    /* The initial block is being compressed, in which we assemble unaligned reads. */
+    bool initial_block;
 };
 
 
-disassembler_t* disassembler_alloc(quip_reader_t reader, void* reader_data)
+disassembler_t* disassembler_alloc(
+    quip_reader_t reader,
+    void* reader_data,
+    bool quick,
+    const seqmap_t* ref)
 {
     disassembler_t* D = malloc_or_die(sizeof(disassembler_t));
+    memset(D, 0, sizeof(disassembler_t));
 
     D->seqenc = seqenc_alloc_decoder(reader, reader_data);
     D->reader = reader;
     D->reader_data = reader_data;
-    D->init_state = true;
+    D->ref = ref;
+    D->quick = quick;
+    D->initial_block = true;
+
+    if (!quick) {
+        D->S = seqset_alloc_fixed(seqset_n);
+        D->B = bloom_alloc(bloom_n, bloom_m);
+        D->x = twobit_alloc();
+    }
 
     return D;
 }
@@ -639,35 +585,55 @@ disassembler_t* disassembler_alloc(quip_reader_t reader, void* reader_data)
 
 void disassembler_free(disassembler_t* D)
 {
-    if (D == NULL) return;
-    seqenc_free(D->seqenc);
-    free(D);
-}
-
-
-void disassembler_read(disassembler_t* D, short_read_t* x, size_t n)
-{
-    if (D->init_state) {
-        uint32_t supercontig_len = read_uint32(D->reader, D->reader_data);
-
-        if (supercontig_len > 0) {
-            seqenc_prepare_decoder(D->seqenc, supercontig_len);
-        }
-
-        seqenc_start_decoder(D->seqenc);
-
-        D->init_state = false;
+    if (D != NULL) {
+        seqenc_free(D->seqenc);
+        seqset_free(D->S);
+        bloom_free(D->B);
+        twobit_free(D->x);
+        twobit_free(D->supercontig);
+        twobit_free(D->supercontig_rc);
+        free(D);
     }
-
-    seqenc_decode(D->seqenc, x, n);
 }
 
+void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
+{
+    seqenc_decode(D->seqenc, seq, n);
+
+    if (D->initial_block && (seq->flags & BAM_FUNMAP) != 0) {
+        if (!has_N(&seq->seq)) {
+            twobit_copy_n(D->x, (char*) seq->seq.s, seq->seq.n);
+            seqset_inc(D->S, D->x);
+            count_kmers(D->B, D->x);
+        }
+    }
+}
 
 void disassembler_reset(disassembler_t* D)
 {
-    if (!D->init_state) seqenc_reset_decoder(D->seqenc);
-    D->init_state = true;
-}
+    if (D->initial_block) {
+        /* dump reads and sort by copy number*/
+        seqset_value_t* xs = seqset_dump(D->S);
+        qsort(xs, seqset_size(D->S), sizeof(seqset_value_t), seqset_value_cnt_cmp);
 
+        size_t n = seqset_size(D->S);
+
+        make_contigs(&D->supercontig, &D->supercontig_rc, D->B, xs, n);
+
+        /* Free up memory we won't need any more */
+        bloom_free(D->B);
+        D->B = NULL;
+
+        /* Now that we have some memory to spare, bring up the sequence encoder. */
+        seqenc_set_supercontig(D->seqenc, D->supercontig);
+
+        free(xs);
+        seqset_free(D->S);
+        D->S = NULL;
+        D->initial_block = false;
+    }
+
+    seqenc_reset_decoder(D->seqenc);
+}
 
 
