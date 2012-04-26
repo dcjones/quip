@@ -21,8 +21,6 @@ void* malloc_or_die(size_t);
 void* realloc_or_die(void*, size_t);
 FILE* fopen_or_die(const char*, const char*);
 
-uint32_t strhash(const char*, size_t len);
-
 #if HAVE_PREFETCH
 #define prefetch(p, rw, locality) __builtin_prefetch(p, rw, locality)
 #else
@@ -48,6 +46,10 @@ uint32_t strhash(const char*, size_t len);
 #else
 #  define SET_BINARY_MODE(file)
 #endif
+
+
+/* Generic hashing, using MurmurHash3 */
+uint32_t murmurhash3(const uint8_t* data, size_t len);
 
 #endif
 

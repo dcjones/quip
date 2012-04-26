@@ -20,6 +20,8 @@ static const double max_align_score = 0.22;
 /* Minimum allowable contig length. */
 static size_t min_contig_len = 200;
 
+/* Number of duplicates of a read needed to use it to seed a contig. */
+static const uint32_t min_seed_count = 2;
 
 static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
 {
@@ -48,6 +50,19 @@ static void write_uint32(quip_writer_t writer, void* writer_data, uint32_t x)
 }
 
 
+static bool has_N(const str_t* seq)
+{
+    size_t i;
+    for (i = 0; i < seq->n; ++i) {
+        if (seq->s[i] == 'N') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
 struct assembler_t_
 {
     /* don't actually assemble anything */
@@ -66,15 +81,6 @@ struct assembler_t_
     /* read set */
     seqset_t* S;
 
-    /* reads, in-order */
-    uint32_t* ord;
-
-    /* size of the ord array */
-    size_t ord_size;
-
-    /* total number of reads */
-    uint32_t N;
-
     /* current read */
     twobit_t* x;
 
@@ -89,9 +95,6 @@ struct assembler_t_
 
     /* k-mer table used for alignment */
     kmerhash_t* H;
-
-    /* count required to be nominated as a seed candidate */
-    unsigned int count_cutoff;
 
     /* nucleotide sequence encoder */
     seqenc_t* seqenc;
@@ -153,20 +156,10 @@ assembler_t* assembler_alloc(
     /* If we are not assembling, we do not need any of the data structure
      * initialized below. */
     if (!quick) {
-        A->S = seqset_alloc();
-
-        A->ord_size = 1024;
-        A->ord = malloc_or_die(A->ord_size * sizeof(const twobit_t*));
-
-        A->N = 0;
-
+        A->S = seqset_alloc_fixed(50000);
         A->B = bloom_alloc(3000000, 8);
-
         A->x = twobit_alloc();
-
         A->H = kmerhash_alloc();
-
-        A->count_cutoff = 2;
     }
     else {
         A->seqenc = seqenc_alloc_encoder(writer, writer_data);
@@ -306,66 +299,31 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
 void assembler_add_seq(assembler_t* A, const short_read_t* seq)
 {
+    if (seq->flags & BAM_FUNMAP == 0) {
+        // TODO: reference based compression
+        return;
+    }
+
     if (A->quick) {
-        if (seq->flags & BAM_FUNMAP == 0) {
-            // TODO: reference based compression
-        }
-        else {
-            seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
-        }
+        seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
     }
     else if (A->assemble_batch) {
-
-        /* Shit, this might get ugly.
-
-        Here I am saving a block of reads to assemble. But what can I do
-        with the aligned reads? If I add their sequences to the sequence set,
-        I will lose all the other stuff I need to compress, but if I write
-        them immediately I will screw the whole thing up.
-        */
-
-        if (A->N == A->ord_size) {
-            A->ord_size *= 2;
-            A->ord = realloc_or_die(A->ord, A->ord_size * sizeof(uint32_t));
-        }
-
-        /* does the read contain non-nucleotide characters ? */
-        size_t i;
-        bool has_N = false;
-        for (i = 0; i < seq->seq.n; ++i) {
-            if (seq->seq.s[i] == 'N') {
-                has_N = true;
-                break;
-            }
-        }
-
-        if (has_N) {
-            A->ord[A->N++] = seqset_inc_eb(A->S, (char*) seq->seq.s);
-        }
-        else {
+        if (!has_N(seq->seq)) {
             twobit_copy_n(A->x, (char*) seq->seq.s, seq->seq.n);
-            A->ord[A->N++] = seqset_inc_tb(A->S, A->x);
+            seqset_inc_tb(A->S, A->x);
+            count_kmers(A, A->x);
         }
+
+        seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
     }
     else {
-        /* does the read contain non-nucleotide characters ? */
-        size_t i;
-        bool has_N = false;
-        for (i = 0; i < seq->seq.n; ++i) {
-            if (seq->seq.s[i] == 'N') {
-                has_N = true;
-                break;
-            }
-        }
-
-        if (has_N) {
-            seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
-        }
-        else {
+        if (!has_N(seq->seq)) {
             twobit_copy_n(A->x, (char*) seq->seq.s, seq->seq.n);
             align_read(A, A->x);
         }
-
+        else {
+            seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
+        }
     }
 }
 
@@ -521,70 +479,23 @@ static void index_contigs(assembler_t* A)
 }
 
 
-/* Align buffered reads to contigs. */
-static void align_to_contigs(assembler_t* A,
-                             seqset_value_t* xs, size_t xs_len)
+
+/* Count the number of occurrences of each k-mer in a read x */
+static void count_kmers(assembler_t* A, const twobit_t* x)
 {
-    if (quip_verbose) fprintf(stderr, "aligning reads to contigs ...\n");
-
-    /* Sort reads by index. Afterwards xs[i].idx == i should be true for every
-     * i, where 0 <= i < xs_len */
-    qsort(xs, xs_len, sizeof(seqset_value_t), seqset_value_idx_cmp);
-    const char* ebseq;
-    size_t aln_count = 0;
-    size_t aborted_aln_count = 0;
-    size_t i;
-    int ret;
-
-    for (i = 0; i < A->N; ++i) {
-        if (xs[A->ord[i]].is_twobit) {
-            ret = align_read(A, xs[A->ord[i]].seq.tb);
-            if (ret == 1)      ++aln_count;
-        }
-        else {
-            ebseq = xs[A->ord[i]].seq.eb;
-            seqenc_encode_char_seq(A->seqenc, (uint8_t*) ebseq, strlen(ebseq));
-        }
-    }
-
-    if (quip_verbose) {
-        fprintf(stderr,
-                "\t%zu / %zu [%0.2f%%] reads aligned to contigs (%0.2f%% aborted)\n",
-                aln_count, (size_t) A->N,
-                100.0 * (double) aln_count / (double) A->N,
-                100.8 * (double) aborted_aln_count / (double) A->N);
-
-        fprintf(stderr, "done.\n");
-    }
-
-}
-
-
-
-/* Count the number of occurrences of each k-mer in the array of reads xs, of
- * length n. */
-static void count_kmers(assembler_t* A, seqset_value_t* xs, size_t n)
-{
-    if (quip_verbose) fprintf(stderr, "counting k-mers ... ");
-
     size_t i, j, seqlen;
     kmer_t x, y;
 
-    for (i = 0; i < n; ++i) {
-        if (!xs[i].is_twobit) continue;
-        seqlen = twobit_len(xs[i].seq.tb);
-        x = 0;
-        for (j = 0; j < seqlen; ++j) {
-            x = ((x << 2) | twobit_get(xs[i].seq.tb, j)) & A->assemble_kmer_mask;
+    seqlen = twobit_len(x);
+    x = 0;
+    for (j = 0; j < seqlen; ++j) {
+        x = ((x << 2) | twobit_get(x, j)) & A->assemble_kmer_mask;
 
-            if (j + 1 >= A->assemble_k) {
-                y = kmer_canonical(x, A->assemble_k);
-                bloom_add(A->B, y, xs[i].cnt);
-            }
+        if (j + 1 >= A->assemble_k) {
+            y = kmer_canonical(x, A->assemble_k);
+            bloom_add(A->B, y, 1);
         }
     }
-
-    if (quip_verbose) fprintf(stderr, "done.\n");
 }
 
 
@@ -600,10 +511,8 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
     size_t contig_cnt = 0;
 
     size_t i;
-    for (i = 0; i < n && xs[i].cnt >= A->count_cutoff; ++i) {
-        if (!xs[i].is_twobit) continue;
-
-        make_contig(A, xs[i].seq.tb, contig);
+    for (i = 0; i < n && xs[i].cnt >= min_seed_count; ++i) {
+        make_contig(A, xs[i].seq, contig);
 
         /* reject over terribly short contigs */
         len = twobit_len(contig);
@@ -628,6 +537,8 @@ static void make_contigs(assembler_t* A, seqset_value_t* xs, size_t n)
 
 size_t assembler_finish(assembler_t* A)
 {
+    /* TODO: work shall resume here. */
+
     size_t bytes = 0;
 
     if (!A->quick && A->assemble_batch) {

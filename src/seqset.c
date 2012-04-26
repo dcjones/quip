@@ -14,6 +14,7 @@ struct seqset_t_
     size_t d;           /* number of deleted positions */
     size_t max_m;       /* max hashed items before size is doubled */
     size_t min_m;       /* min hashed items before size is halved */
+    bool   fixed_size;  /* do not resize when more space is needed. */
 };
 
 
@@ -30,7 +31,7 @@ static const uint32_t primes[NUM_PRIMES] = {
     805306457U, 1610612741U, 3221225473U, 4294967291U };
 
 
-static const double MAX_LOAD  = 0.5;
+static const double MAX_LOAD  = 0.7;
 static const double MIN_LOAD  = 0.1;
 
 
@@ -45,21 +46,20 @@ static uint32_t probe(uint32_t h, uint32_t i)
 
 static bool is_nil_key(const seqset_value_t* x)
 {
-    return x->seq.tb == NULL && x->cnt == 0;
+    return x->seq == NULL && x->cnt == 0;
 }
 
 
 static bool is_del_key(const seqset_value_t* x)
 {
-    return x->seq.tb == NULL && x->cnt == ~0U;
+    return x->seq == NULL && x->cnt == ~0U;
 }
 
 
 static bool is_nil_or_del_key(const seqset_value_t* x)
 {
-    return x->seq.tb == NULL;
+    return x->seq == NULL;
 }
-
 
 
 seqset_t* seqset_alloc()
@@ -73,6 +73,24 @@ seqset_t* seqset_alloc()
     S->d = 0;
     S->max_m = (size_t) ((double) S->n * MAX_LOAD);
     S->min_m = (size_t) ((double) S->n * MIN_LOAD);
+    S->fixed_size = false;
+
+    return S;
+}
+
+
+seqset_t* seqset_alloc_fixed(size_t N)
+{
+    seqset_t* S = malloc_or_die(sizeof(seqset_t));
+    S->pn = 0;
+    S->n  = N;
+    S->xs = malloc_or_die(S->n * sizeof(seqset_value_t));
+    memset(S->xs, 0, S->n * sizeof(seqset_value_t));
+    S->m = 0;
+    S->d = 0;
+    S->max_m = (size_t) ((double) S->n * MAX_LOAD);
+    S->min_m = (size_t) ((double) S->n * MIN_LOAD);
+    S->fixed_size = true;
 
     return S;
 }
@@ -82,10 +100,7 @@ void seqset_clear(seqset_t* S)
 {
     size_t i;
     for (i = 0; i < S->n; ++i) {
-        if (is_nil_or_del_key(S->xs + i)) continue;
-
-        if (S->xs[i].is_twobit) twobit_free(S->xs[i].seq.tb);
-        else free(S->xs[i].seq.eb);
+        twobit_free(S->xs[i].seq);
     }
     memset(S->xs, 0, S->n * sizeof(seqset_value_t));
 
@@ -96,19 +111,11 @@ void seqset_clear(seqset_t* S)
 
 void seqset_free(seqset_t* S)
 {
-    if (S == NULL) return;
-
-    size_t i;
-    for (i = 0; i < S->n; ++i) {
-        if (S->xs[i].is_twobit) {
-            twobit_free(S->xs[i].seq.tb);
-        }
-        else {
-            free(S->xs[i].seq.eb);
-        }
+    if (S != NULL) {
+        seqset_clear(S);
+        free(S->xs);
+        free(S);
     }
-    free(S->xs);
-    free(S);
 }
 
 
@@ -122,12 +129,7 @@ static void seqset_rehash(seqset_t* dest, seqset_t* src)
     for (i = 0; i < src->n; ++i) {
         if (is_nil_or_del_key(src->xs + i)) continue;
 
-        if (src->xs[i].is_twobit) {
-            h = twobit_hash(src->xs[i].seq.tb);
-        }
-        else {
-            h = strhash(src->xs[i].seq.eb, strlen(src->xs[i].seq.eb));
-        }
+        h = twobit_hash(src->xs[i].seq);
 
         k = h % dest->n;
         probe_num = 1;
@@ -136,8 +138,6 @@ static void seqset_rehash(seqset_t* dest, seqset_t* src)
             if (is_nil_key(dest->xs + k)) {
                 dest->xs[k].seq = src->xs[i].seq;
                 dest->xs[k].cnt = src->xs[i].cnt;
-                dest->xs[k].idx = src->xs[i].idx;
-                dest->xs[k].is_twobit = src->xs[i].is_twobit;
                 break;
             }
 
@@ -197,9 +197,9 @@ static void seqset_resize_delta(seqset_t* T, size_t delta)
 
 
 
-uint32_t seqset_inc_tb(seqset_t* S, const twobit_t* seq)
+uint32_t seqset_inc(seqset_t* S, const twobit_t* seq)
 {
-    seqset_resize_delta(S, 1);
+    if (!S->fixed_size) seqset_resize_delta(S, 1);
 
     uint32_t h = twobit_hash(seq);
     uint32_t probe_num = 1;
@@ -215,65 +215,25 @@ uint32_t seqset_inc_tb(seqset_t* S, const twobit_t* seq)
             if (ins_pos == -1) ins_pos = k;
             break;
         }
-        else if (S->xs[k].is_twobit && twobit_cmp(S->xs[k].seq.tb, seq) == 0) {
-            if (S->xs[k].cnt < ~0U) ++S->xs[k].cnt;
-            return S->xs[k].idx;
+        else if (twobit_cmp(S->xs[k].seq, seq) == 0) {
+            if (S->xs[k].cnt < ~0U - 1) return ++S->xs[k].cnt;
         }
 
         k = probe(h, ++probe_num) % S->n;
-        assert(probe_num < S->n);
+
+        /* When a fixed-size table is very full, we may
+         * have to probe a lot to find the few empty free cells.
+         * Just give up if this is the case. */
+        if (!S->fixed_size && probe_num >= 64) return 0;
     }
 
     if (is_del_key(S->xs + ins_pos)) --S->d;
     else                             ++S->m;
 
-    S->xs[ins_pos].idx = S->m - 1;
     S->xs[ins_pos].cnt = 1;
-    S->xs[ins_pos].seq.tb = twobit_dup(seq);
-    S->xs[ins_pos].is_twobit = true;
+    S->xs[ins_pos].seq = twobit_dup(seq);
 
-    return S->xs[ins_pos].idx;
-}
-
-
-uint32_t seqset_inc_eb(seqset_t* S, const char* seq)
-{
-    seqset_resize_delta(S, 1);
-
-    size_t len = strlen(seq);
-    uint32_t h = strhash(seq, len);
-    uint32_t probe_num = 1;
-    uint32_t k = h % S->n;
-
-    int ins_pos = -1;
-
-    while (true) {
-        if (is_del_key(S->xs + k)) {
-            if (ins_pos == -1) ins_pos = k;
-        }
-        else if (is_nil_key(S->xs + k)) {
-            if (ins_pos == -1) ins_pos = k;
-            break;
-        }
-        else if (!S->xs[k].is_twobit && strcmp(S->xs[k].seq.eb, seq) == 0) {
-            if (S->xs[k].cnt < ~0U) ++S->xs[k].cnt;
-            return S->xs[k].idx;
-        }
-
-        k = probe(h, ++probe_num) % S->n;
-        assert(probe_num < S->n);
-    }
-
-    if (is_del_key(S->xs + ins_pos)) --S->d;
-    else                             ++S->m;
-
-    S->xs[ins_pos].idx = S->m - 1;
-    S->xs[ins_pos].cnt = 1;
-    S->xs[ins_pos].seq.eb = malloc_or_die((len + 1) * sizeof(char));
-    memcpy(S->xs[ins_pos].seq.eb, seq, (len + 1) * sizeof(char));
-    S->xs[ins_pos].is_twobit = false;
-
-    return S->xs[ins_pos].idx;
+    return S->xs[ins_pos].cnt;
 }
 
 
@@ -336,14 +296,10 @@ seqset_value_t* seqset_dump(const seqset_t* S)
         if (!is_nil_or_del_key(S->xs + i)) {
             xs[j].seq = S->xs[i].seq;
             xs[j].cnt = S->xs[i].cnt;
-            xs[j].idx = S->xs[i].idx;
-            xs[j].is_twobit = S->xs[i].is_twobit;
             ++j;
         }
     }
 
     return xs;
 }
-
-
 

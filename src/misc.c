@@ -1,7 +1,7 @@
 /*
  * This file is part of quip.
  *
- * Copyright (c) 2011 by Daniel C. Jones <dcjones@cs.washington.edu>
+ * Copyright (c) 2012 by Daniel C. Jones <dcjones@cs.washington.edu>
  *
  */
 
@@ -53,73 +53,79 @@ FILE* fopen_or_die(const char* path, const char* mode)
 }
 
 
+/* This is MurmurHash3. The original C++ code was placed in the public domain
+ * by its author, Austin Appleby. */
 
-/*
- * Paul Hsieh's SuperFastHash
- * http://www.azillionmonkeys.com/qed/hash.html
- *
- * TODO: copyright
- */
-
-#undef get16bits
-#if (defined(__GNUC__) && defined(__i386__)) || defined(__WATCOMC__) \
-    || defined(_MSC_VER) || defined (__BORLANDC__) || defined (__TURBOC__)
-#define get16bits(d) (*((const uint16_t *) (d)))
-#endif
-
-#if !defined (get16bits)
-#define get16bits(d) ((((uint32_t)(((const uint8_t *)(d))[1])) << 8)\
-        +(uint32_t)(((const uint8_t *)(d))[0]) )
-#endif
-
-
-uint32_t strhash(const char* s, size_t len)
+static inline uint32_t fmix(uint32_t h)
 {
-    if (len == 0) return 0;
+    h ^= h >> 16;
+    h *= 0x85ebca6b;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35;
+    h ^= h >> 16;
 
-    const uint8_t* data = (const uint8_t*) s;
-
-    uint32_t hash = len, tmp;
-    int rem;
-
-    if (len <= 0 || data == NULL) return 0;
-
-    rem = len & 3;
-    len >>= 2;
-
-    /* Main loop */
-    for (;len > 0; len--) {
-        hash  += get16bits (data);
-        tmp    = (get16bits (data+2) << 11) ^ hash;
-        hash   = (hash << 16) ^ tmp;
-        data  += 2*sizeof (uint16_t);
-        hash  += hash >> 11;
-    }
-
-    /* Handle end cases */
-    switch (rem) {
-        case 3: hash += get16bits (data);
-                hash ^= hash << 16;
-                hash ^= data[sizeof (uint16_t)] << 18;
-                hash += hash >> 11;
-                break;
-        case 2: hash += get16bits (data);
-                hash ^= hash << 11;
-                hash += hash >> 17;
-                break;
-        case 1: hash += *data;
-                hash ^= hash << 10;
-                hash += hash >> 1;
-    }
-
-    /* Force "avalanching" of final 127 bits */
-    hash ^= hash << 3;
-    hash += hash >> 5;
-    hash ^= hash << 4;
-    hash += hash >> 17;
-    hash ^= hash << 25;
-    hash += hash >> 6;
-
-    return hash;
+    return h;
 }
+
+
+static inline uint32_t rotl32(uint32_t x, int8_t r)
+{
+    return (x << r) | (x >> (32 - r));
+}
+
+
+uint32_t murmurhash3(const uint8_t* data, size_t len_)
+{
+    const int len = (int) len_;
+    const int nblocks = len / 4;
+
+    uint32_t h1 = 0xc062fb4a;
+
+    uint32_t c1 = 0xcc9e2d51;
+    uint32_t c2 = 0x1b873593;
+
+    //----------
+    // body
+
+    const uint32_t * blocks = (const uint32_t*) (data + nblocks * 4);
+
+    int i;
+    for(i = -nblocks; i; i++)
+    {
+        uint32_t k1 = blocks[i];
+
+        k1 *= c1;
+        k1 = rotl32(k1, 15);
+        k1 *= c2;
+
+        h1 ^= k1;
+        h1 = rotl32(h1, 13); 
+        h1 = h1*5+0xe6546b64;
+    }
+
+    //----------
+    // tail
+
+    const uint8_t * tail = (const uint8_t*)(data + nblocks*4);
+
+    uint32_t k1 = 0;
+
+    switch(len & 3)
+    {
+        case 3: k1 ^= tail[2] << 16;
+        case 2: k1 ^= tail[1] << 8;
+        case 1: k1 ^= tail[0];
+              k1 *= c1; k1 = rotl32(k1,15); k1 *= c2; h1 ^= k1;
+    }
+
+    //----------
+    // finalization
+
+    h1 ^= len;
+
+    h1 = fmix(h1);
+
+    return h1;
+}
+
 
