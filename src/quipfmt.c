@@ -26,6 +26,12 @@ static const char qual_scale_size = 64;
 /* Maximum number of sequences to read before they are compressed. */
 #define chunk_size 5000 
 
+typedef enum {
+    QUIP_FLAG_REFERENCE = 0,
+    QUIP_FLAG_ASSEMBLED
+
+} quip_header_flag_t;
+
 
 static void write_uint8(quip_writer_t writer, void* writer_data, uint8_t x)
 {
@@ -312,9 +318,13 @@ quip_quip_out_t* quip_quip_out_open(
 
     /* write header */
     C->writer(C->writer_data, quip_header_magic, 6);
+    C->writer(C->writer_data, &quip_header_version, 1);
 
-    uint8_t version_byte = quip_header_version | ((ref_based ? 1 : 0) << 7);
-    C->writer(C->writer_data, &version_byte, 1);
+    /* header flags */
+    uint8_t header_flags = 0;
+    if (ref_based) header_flags |= QUIP_FLAG_REFERENCE;
+    if (!quick)    header_flags |= QUIP_FLAG_ASSEMBLED;
+    C->writer(C->writer_data, &header_flags, 1);
 
     /* write reference hash */
     if (ref_based) {
@@ -322,7 +332,7 @@ quip_quip_out_t* quip_quip_out_open(
         write_uint64(C->writer, C->writer_data, ref_hash);
     }
 
-    /* write aux data, when applicable */
+    /* write aux data */
     if (aux != NULL && (aux->fmt == QUIP_FMT_SAM || aux->fmt == QUIP_FMT_BAM)) {
         bam_header_t* bh = (bam_header_t*) aux->aux;
         write_uint64(C->writer, C->writer_data, bh->l_text);
@@ -337,6 +347,7 @@ quip_quip_out_t* quip_quip_out_open(
 
     return C;
 }
+
 
 static void quip_out_add_readlen(quip_quip_out_t* C, size_t l)
 {
@@ -818,20 +829,53 @@ quip_quip_in_t* quip_quip_in_open(
 
     D->end_of_stream = false;
 
-    uint8_t header[7];
-    if (D->reader(D->reader_data, header, 7) < 7 ||
+    uint8_t header[8];
+    if (D->reader(D->reader_data, header, 8) < 8 ||
         memcmp(quip_header_magic, header, 6) != 0) {
         fprintf(stderr, "Input is not a quip file.\n");
         exit(EXIT_FAILURE);
     }
 
-    if (header[6] != quip_header_version) {
+    uint8_t header_version = header[6];
+    uint8_t header_flags   = header[7];
+
+    if (header_version != quip_header_version) {
         fprintf(stderr, "Input is an old quip format --- an older version of quip is needed.\n");
         exit(EXIT_FAILURE);
     }
 
-    /* XXX TODO XXX: read the quick flag from the header somehow */
-    bool quick = false;
+    bool quick     = (header_flags & QUIP_FLAG_ASSEMBLED) == 0;
+    bool ref_based = (header_flags & QUIP_FLAG_REFERENCE) != 0;
+
+    if (ref_based) {
+        if (ref == NULL) {
+            fprintf(stderr,
+                "A reference sequence is needed for decompression.\n");
+            exit(EXIT_FAILURE);
+        }
+
+        uint64_t ref_hash = read_uint64(D->reader, D->reader_data);
+
+        if (seqmap_crc64(ref) != ref_hash) {
+            fprintf(stderr,
+                "Incorrect reference sequence: a different sequence was used for compression.\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    /* read aux data */
+    uint8_t  aux_type = read_uint8(D->reader, D->reader_data);
+    uint64_t aux_size = read_uint64(D->reader, D->reader_data);
+
+    if (aux_type == QUIP_FMT_BAM || aux_type == QUIP_FMT_SAM) {
+        /* TODO: do something with the sam/bam header. */
+        D->reader(D->reader_data, NULL, aux_size);
+    }
+    else {
+        /* skip unwanted auxiliary data */
+        D->reader(D->reader_data, NULL, aux_size);
+    }
+
 
     D->idenc   = idenc_alloc_decoder(id_buf_reader, (void*) D);
     D->disassembler = disassembler_alloc(seq_buf_reader, (void*) D, quick, ref);

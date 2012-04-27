@@ -57,7 +57,6 @@ void  ac_free(ac_t* ac)
 }
 
 
-
 static void ac_append_byte(ac_t* E, uint8_t c)
 {
     if (E->bufpos >= E->buflen) {

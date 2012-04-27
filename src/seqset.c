@@ -224,7 +224,7 @@ uint32_t seqset_inc(seqset_t* S, const twobit_t* seq)
         /* When a fixed-size table is very full, we may
          * have to probe a lot to find the few empty free cells.
          * Just give up if this is the case. */
-        if (!S->fixed_size && probe_num >= 64) return 0;
+        if (S->fixed_size && probe_num >= 64) return 0;
     }
 
     if (is_del_key(S->xs + ins_pos)) --S->d;

@@ -19,9 +19,9 @@ to assembly the reads).
 Quip Header
 -----------
 
-    +---+---+---+---+---+---+---+
-    |      Magic Number     | V |
-    +---+---+---+---+---+---+---+
+    +---+---+---+---+---+---+---+---+
+    |      Magic Number     | V | F |
+    +---+---+---+---+---+---+---+---+
 
 
 The header of a Quip file in seven bytes.  The first six bytes of a Quip file
@@ -35,12 +35,18 @@ Which in hexidecimal is,
 
           FF 51 55 49 50 00
 
-The seventh and last byte of the header `V` is a number used to identify the
-version of the file format.
+The seventh, penultimate byte of the header `V` is a number used to identify
+the version of the file format.
 
-The high-order bit of `V` is set if reference-based compression is used. If
-this is the case, then the next 8-bytes give a hash of the reference sequence
-set used in the compression.
+Lastly, the F byte gives flags is a bitwise OR of flags determining how the
+file was compressed:
+    0:   whether the compression is reference-based
+    1:   whether de novo assembly of unaligned reads was used
+    2-7: reserved for future use
+
+If reference-based compression was used, the next 8-bytes gives a hash of the
+reference sequence, to prevent the incorrect reference sequence being used in
+decompression.
 
     +---+---+---+---+---+---+---+---+
     |  Reference Sequence Checksum  |
@@ -64,8 +70,8 @@ Where `T` is a code giving the source format of the auxiliary data.
 Block Header
 ------------
 
-    Compressed reads are split into blocks, each block beginning with the
-    following header.
+Compressed reads are split into blocks, each block beginning with the
+following header.
 
     +---+---+---+---+---+---+---+---+
     |  Read Count   |   Base Count  |
@@ -91,16 +97,16 @@ Block Header
     | Uncomp. Bytes |  Comp. Bytes  |        CRC64 Checksum         |   (Quality chunk description)
     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
-    A block header consists of a 4-byte integer giving the number of reads in
-    the block, followed by a 4-byte integer giving the number of bases.
+A block header consists of a 4-byte integer giving the number of reads in
+the block, followed by a 4-byte integer giving the number of bases.
 
-    Read-lengths are listed using run-length encoding.
+Read-lengths are listed using run-length encoding.
 
-    Guesses at the quality score scheme are encoded using run length encoding.
-    
-    Following this, 4-byte uncompressed and compressed byte counts and 8-byte
-    checksums are given for read IDs, sequences, and quality scores,
-    respectively.
+Guesses at the quality score scheme are encoded using run length encoding.
+
+Following this, 4-byte uncompressed and compressed byte counts and 8-byte
+checksums are given for read IDs, sequences, and quality scores,
+respectively.
 
 
 

@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <string.h>
 #include <math.h>
+#include <inttypes.h>
 
 /* k-mer used for de bruijn graph assembly */
 static const size_t assemble_k = 25;
@@ -87,6 +88,11 @@ struct assembler_t_
 
     /* The initial block is being compressed, in which we assemble unaligned reads. */
     bool initial_block;
+
+    /* statistics used in verbose reporting */
+    uint64_t stat_n;
+    uint64_t stat_aligned_count;
+    uint64_t stat_assemble_count;
 };
 
 
@@ -157,8 +163,7 @@ static void count_kmers(bloom_t* B, const twobit_t* seq)
 
 
 /* Try desperately to align the given read. If no good alignment is found, just
- * encode the sequence. Return 0 if no alignment was found, 1 if a seed was
- * found but no good alignment, and 2 if a good alignment was found. */
+ * encode the sequence. Return true if an alignment was found. */
 static bool align_read(assembler_t* A, const twobit_t* seq)
 {
     /* We only consider the first few seed hits found in the hash table. The
@@ -186,7 +191,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
     double aln_score;
 
-    /* Don't try to align any reads that are shorer than the seed length */
+    /* Don't try to align any reads that are shorter than the seed length */
     qlen = twobit_len(seq);
     if ((size_t) qlen < align_k) {
         seqenc_encode_twobit_seq(A->seqenc, seq);
@@ -270,8 +275,11 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
 void assembler_add_seq(assembler_t* A, const short_read_t* seq)
 {
+    A->stat_n++;
+
     if ((seq->flags & BAM_FUNMAP) == 0) {
         // TODO: reference based compression
+        A->stat_aligned_count++;
         return;
     }
 
@@ -290,7 +298,7 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
     else {
         if (!has_N(&seq->seq)) {
             twobit_copy_n(A->x, (char*) seq->seq.s, seq->seq.n);
-            align_read(A, A->x);
+            if (align_read(A, A->x)) A->stat_assemble_count++;
         }
         else {
             seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
@@ -496,7 +504,6 @@ size_t assembler_finish(assembler_t* A)
         bloom_free(A->B);
         A->B = NULL;
 
-        /* Now that we have some memory to spare, bring up the sequence encoder. */
         seqenc_set_supercontig(A->seqenc, A->supercontig);
 
         index_contigs(A);
@@ -512,6 +519,17 @@ size_t assembler_finish(assembler_t* A)
         seqenc_get_supercontig_consensus(A->seqenc, A->supercontig);
         index_contigs(A);
     }
+
+    if (quip_verbose) {
+        fprintf(stderr, "%2.1f%% aligned to reference.\n",
+            100.0 * (double) A->stat_aligned_count / (double) A->stat_n);
+        fprintf(stderr, "%2.1f%% aligned to assembled contigs.\n",
+            100.0 * (double) A->stat_assemble_count / (double) A->stat_n);
+    }
+
+    A->stat_n = 0;
+    A->stat_aligned_count = 0;
+    A->stat_assemble_count = 0;
 
     return bytes;
 }
@@ -554,6 +572,9 @@ struct disassembler_t_
 
     /* The initial block is being compressed, in which we assemble unaligned reads. */
     bool initial_block;
+
+    /* Initial state. */
+    bool initial_state;
 };
 
 
@@ -572,6 +593,7 @@ disassembler_t* disassembler_alloc(
     D->ref = ref;
     D->quick = quick;
     D->initial_block = true;
+    D->initial_state = true;
 
     if (!quick) {
         D->S = seqset_alloc_fixed(seqset_n);
@@ -598,6 +620,11 @@ void disassembler_free(disassembler_t* D)
 
 void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
 {
+    if (D->initial_state) {
+        seqenc_start_decoder(D->seqenc);
+        D->initial_state = false;
+    }
+
     seqenc_decode(D->seqenc, seq, n);
 
     if (D->initial_block && (seq->flags & BAM_FUNMAP) != 0) {
@@ -611,7 +638,7 @@ void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
 
 void disassembler_reset(disassembler_t* D)
 {
-    if (D->initial_block) {
+    if (D->initial_block && !D->initial_state) {
         /* dump reads and sort by copy number*/
         seqset_value_t* xs = seqset_dump(D->S);
         qsort(xs, seqset_size(D->S), sizeof(seqset_value_t), seqset_value_cnt_cmp);
@@ -634,6 +661,7 @@ void disassembler_reset(disassembler_t* D)
     }
 
     seqenc_reset_decoder(D->seqenc);
+    D->initial_state = true;
 }
 
 
