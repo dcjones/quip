@@ -129,3 +129,39 @@ uint32_t murmurhash3(const uint8_t* data, size_t len_)
 }
 
 
+void str_revcomp(unsigned char* seq, size_t n);
+
+
+static unsigned char complement(unsigned char c)
+{
+    switch (c) {
+        case 'a': return 't';
+        case 'c': return 'g';
+        case 'g': return 'c';
+        case 't': return 'a';
+        case 'n': return 'n';
+        case 'A': return 'T';
+        case 'C': return 'G';
+        case 'G': return 'C';
+        case 'T': return 'A';
+        case 'N': return 'N';
+        default:  return c;
+    }
+}
+
+void str_revcomp(unsigned char* seq, size_t n)
+{
+    char c;
+    size_t i, j;
+    i = 0;
+    j = n - 1;
+    while (i < j) {
+        c = complement(seq[i]);
+        seq[i] = complement(seq[j]);
+        seq[j] = c;
+        i++; j--;
+    }
+
+    if (i == j) seq[i] = complement(seq[i]);
+}
+

@@ -218,7 +218,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
             return EXIT_FAILURE;
         }
 
-        seqmap_t* ref = seqmap_alloc();
+        ref = seqmap_alloc();
         seqmap_read_fasta(ref, ref_f);
         fclose(ref_f);
     }

@@ -37,6 +37,11 @@ void seqenc_get_supercontig_consensus(seqenc_t*, twobit_t* supercontig);
 void seqenc_encode_char_seq(seqenc_t*, const uint8_t*, size_t len);
 void seqenc_encode_twobit_seq(seqenc_t*, const twobit_t*);
 
+void seqenc_encode_reference_alignment(
+        seqenc_t* E,
+        const seqmap_t* ref,
+        const short_read_t*);
+
 void seqenc_encode_alignment(
         seqenc_t* E,
         uint32_t spos, uint8_t strand,

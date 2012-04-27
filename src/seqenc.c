@@ -4,6 +4,8 @@
 #include "misc.h"
 #include "ac.h"
 #include "dist.h"
+#include "seqmap.h"
+#include "sam/bam.h"
 #include <assert.h>
 #include <string.h>
 
@@ -28,6 +30,11 @@ static const uint16_t contig_motif_prior = 50;
 enum {
     SEQENC_TYPE_SEQUENCE = 0,
     SEQENC_TYPE_ALIGNMENT
+};
+
+enum {
+    SEQENC_REF_MATCH = 0,
+    SEQENC_REF_MISMATCH
 };
 
 
@@ -58,6 +65,12 @@ struct seqenc_t_
 
     /* distribution over the offset into the contig */
     cond_dist256_t d_contig_off;
+
+    /* distribution over match/mismatces in reference alignments */
+    dist2_t d_ref_match;
+
+    /* distribution over inserted nucleotides in reference alignment */
+    dist4_t d_ref_ins_nuc;
 
     /* contig motifs used to compress nucleotides in alignments */
     cond_dist4_t supercontig_motif;
@@ -112,6 +125,9 @@ static void seqenc_init(seqenc_t* E)
     dist2_init(&E->d_aln_strand);
 
     cond_dist256_init(&E->d_contig_off, 9 * 256);
+
+    dist2_init(&E->d_ref_match);
+    dist4_init(&E->d_ref_ins_nuc);
 
     memset(&E->supercontig_motif, 0, sizeof(cond_dist4_t));
 }
@@ -272,6 +288,110 @@ void seqenc_encode_alignment(
         for (i = 0; i < qlen; ++i) {
             u = twobit_get(query, i);
             cond_dist4_encode(E->ac, &E->supercontig_motif, spos + i, u);
+        }
+    }
+}
+
+
+void seqenc_encode_reference_alignment(
+        seqenc_t* E, const seqmap_t* ref, const short_read_t* r)
+{
+    const twobit_t* refseq = seqmap_get(ref, (const char*) r->seqname.s);
+
+    if (refseq == NULL) {
+        fprintf(stderr,
+            "A read was aligned to sequence %s, which was not found in the reference.\n",
+            r->seqname.s);
+        exit(EXIT_FAILURE);
+    }
+
+    uint32_t ref_pos  = r->pos;
+    uint32_t read_pos = 0;
+
+    size_t i = 0; /* cigar operation */
+    size_t j; /* position within the cigar op */
+
+    kmer_t x; /* read nucleotide */
+    kmer_t y; /* reference nucleotide */
+
+    for (i = 0; i < r->cigar.n; ++i) {
+        switch (r->cigar.ops[i]) {
+            case BAM_CEQUAL:
+            case BAM_CDIFF:
+            case BAM_CMATCH:
+                for (j = 0; j < r->cigar.lens[i]; ++j) {
+                    if (r->strand) {
+                        x = kmer_comp1(chartokmer[r->seq.s[r->seq.n - 1 - read_pos]]);
+                    }
+                    else x = chartokmer[r->seq.s[read_pos]];
+                    
+                    // x = chartokmer[r->seq.s[read_pos]];
+                    y = twobit_get(refseq, ref_pos);
+
+                    if (x == y) {
+                        dist2_encode(E->ac, &E->d_ref_match, SEQENC_REF_MATCH);
+                    }
+                    else {
+                        dist2_encode(E->ac, &E->d_ref_match, SEQENC_REF_MISMATCH);
+                        dist4_encode(E->ac, &E->d_ref_ins_nuc, chartokmer[r->seq.s[read_pos]]);
+                    }
+
+                    read_pos++;
+                    ref_pos++;
+                }
+                break;
+
+            case BAM_CINS:
+                for (j = 0; j < r->cigar.lens[j]; ++j) {
+                    dist4_encode(E->ac, &E->d_ref_ins_nuc, chartokmer[r->seq.s[read_pos]]);
+                    read_pos++;
+                }
+                break;
+
+            case BAM_CDEL:
+                ref_pos += r->cigar.lens[j];
+                break;
+
+            case BAM_CREF_SKIP:
+                ref_pos += r->cigar.lens[j];
+                break;
+
+            case BAM_CSOFT_CLIP:
+                for (j = 0; j < r->cigar.lens[j]; ++j) {
+                    dist4_encode(E->ac, &E->d_ref_ins_nuc, chartokmer[r->seq.s[read_pos]]);
+                    read_pos++;
+                    ref_pos++;
+                }
+                break;
+
+            case BAM_CHARD_CLIP:
+                read_pos += r->cigar.lens[j];
+                ref_pos  += r->cigar.lens[j];
+                break;
+
+            case BAM_CPAD:
+                /* TODO: I have no fucking clue what this is supposed to mean. */
+                fprintf(stderr, "Unsupported cigar operation.\n");
+                exit(EXIT_FAILURE);
+                break;
+        }
+    }
+
+    if (read_pos != r->seq.n) {
+        fprintf(stderr, "Cigar operations do not account for full read length.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    /* encode N mask */
+    uint32_t nmask_ctx = 0;
+    for (i = 0; i < r->seq.n; ++i) {
+        if (r->seq.s[i] == 'N') {
+            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 1);
+            nmask_ctx = ((nmask_ctx << 1) | 1) & E->nmask_ctx_mask;
+        }
+        else {
+            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 0);
+            nmask_ctx = (nmask_ctx << 1) & E->nmask_ctx_mask;
         }
     }
 }

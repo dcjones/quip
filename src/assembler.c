@@ -277,8 +277,8 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
 {
     A->stat_n++;
 
-    if ((seq->flags & BAM_FUNMAP) == 0) {
-        // TODO: reference based compression
+    if (A->ref != NULL && (seq->flags & BAM_FUNMAP) == 0) {
+        seqenc_encode_reference_alignment(A->seqenc, A->ref, seq);
         A->stat_aligned_count++;
         return;
     }

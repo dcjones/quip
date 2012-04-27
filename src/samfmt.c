@@ -402,6 +402,11 @@ short_read_t* quip_sam_read(quip_sam_in_t* in)
 
     in->r.flags    = (uint32_t) in->b->core.flag;
     in->r.strand   = bam1_strand(in->b);
+    if (in->r.strand) {
+        /* BAM/SAM reorients reads to the the reference sequence */
+        str_revcomp(in->r.seq.s, in->r.seq.n);
+    }
+
     in->r.pos      = in->b->core.pos;
     in->r.map_qual = in->b->core.qual;
 
