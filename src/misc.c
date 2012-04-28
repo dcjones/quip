@@ -146,6 +146,7 @@ static unsigned char complement(unsigned char c)
     }
 }
 
+
 void str_revcomp(unsigned char* seq, size_t n)
 {
     char c;
@@ -162,6 +163,7 @@ void str_revcomp(unsigned char* seq, size_t n)
     if (i == j) seq[i] = complement(seq[i]);
 }
 
+
 void str_rev(unsigned char* seq, size_t n)
 {
     char c;
@@ -175,6 +177,4 @@ void str_rev(unsigned char* seq, size_t n)
         i++; j--;
     }
 }
-
-
 

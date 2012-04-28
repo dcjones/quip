@@ -296,22 +296,22 @@ static void encode_num(idenc_t* E, size_t i, const uint8_t* str, tok_t* tok)
 
 
 
-void idenc_encode(idenc_t* E, const short_read_t* seq)
+void idenc_encode(idenc_t* E, const str_t* id)
 {
     size_t i; /* token number */
     const uint8_t *s, *t;
-    t = seq->id.s;
+    t = id->s;
     tok_t tok;
 
-    for (i = 0, s = seq->id.s; true; ++i, s = t) {
+    for (i = 0, s = id->s; true; ++i, s = t) {
         if (i + 1 > E->max_group_cnt) idenc_add_group(E);
 
         t = next_id_token(s, &tok.type);
-        tok.pos = s - seq->id.s;
+        tok.pos = s - id->s;
         tok.len = t - s;
 
-        if      (tok.type == ID_TOK_STR) encode_str(E, i, seq->id.s, &tok);
-        else if (tok.type == ID_TOK_NUM) encode_num(E, i, seq->id.s, &tok);
+        if      (tok.type == ID_TOK_STR) encode_str(E, i, id->s, &tok);
+        else if (tok.type == ID_TOK_NUM) encode_num(E, i, id->s, &tok);
 
         if (E->toks_size <= i) {
             E->toks_size += 1;
@@ -323,21 +323,20 @@ void idenc_encode(idenc_t* E, const short_read_t* seq)
     }
 
 
-    if (E->lastid_size < seq->id.n + 1) {
-        E->lastid_size = seq->id.n + 1;
+    if (E->lastid_size < id->n + 1) {
+        E->lastid_size = id->n + 1;
         free(E->lastid);
-        E->lastid = malloc_or_die((seq->id.n + 1) * sizeof(uint8_t));
+        E->lastid = malloc_or_die((id->n + 1) * sizeof(uint8_t));
     }
-    memcpy(E->lastid, seq->id.s, (seq->id.n + 1) * sizeof(uint8_t));
-    E->lastid_len = seq->id.n + 1;
+    memcpy(E->lastid, id->s, (id->n + 1) * sizeof(uint8_t));
+    E->lastid_len = id->n + 1;
 
     E->toks_len = i - 1;
 }
 
 
-void idenc_decode(idenc_t* E, short_read_t* seq)
+void idenc_decode(idenc_t* E, str_t* id)
 {
-    str_t* id = &seq->id; /* for convenience */
     size_t i; /* token number */
     size_t j; /* offset into id */
     uint32_t matches, mismatches;
@@ -418,15 +417,15 @@ void idenc_decode(idenc_t* E, short_read_t* seq)
         if (id->s[tok.pos] == '\0') break;
     }
 
-    seq->id.n = j - 1;
+    id->n = j - 1;
 
-    if (E->lastid_size < seq->id.n + 1) {
-        E->lastid_size = seq->id.n + 1;
+    if (E->lastid_size < id->n + 1) {
+        E->lastid_size = id->n + 1;
         free(E->lastid);
-        E->lastid = malloc_or_die((seq->id.n + 1) * sizeof(char));
+        E->lastid = malloc_or_die((id->n + 1) * sizeof(char));
     }
-    memcpy(E->lastid, seq->id.s, (seq->id.n + 1) * sizeof(char));
-    E->lastid_len = seq->id.n + 1;
+    memcpy(E->lastid, id->s, (id->n + 1) * sizeof(char));
+    E->lastid_len = id->n + 1;
 
     E->toks_len = i - 1;
 }

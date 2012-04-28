@@ -108,10 +108,6 @@ struct seqenc_t_
 
     /* template length */
     cond_dist256_t  d_ext_tlen;
-
-    /* first-order markov chain for aux data */
-    cond_dist256_t  d_ext_aux_len;
-    cond_dist256_t  d_ext_aux;
 };
 
 
@@ -184,8 +180,6 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
 
     dist2_init(&E->d_ext_mate_sameseq);
     cond_dist256_init(&E->d_ext_tlen, 9 * 256);
-    cond_dist256_init(&E->d_ext_aux_len, 9 * 256);
-    cond_dist256_init(&E->d_ext_aux, 256);
 
     E->seq_index = strmap_alloc();
 }
@@ -248,8 +242,6 @@ void seqenc_free(seqenc_t* E)
     }
 
     cond_dist256_free(&E->d_ext_tlen);
-    cond_dist256_free(&E->d_ext_aux_len);
-    cond_dist256_free(&E->d_ext_aux);
 
     strmap_free(E->seq_index);
 
@@ -289,14 +281,6 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
     dist_encode_uint32(E->ac, &E->d_ext_flags, x->flags);
     dist256_encode(E->ac, &E->d_ext_map_qual, x->map_qual);
     dist_encode_uint32(E->ac, &E->d_ext_tlen, x->tlen);
-
-    /* aux data */
-    dist_encode_uint32(E->ac, &E->d_ext_aux_len, x->aux.n);
-    unsigned char last = '\0';
-    for (i = 0; i < x->aux.n; ++i) {
-        cond_dist256_encode(E->ac, &E->d_ext_aux, x->aux.s[i], last);
-        last = x->aux.s[i];
-    }
 
     uint32_t seqidx = 0;
 

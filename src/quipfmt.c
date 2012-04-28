@@ -184,6 +184,7 @@ struct quip_quip_out_t_
 
     /* algorithms to compress ids, qualities, and sequences, resp. */
     idenc_t*     idenc;
+    idenc_t*     auxenc;
     qualenc_t*   qualenc;
     assembler_t* assembler;
 
@@ -193,11 +194,13 @@ struct quip_quip_out_t_
 
     /* block specific checksums */
     uint64_t id_crc;
+    uint64_t aux_crc;
     uint64_t seq_crc;
     uint64_t qual_crc;
 
     /* for compression statistics */
     uint32_t id_bytes;
+    uint32_t aux_bytes;
     uint32_t qual_bytes;
     uint32_t seq_bytes;
 
@@ -226,7 +229,7 @@ static void* id_compressor_thread(void* ctx)
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
-        idenc_encode(C->idenc, &C->chunk[i]);
+        idenc_encode(C->idenc, &C->chunk[i].id);
         C->id_crc = crc64_update(
             C->chunk[i].id.s,
             C->chunk[i].id.n, C->id_crc);
@@ -234,6 +237,24 @@ static void* id_compressor_thread(void* ctx)
 
     return NULL;
 }
+
+
+static void* aux_compressor_thread(void* ctx)
+{
+    quip_quip_out_t* C = (quip_quip_out_t*) ctx;
+
+    size_t i;
+    for (i = 0; i < C->chunk_len; ++i) {
+        idenc_encode(C->auxenc, &C->chunk[i].aux);
+        C->id_crc = crc64_update(
+            C->chunk[i].aux.s,
+            C->chunk[i].aux.n, C->id_crc);
+    }
+
+    return NULL;
+
+}
+
 
 static void* seq_compressor_thread(void* ctx)
 {
@@ -249,6 +270,7 @@ static void* seq_compressor_thread(void* ctx)
 
     return NULL;
 }
+
 
 static void* qual_compressor_thread(void* ctx)
 {
@@ -313,6 +335,7 @@ quip_quip_out_t* quip_quip_out_open(
     C->total_bases = 0;
 
     C->idenc     = idenc_alloc_encoder(writer, (void*) writer_data);
+    C->auxenc    = idenc_alloc_encoder(writer, (void*) writer_data);
     C->qualenc   = qualenc_alloc_encoder(writer, (void*) writer_data);
     C->assembler = assembler_alloc(writer, (void*) writer_data, quick, ref);
 
@@ -395,6 +418,7 @@ void quip_out_flush_block(quip_quip_out_t* C)
 
     /* finish coding */
     size_t comp_id_bytes   = idenc_finish(C->idenc);
+    size_t comp_aux_bytes  = idenc_finish(C->auxenc);
     size_t comp_seq_bytes  = assembler_finish(C->assembler);
     size_t comp_qual_bytes = qualenc_finish(C->qualenc);
 
@@ -402,6 +426,10 @@ void quip_out_flush_block(quip_quip_out_t* C)
     write_uint32(C->writer, C->writer_data, C->id_bytes);
     write_uint32(C->writer, C->writer_data, comp_id_bytes);
     write_uint64(C->writer, C->writer_data, C->id_crc);
+
+    write_uint32(C->writer, C->writer_data, C->aux_bytes);
+    write_uint32(C->writer, C->writer_data, comp_aux_bytes);
+    write_uint64(C->writer, C->writer_data, C->aux_crc);
 
     write_uint32(C->writer, C->writer_data, C->seq_bytes);
     write_uint32(C->writer, C->writer_data, comp_seq_bytes);
@@ -417,6 +445,14 @@ void quip_out_flush_block(quip_quip_out_t* C)
         fprintf(stderr, "\tid: %u / %u (%0.2f%%)\n",
                 (unsigned int) comp_id_bytes, (unsigned int) C->id_bytes,
                 100.0 * (double) comp_id_bytes / (double) C->id_bytes);
+    }
+
+    /* write compressed aux */
+    idenc_flush(C->auxenc);
+    if (quip_verbose) {
+        fprintf(stderr, "\taux: %u / %u (%0.2f%%)\n",
+                (unsigned int) comp_aux_bytes, (unsigned int) C->aux_bytes,
+                100.0 * (double) comp_aux_bytes / (double) C->aux_bytes);
     }
 
     /* write compressed sequences */
@@ -516,8 +552,9 @@ static void quip_out_flush_chunk(quip_quip_out_t* C)
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
-    pthread_t id_thread, seq_thread, qual_thread;
+    pthread_t id_thread, aux_thread, seq_thread, qual_thread;
     pthread_create_or_die(&id_thread,   &attr, id_compressor_thread,   (void*) C);
+    pthread_create_or_die(&aux_thread,  &attr, aux_compressor_thread,  (void*) C);
     pthread_create_or_die(&seq_thread,  &attr, seq_compressor_thread,  (void*) C);
     pthread_create_or_die(&qual_thread, &attr, qual_compressor_thread, (void*) C);
 
@@ -525,6 +562,7 @@ static void quip_out_flush_chunk(quip_quip_out_t* C)
     for (i = 0; i < C->chunk_len; ++i) {
         quip_out_add_readlen(C, C->chunk[i].seq.n);
         C->id_bytes   += C->chunk[i].id.n;
+        C->aux_bytes  += C->chunk[i].aux.n;
         C->qual_bytes += C->chunk[i].qual.n;
         C->seq_bytes  += C->chunk[i].seq.n;
         C->buffered_bases += C->chunk[i].seq.n;
@@ -536,6 +574,7 @@ static void quip_out_flush_chunk(quip_quip_out_t* C)
 
     void* val;
     pthread_join_or_die(id_thread,   &val);
+    pthread_join_or_die(aux_thread,   &val);
     pthread_join_or_die(seq_thread,  &val);
     pthread_join_or_die(qual_thread, &val);
 
@@ -661,7 +700,7 @@ static void* id_decompressor_thread(void* ctx)
                     chunk_size : D->pending_reads;
     size_t i;
     for (i = 0; i < cnt; ++i) {
-        idenc_decode(D->idenc, &D->chunk[i]);
+        idenc_decode(D->idenc, &D->chunk[i].id);
         D->id_crc = crc64_update(
             D->chunk[i].id.s,
             D->chunk[i].id.n, D->id_crc);

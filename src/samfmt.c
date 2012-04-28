@@ -82,107 +82,16 @@ void quip_sam_out_close(quip_sam_out_t* out)
 }
 
 
-void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
+
+
+static void format_aux(const uint8_t* src, size_t len, str_t* s)
 {
-    /* Packing SAM data into a bam1_t is complicated. Instead, I output a read
-     * formatted in the SAM format to a temporary buffer and let samtools do the
-     * conversion. */
-
-    bool aligned = !(r->flags & BAM_FUNMAP);
-
-    str_t* s = &out->sambuf; /* for convenience */
     s->n = 0;
-
-    /* 1. qname */
-    str_append(s, &r->id);
-
-    /* 2. flag */
-    str_reserve_extra(s, 12);
-    s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32"\t", r->flags);
-
-    /* 3. rname */
-    if (aligned) {
-        str_append(s, &r->seqname);
-    }
-    else {
-        str_append_cstr(s, "*");
-    }
-
-    /* 4. pos */
-    if (aligned) {
-        str_reserve_extra(s, 12);
-        s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32, r->pos + 1);
-    }
-    else {
-        str_append_cstr(s, "\t0");
-    }
-
-    /* 5. mapq */
-    str_reserve_extra(s, 6);
-    s->n += snprintf((char*) s->s + s->n, 6, "\t%"PRIu8"\t",
-            aligned ? r->map_qual : 255);
-
-    /* 6. cigar */
-    const char* cigar_chars = "MIDNSHP=X";
     size_t i;
+    const uint8_t* a = src;
+    while (a < src + len) {
+        if (a != src) str_append_cstr(s, "\t");
 
-    if (aligned && r->cigar.n > 0) {
-        str_reserve_extra(s, r->cigar.n * 11 + 1);
-        for (i = 0; i < r->cigar.n; ++i) {
-            if (r->cigar.ops[i] > 8) continue;
-            s->n += snprintf((char*) s->s + s->n, 12, "%"PRIu32"%c",
-                        r->cigar.lens[i],
-                        cigar_chars[r->cigar.ops[i]]);
-        }
-    }
-    else {
-        str_append_cstr(s, "*");
-    }
-
-    /* 7. rnext */
-    if (aligned && r->mate_seqname.n > 0) {
-        str_append_cstr(s, "\t");
-        str_append(s, &r->mate_seqname);
-    }
-    else {
-        str_append_cstr(s, "\t*");
-    }
-
-    /* 8. pnext */
-    if (aligned) {
-        str_reserve_extra(s, 12);
-        s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32, r->mate_pos + 1);
-    }
-    else {
-        str_append_cstr(s, "\t0");
-    }
-
-    /* 9. tlen */
-    str_reserve_extra(s, 13);
-    s->n += snprintf((char*) s->s + s->n, 13, "\t%"PRId32,
-                aligned ? r->tlen : 0);
-
-    /* 10. seq */
-    if (r->seq.n > 0) {
-        str_append_cstr(s, "\t");
-        str_append(s, &r->seq);
-    }
-    else {
-        str_append_cstr(s, "\t*");
-    }
-
-    /* 11. qual */
-    if (r->qual.n > 0) {
-        str_append_cstr(s, "\t");
-        str_append(s, &r->qual);
-    }
-    else {
-        str_append_cstr(s, "\t*");
-    }
-
-    /* 12. aux */
-    uint8_t* a = (uint8_t*) r->aux.s;
-    while (a < r->aux.s + r->aux.n) {
         uint8_t type, subtype, key[2];
         uint32_t array_len;
         key[0] = a[0]; key[1] = a[1];
@@ -191,7 +100,7 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
         a += 1;
 
         str_reserve_extra(s, 5);
-        s->n += snprintf((char*) s->s + s->n, 5, "\t%c%c:",
+        s->n += snprintf((char*) s->s + s->n, 5, "%c%c:",
                 (char) key[0], (char) key[1]);
 
         switch ((char) type) {
@@ -316,6 +225,115 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
                 break; // skip unknown aux type
         }
     }
+
+    s->s[s->n] = '\0';
+}
+
+
+
+
+
+void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
+{
+    /* Packing SAM data into a bam1_t is complicated. Instead, I output a read
+     * formatted in the SAM format to a temporary buffer and let samtools do the
+     * conversion. */
+
+    bool aligned = !(r->flags & BAM_FUNMAP);
+
+    str_t* s = &out->sambuf; /* for convenience */
+    s->n = 0;
+
+    /* 1. qname */
+    str_append(s, &r->id);
+
+    /* 2. flag */
+    str_reserve_extra(s, 12);
+    s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32"\t", r->flags);
+
+    /* 3. rname */
+    if (aligned) {
+        str_append(s, &r->seqname);
+    }
+    else {
+        str_append_cstr(s, "*");
+    }
+
+    /* 4. pos */
+    if (aligned) {
+        str_reserve_extra(s, 12);
+        s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32, r->pos + 1);
+    }
+    else {
+        str_append_cstr(s, "\t0");
+    }
+
+    /* 5. mapq */
+    str_reserve_extra(s, 6);
+    s->n += snprintf((char*) s->s + s->n, 6, "\t%"PRIu8"\t",
+            aligned ? r->map_qual : 255);
+
+    /* 6. cigar */
+    const char* cigar_chars = "MIDNSHP=X";
+    size_t i;
+
+    if (aligned && r->cigar.n > 0) {
+        str_reserve_extra(s, r->cigar.n * 11 + 1);
+        for (i = 0; i < r->cigar.n; ++i) {
+            if (r->cigar.ops[i] > 8) continue;
+            s->n += snprintf((char*) s->s + s->n, 12, "%"PRIu32"%c",
+                        r->cigar.lens[i],
+                        cigar_chars[r->cigar.ops[i]]);
+        }
+    }
+    else {
+        str_append_cstr(s, "*");
+    }
+
+    /* 7. rnext */
+    if (aligned && r->mate_seqname.n > 0) {
+        str_append_cstr(s, "\t");
+        str_append(s, &r->mate_seqname);
+    }
+    else {
+        str_append_cstr(s, "\t*");
+    }
+
+    /* 8. pnext */
+    if (aligned) {
+        str_reserve_extra(s, 12);
+        s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32, r->mate_pos + 1);
+    }
+    else {
+        str_append_cstr(s, "\t0");
+    }
+
+    /* 9. tlen */
+    str_reserve_extra(s, 13);
+    s->n += snprintf((char*) s->s + s->n, 13, "\t%"PRId32,
+                aligned ? r->tlen : 0);
+
+    /* 10. seq */
+    if (r->seq.n > 0) {
+        str_append_cstr(s, "\t");
+        str_append(s, &r->seq);
+    }
+    else {
+        str_append_cstr(s, "\t*");
+    }
+
+    /* 11. qual */
+    if (r->qual.n > 0) {
+        str_append_cstr(s, "\t");
+        str_append(s, &r->qual);
+    }
+    else {
+        str_append_cstr(s, "\t*");
+    }
+
+    /* 12. aux */
+    str_append_cstr(s, "\t");
+    str_append(s, &r->aux);
 
     s->s[s->n] = '\0';
 
@@ -446,10 +464,10 @@ short_read_t* quip_sam_read(quip_sam_in_t* in)
     }
     in->r.cigar.n = cigarlen;
 
-    str_copy_cstr(&in->r.aux,
-        (char*) bam1_aux(in->b),
-        ((uint8_t*) in->b->data + in->b->data_len) - (uint8_t*) bam1_aux(in->b));
-
+    format_aux(
+        (const uint8_t*) bam1_aux(in->b),
+        ((uint8_t*) in->b->data + in->b->data_len) - (uint8_t*) bam1_aux(in->b),
+        &in->r.aux);
 
     return &in->r;
 }
