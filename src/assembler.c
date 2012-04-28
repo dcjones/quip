@@ -627,6 +627,7 @@ void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
         D->initial_state = false;
     }
 
+    seqenc_decode_extras(D->seqenc, seq, n);
     seqenc_decode(D->seqenc, seq, n);
 
     if (D->initial_block && (seq->flags & BAM_FUNMAP) != 0) {

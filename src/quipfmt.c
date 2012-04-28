@@ -27,8 +27,8 @@ static const char qual_scale_size = 64;
 #define chunk_size 5000 
 
 typedef enum {
-    QUIP_FLAG_REFERENCE = 0,
-    QUIP_FLAG_ASSEMBLED
+    QUIP_FLAG_REFERENCE = 1,
+    QUIP_FLAG_ASSEMBLED = 2
 
 } quip_header_flag_t;
 
@@ -373,10 +373,10 @@ quip_quip_out_t* quip_quip_out_open(
     }
 
     /* write aux data */
-    if (aux != NULL && (aux->fmt == QUIP_FMT_SAM || aux->fmt == QUIP_FMT_BAM)) {
-        bam_header_t* bh = (bam_header_t*) aux->aux;
-        write_uint64(C->writer, C->writer_data, bh->l_text);
-        C->writer(C->writer_data, (uint8_t*) bh->text, bh->l_text);
+    if (aux != NULL) {
+        write_uint8(C->writer, C->writer_data, (uint8_t) aux->fmt);
+        write_uint64(C->writer, C->writer_data, aux->data.n);
+        C->writer(C->writer_data, aux->data.s, aux->data.n);
     }
     else {
         write_uint8(C->writer, C->writer_data, (uint8_t) QUIP_FMT_NULL);
@@ -970,6 +970,7 @@ quip_quip_in_t* quip_quip_in_open(
     str_init(&D->aux_data);
     str_reserve(&D->aux_data, aux_size);
     D->reader(D->reader_data, D->aux_data.s, aux_size);
+    D->aux_data.n = aux_size;
 
     D->idenc   = idenc_alloc_decoder(id_buf_reader, (void*) D);
     D->auxenc  = idenc_alloc_decoder(aux_buf_reader, (void*) D);
@@ -983,7 +984,7 @@ quip_quip_in_t* quip_quip_in_open(
 void quip_quip_get_aux(quip_quip_in_t* D, quip_aux_t* aux)
 {
     aux->fmt  = D->aux_data_type;
-    aux->aux  = (void*) D->aux_data.s;
+    str_copy(&aux->data, &D->aux_data);
 }
 
 void quip_quip_in_close(quip_quip_in_t* D)
@@ -1121,6 +1122,7 @@ static void quip_in_read_block_header(quip_quip_in_t* D)
         fprintf(stderr, "Unexpected end of file.\n");
         exit(EXIT_FAILURE);
     }
+    D->auxbuf_pos = 0;
 
     D->seqbuf_len = D->reader(D->reader_data, D->seqbuf, seq_byte_cnt);
     if (D->seqbuf_len < seq_byte_cnt) {

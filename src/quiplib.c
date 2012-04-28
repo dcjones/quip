@@ -348,6 +348,10 @@ void quip_get_aux(quip_in_t* in, quip_aux_t* aux)
             quip_sam_get_aux(in->x.sam, aux);
             break;
 
+        case QUIP_FMT_QUIP:
+            quip_quip_get_aux(in->x.quip, aux);
+            break;
+
         default: break;
     }
 }

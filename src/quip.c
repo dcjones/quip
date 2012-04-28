@@ -223,11 +223,10 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         fclose(ref_f);
     }
 
-
     quip_in_t*  in;
     quip_out_t* out;
     quip_aux_t  aux;
-
+    str_init(&aux.data);
 
     if (fn_count == 0) {
         if (in_fmt == QUIP_FMT_UNDEFINED) {
@@ -270,6 +269,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         }
     }
 
+    str_free(&aux.data);
     if (ref) seqmap_free(ref);
 
     return 0;

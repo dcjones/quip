@@ -43,20 +43,26 @@ quip_sam_out_t* quip_sam_out_open(
 
     bool binary = (opts & QUIP_OPT_SAM_BAM) != 0;
 
+    bam_header_t* header = bam_header_init();
+
+    const char* header_text;
     if (aux->fmt == QUIP_FMT_SAM || aux->fmt == QUIP_FMT_BAM) {
-        out->f = samopen_out(writer, writer_data, binary, aux->aux);
+        header_text = (const char*) aux->data.s;
+        header->n_text = header->l_text = aux->data.n;
     }
     else {
-        bam_header_t* header = bam_header_init();
-        const char* default_header_text = "@HD\tVN:1.0\tSO:unsorted\n";
-        header->l_text = header->n_text = strlen(default_header_text);
-        header->text = malloc_or_die(header->l_text + 1);
-        memcpy(header->text, default_header_text, header->l_text + 1);
-
-        out->f = samopen_out(writer, writer_data, binary, (void*) header);
-
-        bam_header_destroy(header);
+        header_text = "@HD\tVN:1.0\tSO:unsorted\n";
+        header->n_text = header->l_text = header->n_text = strlen(header_text);
     }
+
+    header->text = malloc_or_die(header->l_text + 1);
+    memcpy(header->text, header_text, header->l_text);
+    header->text[header->l_text] = '\0';
+    sam_header_parse(header);
+
+    out->f = samopen_out(writer, writer_data, binary, (void*) header);
+
+    bam_header_destroy(header);
 
     if (out->f == NULL) {
         fprintf(stderr, "Unable to open SAM/BAM output stream.\n");
@@ -226,7 +232,7 @@ static void format_aux(const uint8_t* src, size_t len, str_t* s)
         }
     }
 
-    s->s[s->n] = '\0';
+    if (len > 0) s->s[s->n] = '\0';
 }
 
 
@@ -332,8 +338,10 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
     }
 
     /* 12. aux */
-    str_append_cstr(s, "\t");
-    str_append(s, &r->aux);
+    if (r->aux.n > 0) {
+        str_append_cstr(s, "\t");
+        str_append(s, &r->aux);
+    }
 
     s->s[s->n] = '\0';
 
@@ -389,7 +397,9 @@ void quip_sam_in_close(quip_sam_in_t* in)
 void quip_sam_get_aux(quip_sam_in_t* in, quip_aux_t* aux)
 {
     aux->fmt = QUIP_FMT_SAM;
-    aux->aux = (void*) in->f->header;
+    str_reserve(&aux->data, in->f->header->l_text);
+    memcpy(aux->data.s, in->f->header->text, in->f->header->l_text);
+    aux->data.n = in->f->header->l_text;
 }
 
 

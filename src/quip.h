@@ -193,7 +193,7 @@ typedef struct seqmap_t_ seqmap_t;
 typedef struct quip_aux_t_
 {
     quip_fmt_t fmt;
-    void* aux;
+    str_t data;
 } quip_aux_t;
 
 
