@@ -16,6 +16,7 @@ libquip_a_SOURCES = \
           seqenc_prior.h    seqenc_prior.c \
           seqset.h          seqset.c \
           seqmap.h          seqmap.c \
+          strmap.h          strmap.c \
           twobit.h          twobit.c \
           qualenc.h         qualenc.c \
           quiplib.c         quip.h \

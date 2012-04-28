@@ -5,6 +5,7 @@
 #include "ac.h"
 #include "dist.h"
 #include "seqmap.h"
+#include "strmap.h"
 #include "sam/bam.h"
 #include <assert.h>
 #include <string.h>
@@ -78,14 +79,17 @@ struct seqenc_t_
     /* reference sequence set, or NULL if none */
     const seqmap_t* ref;
 
+    /* assign sequential indexes to sequences */
+    strmap_t* seq_index;
+
     /* distribution used to compress the "extra" fields in
      * the short_read_t structure. */
 
     /* flags */
     cond_dist256_t  d_ext_flags;
 
-    /* sequence index */
-    cond_dist256_t  d_ext_seqidx;
+    /* sequence name */
+    cond_dist128_t  d_ext_seqname;
 
     /* genomic position, conditioned on sequence index */
     cond_dist256_t* d_ext_pos;
@@ -166,15 +170,10 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
 
     memset(&E->supercontig_motif, 0, sizeof(cond_dist4_t));
 
-    size_t refsize = ref == NULL ? 0 : seqmap_size(ref);
-
     cond_dist256_init(&E->d_ext_flags,  9 * 256);
-    cond_dist256_init(&E->d_ext_seqidx, 9 * 256);
+    cond_dist128_init(&E->d_ext_seqname, 128);
 
-    E->d_ext_pos = malloc_or_die(refsize * sizeof(cond_dist256_t));
-    for (i = 0; i < refsize; ++i) {
-        cond_dist256_init(&E->d_ext_pos[i], 9 * 256);
-    }
+    E->d_ext_pos = NULL;
 
     dist256_init(&E->d_ext_map_qual);
     cond_dist16_init(&E->d_ext_cigar_op, 10);
@@ -187,6 +186,8 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
     cond_dist256_init(&E->d_ext_tlen, 9 * 256);
     cond_dist256_init(&E->d_ext_aux_len, 9 * 256);
     cond_dist256_init(&E->d_ext_aux, 256);
+
+    E->seq_index = strmap_alloc();
 }
 
 
@@ -231,11 +232,10 @@ void seqenc_free(seqenc_t* E)
     cond_dist256_free(&E->d_contig_off);
     cond_dist4_free(&E->supercontig_motif);
 
-
     cond_dist256_free(&E->d_ext_flags);
-    cond_dist256_free(&E->d_ext_seqidx);
+    cond_dist128_free(&E->d_ext_seqname);
 
-    size_t refsize = E->ref == NULL ? 0 : seqmap_size(E->ref);
+    size_t refsize = strmap_size(E->seq_index);
     for (i = 0; i < refsize; ++i) {
         cond_dist256_free(&E->d_ext_pos[i]);
     }
@@ -251,7 +251,34 @@ void seqenc_free(seqenc_t* E)
     cond_dist256_free(&E->d_ext_aux_len);
     cond_dist256_free(&E->d_ext_aux);
 
+    strmap_free(E->seq_index);
+
     free(E);
+}
+
+
+static uint32_t get_seq_idx(seqenc_t* E, const str_t* seqname)
+{
+    uint32_t n   = strmap_size(E->seq_index);
+    uint32_t idx = strmap_get(E->seq_index, seqname);
+
+    if (idx >= n) {
+        E->d_ext_pos = realloc_or_die(E->d_ext_pos, (n + 1) * sizeof(cond_dist256_t));
+        cond_dist256_init(&E->d_ext_pos[n], 9 * 256);
+    }
+
+    return idx;
+}
+
+
+static void encode_seqname(seqenc_t* E, const str_t* seqname)
+{
+    unsigned char last = '\0';
+    size_t i;
+    for (i = 0; i < seqname->n; ++i) {
+        cond_dist128_encode(E->ac, &E->d_ext_seqname, seqname->s[i], last);
+    }
+    cond_dist128_encode(E->ac, &E->d_ext_seqname, '\0', last);
 }
 
 
@@ -271,16 +298,13 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
         last = x->aux.s[i];
     }
 
-    if ((x->flags & BAM_FUNMAP) == 0) {
-        if (E->ref) {
-            /* TODO: lookup sequence index in reference */
-        }
-        else {
-            /* TODO: lookup sequence index in hash table */
-        }
-        /* TODO: encode sequence index */
+    uint32_t seqidx = 0;
 
-        /* TODO: encode position */
+    if ((x->flags & BAM_FUNMAP) == 0) {
+
+        encode_seqname(E, &x->seqname);
+        seqidx = get_seq_idx(E, &x->seqname);
+        dist_encode_uint32(E->ac, &E->d_ext_pos[seqidx], x->pos);
 
         uint8_t last_op = 9;
         for (i = 0; i < x->cigar.n; ++i) {
@@ -290,16 +314,18 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
     }
 
     if ((x->flags & BAM_FMUNMAP) == 0) {
-        if (E->ref) {
-            /* TODO: lookup sequence index in reference */
+        if ((x->mate_seqname.n == 1 && x->mate_seqname.s[0] == '=') ||
+            strcmp((char*) x->seqname.s, (char*) x->mate_seqname.s) == 0)
+        {
+            dist2_encode(E->ac, &E->d_ext_mate_sameseq, 1);
         }
         else {
-            /* TODO: lookup sequence index in hash table */
+            dist2_encode(E->ac, &E->d_ext_mate_sameseq, 0);
+            encode_seqname(E, &x->mate_seqname);
+            seqidx = get_seq_idx(E, &x->mate_seqname);
         }
-        /* TODO: encode whether it matches the main sequence */
-        /*       if not, encode the sequence index */
 
-        /* TODO: encode position */
+        dist_encode_uint32(E->ac, &E->d_ext_pos[seqidx], x->mate_pos);
     }
 }
 
@@ -421,8 +447,7 @@ void seqenc_encode_alignment(
 void seqenc_encode_reference_alignment(
         seqenc_t* E, const short_read_t* r)
 {
-    size_t refseq_idx;
-    const twobit_t* refseq = seqmap_get(E->ref, (const char*) r->seqname.s, &refseq_idx);
+    const twobit_t* refseq = seqmap_get(E->ref, (const char*) r->seqname.s);
 
     if (refseq == NULL) {
         fprintf(stderr,

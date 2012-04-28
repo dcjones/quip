@@ -124,7 +124,7 @@ assembler_t* assembler_alloc(
         A->H = kmerhash_alloc();
     }
 
-    A->seqenc = seqenc_alloc_encoder(writer, writer_data);
+    A->seqenc = seqenc_alloc_encoder(writer, writer_data, ref);
 
     return A;
 }
@@ -277,8 +277,10 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
 {
     A->stat_n++;
 
+    seqenc_encode_extras(A->seqenc, seq);
+
     if (A->ref != NULL && (seq->flags & BAM_FUNMAP) == 0) {
-        seqenc_encode_reference_alignment(A->seqenc, A->ref, seq);
+        seqenc_encode_reference_alignment(A->seqenc, seq);
         A->stat_aligned_count++;
         return;
     }
@@ -587,7 +589,7 @@ disassembler_t* disassembler_alloc(
     disassembler_t* D = malloc_or_die(sizeof(disassembler_t));
     memset(D, 0, sizeof(disassembler_t));
 
-    D->seqenc = seqenc_alloc_decoder(reader, reader_data);
+    D->seqenc = seqenc_alloc_decoder(reader, reader_data, ref);
     D->reader = reader;
     D->reader_data = reader_data;
     D->ref = ref;

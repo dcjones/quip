@@ -199,7 +199,7 @@ size_t seqmap_size(const seqmap_t* M)
 }
 
 
-const twobit_t* seqmap_get(const seqmap_t* M, const char* seqname, size_t* idx)
+const twobit_t* seqmap_get(const seqmap_t* M, const char* seqname)
 {
     if (M->n == 0) return NULL;
 
@@ -217,7 +217,6 @@ const twobit_t* seqmap_get(const seqmap_t* M, const char* seqname, size_t* idx)
         else       j = k;
     }
 
-    *idx = i;
     return strcmp(seqname, M->seqs[i].seqname) == 0 ? M->seqs[i].seq : NULL;
 }
 

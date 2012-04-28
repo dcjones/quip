@@ -24,7 +24,7 @@ void      seqmap_clear(seqmap_t*);
 void      seqmap_free(seqmap_t*);
 void      seqmap_read_fasta(seqmap_t*, FILE*);
 size_t    seqmap_size(const seqmap_t*);
-const twobit_t* seqmap_get(const seqmap_t*, const char* seqname, size_t* idx);
+const twobit_t* seqmap_get(const seqmap_t*, const char* seqname);
 uint64_t        seqmap_crc64(const seqmap_t*);
 
 #endif
