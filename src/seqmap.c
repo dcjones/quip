@@ -193,7 +193,13 @@ void seqmap_read_fasta(seqmap_t* M, FILE* fasta_f)
 }
 
 
-const twobit_t* seqmap_get(const seqmap_t* M, const char* seqname)
+size_t seqmap_size(const seqmap_t* M)
+{
+    return M->n;
+}
+
+
+const twobit_t* seqmap_get(const seqmap_t* M, const char* seqname, size_t* idx)
 {
     if (M->n == 0) return NULL;
 
@@ -211,6 +217,7 @@ const twobit_t* seqmap_get(const seqmap_t* M, const char* seqname)
         else       j = k;
     }
 
+    *idx = i;
     return strcmp(seqname, M->seqs[i].seqname) == 0 ? M->seqs[i].seq : NULL;
 }
 

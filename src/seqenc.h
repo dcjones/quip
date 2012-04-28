@@ -21,8 +21,8 @@
 
 typedef struct seqenc_t_ seqenc_t;
 
-seqenc_t* seqenc_alloc_encoder(quip_writer_t writer, void* writer_data);
-seqenc_t* seqenc_alloc_decoder(quip_reader_t writer, void* reader_data);
+seqenc_t* seqenc_alloc_encoder(quip_writer_t writer, void* writer_data, const seqmap_t* ref);
+seqenc_t* seqenc_alloc_decoder(quip_reader_t writer, void* reader_data, const seqmap_t* ref);
 void      seqenc_free(seqenc_t*);
 
 /* This is called to initialized the sequence motifs used when
@@ -34,12 +34,14 @@ void seqenc_set_supercontig(seqenc_t*, const twobit_t* supercontig);
  * consensus sequence. */
 void seqenc_get_supercontig_consensus(seqenc_t*, twobit_t* supercontig);
 
+/* Encode/decode additional members of short_read. */
+void seqenc_encode_extras(seqenc_t* E, const short_read_t* x);
+
 void seqenc_encode_char_seq(seqenc_t*, const uint8_t*, size_t len);
 void seqenc_encode_twobit_seq(seqenc_t*, const twobit_t*);
 
 void seqenc_encode_reference_alignment(
         seqenc_t* E,
-        const seqmap_t* ref,
         const short_read_t*);
 
 void seqenc_encode_alignment(

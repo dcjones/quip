@@ -74,6 +74,40 @@ struct seqenc_t_
 
     /* contig motifs used to compress nucleotides in alignments */
     cond_dist4_t supercontig_motif;
+
+    /* reference sequence set, or NULL if none */
+    const seqmap_t* ref;
+
+    /* distribution used to compress the "extra" fields in
+     * the short_read_t structure. */
+
+    /* flags */
+    cond_dist256_t  d_ext_flags;
+
+    /* sequence index */
+    cond_dist256_t  d_ext_seqidx;
+
+    /* genomic position, conditioned on sequence index */
+    cond_dist256_t* d_ext_pos;
+
+    /* map quality */
+    dist256_t       d_ext_map_qual;
+
+    /* cigar operation, conditioned on the previous cigar operation */
+    cond_dist16_t   d_ext_cigar_op;
+
+    /* cigar length, conditioned on the operation */
+    cond_dist256_t  d_ext_cigar_len[9];
+
+    /* whether the mate is aligned to the same sequence */
+    dist2_t         d_ext_mate_sameseq;
+
+    /* template length */
+    cond_dist256_t  d_ext_tlen;
+
+    /* first-order markov chain for aux data */
+    cond_dist256_t  d_ext_aux_len;
+    cond_dist256_t  d_ext_aux;
 };
 
 
@@ -98,9 +132,10 @@ static void seqenc_setprior(seqenc_t* E)
 }
 
 
-
-static void seqenc_init(seqenc_t* E)
+static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
 {
+    E->ref = ref;
+
     size_t N = 1 << (2 * k);
     E->ctx_mask = N - 1;
 
@@ -130,28 +165,50 @@ static void seqenc_init(seqenc_t* E)
     dist4_init(&E->d_ref_ins_nuc);
 
     memset(&E->supercontig_motif, 0, sizeof(cond_dist4_t));
+
+    size_t refsize = ref == NULL ? 0 : seqmap_size(ref);
+
+    cond_dist256_init(&E->d_ext_flags,  9 * 256);
+    cond_dist256_init(&E->d_ext_seqidx, 9 * 256);
+
+    E->d_ext_pos = malloc_or_die(refsize * sizeof(cond_dist256_t));
+    for (i = 0; i < refsize; ++i) {
+        cond_dist256_init(&E->d_ext_pos[i], 9 * 256);
+    }
+
+    dist256_init(&E->d_ext_map_qual);
+    cond_dist16_init(&E->d_ext_cigar_op, 10);
+
+    for (i = 0; i < 9; ++i) {
+        cond_dist256_init(&E->d_ext_cigar_len[i], 9 * 256);
+    }
+
+    dist2_init(&E->d_ext_mate_sameseq);
+    cond_dist256_init(&E->d_ext_tlen, 9 * 256);
+    cond_dist256_init(&E->d_ext_aux_len, 9 * 256);
+    cond_dist256_init(&E->d_ext_aux, 256);
 }
 
 
-seqenc_t* seqenc_alloc_encoder(quip_writer_t writer, void* writer_data)
+seqenc_t* seqenc_alloc_encoder(quip_writer_t writer, void* writer_data, const seqmap_t* ref)
 {
     seqenc_t* E = malloc_or_die(sizeof(seqenc_t));
 
     E->ac = ac_alloc_encoder(writer, writer_data);
 
-    seqenc_init(E);
+    seqenc_init(E, ref);
 
     return E;
 }
 
 
-seqenc_t* seqenc_alloc_decoder(quip_reader_t reader, void* reader_data)
+seqenc_t* seqenc_alloc_decoder(quip_reader_t reader, void* reader_data, const seqmap_t* ref)
 {
     seqenc_t* E = malloc_or_die(sizeof(seqenc_t));
 
     E->ac = ac_alloc_decoder(reader, reader_data);
 
-    seqenc_init(E);
+    seqenc_init(E, ref);
 
     return E;
 }
@@ -174,9 +231,77 @@ void seqenc_free(seqenc_t* E)
     cond_dist256_free(&E->d_contig_off);
     cond_dist4_free(&E->supercontig_motif);
 
+
+    cond_dist256_free(&E->d_ext_flags);
+    cond_dist256_free(&E->d_ext_seqidx);
+
+    size_t refsize = E->ref == NULL ? 0 : seqmap_size(E->ref);
+    for (i = 0; i < refsize; ++i) {
+        cond_dist256_free(&E->d_ext_pos[i]);
+    }
+    free(E->d_ext_pos);
+
+    cond_dist16_free(&E->d_ext_cigar_op);
+
+    for (i = 0; i < 9; ++i) {
+        cond_dist256_free(&E->d_ext_cigar_len[i]);
+    }
+
+    cond_dist256_free(&E->d_ext_tlen);
+    cond_dist256_free(&E->d_ext_aux_len);
+    cond_dist256_free(&E->d_ext_aux);
+
     free(E);
 }
 
+
+void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
+{
+    size_t i;
+
+    dist_encode_uint32(E->ac, &E->d_ext_flags, x->flags);
+    dist256_encode(E->ac, &E->d_ext_map_qual, x->map_qual);
+    dist_encode_uint32(E->ac, &E->d_ext_tlen, x->tlen);
+
+    /* aux data */
+    dist_encode_uint32(E->ac, &E->d_ext_aux_len, x->aux.n);
+    unsigned char last = '\0';
+    for (i = 0; i < x->aux.n; ++i) {
+        cond_dist256_encode(E->ac, &E->d_ext_aux, x->aux.s[i], last);
+        last = x->aux.s[i];
+    }
+
+    if ((x->flags & BAM_FUNMAP) == 0) {
+        if (E->ref) {
+            /* TODO: lookup sequence index in reference */
+        }
+        else {
+            /* TODO: lookup sequence index in hash table */
+        }
+        /* TODO: encode sequence index */
+
+        /* TODO: encode position */
+
+        uint8_t last_op = 9;
+        for (i = 0; i < x->cigar.n; ++i) {
+            cond_dist16_encode(E->ac, &E->d_ext_cigar_op, x->cigar.ops[i], last_op);
+            dist_encode_uint32(E->ac, &E->d_ext_cigar_len[x->cigar.ops[i]], x->cigar.lens[i]);
+        }
+    }
+
+    if ((x->flags & BAM_FMUNMAP) == 0) {
+        if (E->ref) {
+            /* TODO: lookup sequence index in reference */
+        }
+        else {
+            /* TODO: lookup sequence index in hash table */
+        }
+        /* TODO: encode whether it matches the main sequence */
+        /*       if not, encode the sequence index */
+
+        /* TODO: encode position */
+    }
+}
 
 
 void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
@@ -294,9 +419,10 @@ void seqenc_encode_alignment(
 
 
 void seqenc_encode_reference_alignment(
-        seqenc_t* E, const seqmap_t* ref, const short_read_t* r)
+        seqenc_t* E, const short_read_t* r)
 {
-    const twobit_t* refseq = seqmap_get(ref, (const char*) r->seqname.s);
+    size_t refseq_idx;
+    const twobit_t* refseq = seqmap_get(E->ref, (const char*) r->seqname.s, &refseq_idx);
 
     if (refseq == NULL) {
         fprintf(stderr,
