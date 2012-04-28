@@ -301,7 +301,6 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
     uint32_t seqidx = 0;
 
     if ((x->flags & BAM_FUNMAP) == 0) {
-
         encode_seqname(E, &x->seqname);
         seqidx = get_seq_idx(E, &x->seqname);
         dist_encode_uint32(E->ac, &E->d_ext_pos[seqidx], x->pos);
@@ -315,7 +314,7 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
 
     if ((x->flags & BAM_FMUNMAP) == 0) {
         if ((x->mate_seqname.n == 1 && x->mate_seqname.s[0] == '=') ||
-            strcmp((char*) x->seqname.s, (char*) x->mate_seqname.s) == 0)
+            ((x->flags & BAM_FUNMAP) == 0 && strcmp((char*) x->seqname.s, (char*) x->mate_seqname.s) == 0))
         {
             dist2_encode(E->ac, &E->d_ext_mate_sameseq, 1);
         }
@@ -493,22 +492,22 @@ void seqenc_encode_reference_alignment(
                 break;
 
             case BAM_CINS:
-                for (j = 0; j < r->cigar.lens[j]; ++j) {
+                for (j = 0; j < r->cigar.lens[i]; ++j) {
                     dist4_encode(E->ac, &E->d_ref_ins_nuc, chartokmer[r->seq.s[read_pos]]);
                     read_pos++;
                 }
                 break;
 
             case BAM_CDEL:
-                ref_pos += r->cigar.lens[j];
+                ref_pos += r->cigar.lens[i];
                 break;
 
             case BAM_CREF_SKIP:
-                ref_pos += r->cigar.lens[j];
+                ref_pos += r->cigar.lens[i];
                 break;
 
             case BAM_CSOFT_CLIP:
-                for (j = 0; j < r->cigar.lens[j]; ++j) {
+                for (j = 0; j < r->cigar.lens[i]; ++j) {
                     dist4_encode(E->ac, &E->d_ref_ins_nuc, chartokmer[r->seq.s[read_pos]]);
                     read_pos++;
                     ref_pos++;
@@ -516,8 +515,8 @@ void seqenc_encode_reference_alignment(
                 break;
 
             case BAM_CHARD_CLIP:
-                read_pos += r->cigar.lens[j];
-                ref_pos  += r->cigar.lens[j];
+                read_pos += r->cigar.lens[i];
+                ref_pos  += r->cigar.lens[i];
                 break;
 
             case BAM_CPAD:

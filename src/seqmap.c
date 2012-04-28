@@ -211,10 +211,17 @@ const twobit_t* seqmap_get(const seqmap_t* M, const char* seqname)
 
     while (i != j) {
         k = (i + j) / 2;
-        c = strcmp(seqname, M->seqs[k].seqname);
+        c = strcmp(M->seqs[k].seqname, seqname);
 
-        if (c < 0) i = k;
-        else       j = k;
+        if (c == 0) {
+            return M->seqs[k].seq;
+        }
+        else if (c < 0) {
+            i = k + 1;
+        }
+        else {
+            j = k;
+        }
     }
 
     return strcmp(seqname, M->seqs[i].seqname) == 0 ? M->seqs[i].seq : NULL;

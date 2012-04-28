@@ -104,22 +104,22 @@ static void ins_shallow(strmap_t* M, strmap_value_t* key)
 
 static void strmap_expand(strmap_t* M)
 {
-    size_t new_n = primes[M->pn + 1];
-    strmap_value_t* new_xs = malloc_or_die(new_n * sizeof(strmap_value_t));
-    memset(new_xs, 0, new_n * sizeof(strmap_value_t));
+    size_t old_n = M->n;
+    strmap_value_t* old_xs = M->xs;
+
+    M->n = primes[++M->pn];
+    M->xs = malloc_or_die(M->n * sizeof(strmap_value_t));
+    memset(M->xs, 0, M->n * sizeof(strmap_value_t));
 
     /* rehash */
     size_t i;
-    for (i = 0; i < M->n; ++i) {
-        if (M->xs[i].val) {
-            ins_shallow(M, &M->xs[i]);
+    for (i = 0; i < old_n; ++i) {
+        if (old_xs[i].val) {
+            ins_shallow(M, &old_xs[i]);
         }
     }
 
-    free(M->xs);
-    M->xs = new_xs;
-    M->pn++;
-    M->n = new_n;
+    free(old_xs);
     M->min_m = (size_t) ((double) M->n * MIN_LOAD);
     M->max_m = (size_t) ((double) M->n * MAX_LOAD);
 }
@@ -146,6 +146,7 @@ uint32_t strmap_get(strmap_t* M, const str_t* key)
     }
 
     M->xs[k].val = malloc_or_die(sizeof(str_t));
+    str_init(M->xs[k].val);
     str_copy(M->xs[k].val, key);
     M->xs[k].idx = M->m++;
 

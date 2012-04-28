@@ -405,6 +405,7 @@ short_read_t* quip_sam_read(quip_sam_in_t* in)
     if (in->r.strand) {
         /* BAM/SAM reorients reads to the the reference sequence */
         str_revcomp(in->r.seq.s, in->r.seq.n);
+        str_rev(in->r.qual.s, in->r.qual.n);
     }
 
     in->r.pos      = in->b->core.pos;

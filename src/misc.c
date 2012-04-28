@@ -129,9 +129,6 @@ uint32_t murmurhash3(const uint8_t* data, size_t len_)
 }
 
 
-void str_revcomp(unsigned char* seq, size_t n);
-
-
 static unsigned char complement(unsigned char c)
 {
     switch (c) {
@@ -164,4 +161,20 @@ void str_revcomp(unsigned char* seq, size_t n)
 
     if (i == j) seq[i] = complement(seq[i]);
 }
+
+void str_rev(unsigned char* seq, size_t n)
+{
+    char c;
+    size_t i, j;
+    i = 0;
+    j = n - 1;
+    while (i < j) {
+        c = seq[i];
+        seq[i] = seq[j];
+        seq[j] = c;
+        i++; j--;
+    }
+}
+
+
 
