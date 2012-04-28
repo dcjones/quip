@@ -33,6 +33,7 @@ quip_quip_in_t* quip_quip_in_open(
                     const seqmap_t* ref);
 
 void quip_quip_in_close(quip_quip_in_t*);
+void quip_quip_get_aux(quip_quip_in_t*, quip_aux_t*);
 short_read_t* quip_quip_read(quip_quip_in_t*);
 
 
@@ -46,6 +47,7 @@ typedef struct quip_list_t_
 
     /* the uncompressed (0) and compressed (1) byte counts */
     uint64_t id_bytes[2];
+    uint64_t aux_bytes[2];
     uint64_t seq_bytes[2];
     uint64_t qual_bytes[2];
     uint64_t header_bytes;

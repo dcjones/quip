@@ -32,6 +32,23 @@ typedef enum {
 
 } quip_header_flag_t;
 
+void check_header_version(uint8_t v)
+{
+    if (v != quip_header_version) {
+        const char* version_str;
+        switch (v) {
+            case 1: version_str = "version 1.0.x"; break;
+            case 2: version_str = "version 1.1.x"; break;
+            default: version_str = "a newer version"; break;
+        }
+
+        fprintf(stderr, "Input was compressed with a different version of quip. Use %s.\n",
+            version_str);
+        exit(EXIT_FAILURE);
+    }
+
+}
+
 
 static void write_uint8(quip_writer_t writer, void* writer_data, uint8_t x)
 {
@@ -642,22 +659,31 @@ struct quip_quip_in_t_
     quip_reader_t reader;
     void* reader_data;
 
+    /* auxiliary data (e.g. SAM header) */
+    str_t   aux_data;
+    uint8_t aux_data_type;
+
     /* algorithms to decompress ids, qualities, and sequences, resp. */
     idenc_t*        idenc;
+    idenc_t*        auxenc;
     disassembler_t* disassembler;
     qualenc_t*      qualenc;
-
-    /* compressed quality scores */
-    uint8_t* qualbuf;
-    size_t qualbuf_size, qualbuf_len, qualbuf_pos;
 
     /* compressed ids */
     uint8_t* idbuf;
     size_t idbuf_size, idbuf_len, idbuf_pos;
 
+    /* compressed aux */
+    uint8_t* auxbuf;
+    size_t auxbuf_size, auxbuf_len, auxbuf_pos;
+
     /* compressed sequence */
     uint8_t* seqbuf;
     size_t seqbuf_size, seqbuf_len, seqbuf_pos;
+
+    /* compressed quality scores */
+    uint8_t* qualbuf;
+    size_t qualbuf_size, qualbuf_len, qualbuf_pos;
 
     /* number of reads encoded in the buffers */
     uint32_t pending_reads;
@@ -667,11 +693,13 @@ struct quip_quip_in_t_
 
     /* expected block checksums */
     uint64_t exp_id_crc;
+    uint64_t exp_aux_crc;
     uint64_t exp_seq_crc;
     uint64_t exp_qual_crc;
 
     /* observed block checksums */
     uint64_t id_crc;
+    uint64_t aux_crc;
     uint64_t seq_crc;
     uint64_t qual_crc;
 
@@ -707,6 +735,24 @@ static void* id_decompressor_thread(void* ctx)
     }
 
     return NULL;
+}
+
+
+static void* aux_decompressor_thread(void* ctx)
+{
+    quip_quip_in_t* D = (quip_quip_in_t*) ctx;
+
+    size_t cnt = D->pending_reads >= chunk_size ?
+                    chunk_size : D->pending_reads;
+    size_t i;
+    for (i = 0; i < cnt; ++i) {
+        idenc_decode(D->auxenc, &D->chunk[i].aux);
+        D->aux_crc = crc64_update(
+            D->chunk[i].aux.s,
+            D->chunk[i].aux.n, D->aux_crc);
+    }
+
+    return NULL;   
 }
 
 
@@ -805,6 +851,19 @@ static size_t id_buf_reader(void* param, uint8_t* data, size_t size)
 }
 
 
+static size_t aux_buf_reader(void* param, uint8_t* data, size_t size)
+{
+    quip_quip_in_t* C = (quip_quip_in_t*) param;
+
+    size_t cnt = 0;
+    while (cnt < size && C->auxbuf_pos < C->auxbuf_len) {
+        data[cnt++] = C->auxbuf[C->auxbuf_pos++];
+    }
+
+    return cnt;
+}
+
+
 static size_t seq_buf_reader(void* param, uint8_t* data, size_t size)
 {
     quip_quip_in_t* C = (quip_quip_in_t*) param;
@@ -834,10 +893,10 @@ quip_quip_in_t* quip_quip_in_open(
     D->chunk_len = 0;
     D->chunk_pos = 0;
 
-    D->qualbuf = NULL;
-    D->qualbuf_size = 0;
-    D->qualbuf_len  = 0;
-    D->qualbuf_pos  = 0;
+    D->auxbuf = NULL;
+    D->auxbuf_size = 0;
+    D->auxbuf_len  = 0;
+    D->auxbuf_pos  = 0;
 
     D->idbuf = NULL;
     D->idbuf_size = 0;
@@ -848,6 +907,11 @@ quip_quip_in_t* quip_quip_in_open(
     D->seqbuf_size = 0;
     D->seqbuf_len  = 0;
     D->seqbuf_pos  = 0;
+
+    D->qualbuf = NULL;
+    D->qualbuf_size = 0;
+    D->qualbuf_len  = 0;
+    D->qualbuf_pos  = 0;
 
     D->pending_reads = 0;
     D->block_num = 0;
@@ -863,6 +927,7 @@ quip_quip_in_t* quip_quip_in_open(
     D->qual_scheme_lens = malloc_or_die(D->qual_scheme_size * sizeof(uint32_t));
 
     D->id_crc   = D->exp_id_crc   = 0;
+    D->aux_crc  = D->exp_aux_crc  = 0;
     D->seq_crc  = D->exp_seq_crc  = 0;
     D->qual_crc = D->exp_qual_crc = 0;
 
@@ -878,10 +943,7 @@ quip_quip_in_t* quip_quip_in_open(
     uint8_t header_version = header[6];
     uint8_t header_flags   = header[7];
 
-    if (header_version != quip_header_version) {
-        fprintf(stderr, "Input is an old quip format --- an older version of quip is needed.\n");
-        exit(EXIT_FAILURE);
-    }
+    check_header_version(header_version);
 
     bool quick     = (header_flags & QUIP_FLAG_ASSEMBLED) == 0;
     bool ref_based = (header_flags & QUIP_FLAG_REFERENCE) != 0;
@@ -903,26 +965,26 @@ quip_quip_in_t* quip_quip_in_open(
     }
 
     /* read aux data */
-    uint8_t  aux_type = read_uint8(D->reader, D->reader_data);
+    D->aux_data_type = read_uint8(D->reader, D->reader_data);
     uint64_t aux_size = read_uint64(D->reader, D->reader_data);
-
-    if (aux_type == QUIP_FMT_BAM || aux_type == QUIP_FMT_SAM) {
-        /* TODO: do something with the sam/bam header. */
-        D->reader(D->reader_data, NULL, aux_size);
-    }
-    else {
-        /* skip unwanted auxiliary data */
-        D->reader(D->reader_data, NULL, aux_size);
-    }
-
+    str_init(&D->aux_data);
+    str_reserve(&D->aux_data, aux_size);
+    D->reader(D->reader_data, D->aux_data.s, aux_size);
 
     D->idenc   = idenc_alloc_decoder(id_buf_reader, (void*) D);
+    D->auxenc  = idenc_alloc_decoder(aux_buf_reader, (void*) D);
     D->disassembler = disassembler_alloc(seq_buf_reader, (void*) D, quick, ref);
     D->qualenc = qualenc_alloc_decoder(qual_buf_reader, (void*) D);
 
     return D;
 }
 
+
+void quip_quip_get_aux(quip_quip_in_t* D, quip_aux_t* aux)
+{
+    aux->fmt  = D->aux_data_type;
+    aux->aux  = (void*) D->aux_data.s;
+}
 
 void quip_quip_in_close(quip_quip_in_t* D)
 {
@@ -931,12 +993,16 @@ void quip_quip_in_close(quip_quip_in_t* D)
         short_read_free(&D->chunk[i]);
     }
 
+    str_free(&D->aux_data);
+
     idenc_free(D->idenc);
+    idenc_free(D->auxenc);
     disassembler_free(D->disassembler);
     qualenc_free(D->qualenc);
-    free(D->qualbuf);
     free(D->idbuf);
+    free(D->auxbuf);
     free(D->seqbuf);
+    free(D->qualbuf);
     free(D->readlen_vals);
     free(D->readlen_lens);
     free(D->qual_scheme_vals);
@@ -1012,6 +1078,16 @@ static void quip_in_read_block_header(quip_quip_in_t* D)
     }
     D->exp_id_crc = read_uint64(D->reader, D->reader_data);
 
+    /* read aux byte count */
+    read_uint32(D->reader, D->reader_data); /* uncompressed bytes */
+    uint32_t aux_byte_cnt = read_uint32(D->reader, D->reader_data);
+    if (aux_byte_cnt > D->auxbuf_size) {
+        D->auxbuf_size = aux_byte_cnt;
+        free(D->auxbuf);
+        D->auxbuf = malloc_or_die(D->auxbuf_size * sizeof(uint8_t));
+    }
+    D->exp_aux_crc = read_uint64(D->reader, D->reader_data);
+
     /* read seq byte count */
     read_uint32(D->reader, D->reader_data); /* uncompressed bytes */
     uint32_t seq_byte_cnt = read_uint32(D->reader, D->reader_data);
@@ -1032,15 +1108,6 @@ static void quip_in_read_block_header(quip_quip_in_t* D)
     }
     D->exp_qual_crc = read_uint64(D->reader, D->reader_data);
 
-    if (D->pending_reads == 0 &&
-             id_byte_cnt == 0 &&
-            seq_byte_cnt == 0 &&
-           qual_byte_cnt == 0)
-    {
-        D->end_of_stream = true;
-        return;
-    }
-
     /* read compressed data into buffers */
     D->idbuf_len = D->reader(D->reader_data, D->idbuf, id_byte_cnt);
     if (D->idbuf_len < id_byte_cnt) {
@@ -1048,6 +1115,12 @@ static void quip_in_read_block_header(quip_quip_in_t* D)
         exit(EXIT_FAILURE);
     }
     D->idbuf_pos = 0;
+
+    D->auxbuf_len = D->reader(D->reader_data, D->auxbuf, aux_byte_cnt);
+    if (D->auxbuf_len < aux_byte_cnt) {
+        fprintf(stderr, "Unexpected end of file.\n");
+        exit(EXIT_FAILURE);
+    }
 
     D->seqbuf_len = D->reader(D->reader_data, D->seqbuf, seq_byte_cnt);
     if (D->seqbuf_len < seq_byte_cnt) {
@@ -1097,6 +1170,12 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
                 "ID data may be corrupt.\n", D->block_num);
         }
 
+        if (D->aux_crc != D->exp_aux_crc) {
+            fprintf(stderr,
+                "Warning: Aux checksums in block %u do not match. "
+                "Aux data may be corrupt.\n", D->block_num);
+        }
+ 
         if (D->seq_crc != D->exp_seq_crc) {
              fprintf(stderr,
                 "Warning: Sequence checksums in block %u do not match. "
@@ -1116,6 +1195,9 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
         idenc_reset_decoder(D->idenc);
         idenc_start_decoder(D->idenc);
 
+        idenc_reset_decoder(D->auxenc);
+        idenc_start_decoder(D->auxenc);
+
         disassembler_reset(D->disassembler);
 
         qualenc_reset_decoder(D->qualenc);
@@ -1123,17 +1205,19 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
     }
 
     /* launch threads to decode a chunk of reads */
-    pthread_t id_thread, seq_thread, qual_thread;
+    pthread_t id_thread, aux_thread, seq_thread, qual_thread;
 
     pthread_attr_t attr;
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
     pthread_create_or_die(&id_thread,   &attr, id_decompressor_thread,   (void*) D);
+    pthread_create_or_die(&aux_thread,  &attr, aux_decompressor_thread,  (void*) D);
     pthread_create_or_die(&seq_thread,  &attr, seq_decompressor_thread,  (void*) D);
     pthread_create_or_die(&qual_thread, &attr, qual_decompressor_thread, (void*) D);
 
     pthread_join_or_die(id_thread,   NULL);
+    pthread_join_or_die(aux_thread,  NULL);
     pthread_join_or_die(seq_thread,  NULL);
     pthread_join_or_die(qual_thread, NULL);
 
@@ -1163,6 +1247,8 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
 
 void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
 {
+    /* TODO: update to the new format. */
+
     memset(l, 0, sizeof(quip_list_t));
     uint32_t block_reads;
     uint32_t readlen_count;
