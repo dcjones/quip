@@ -1,5 +1,7 @@
 
-AC_INIT([quip], [1.0.2], [dcjones@cs.washington.ed])
+AC_INIT([quip],
+        m4_esyscmd([./git-version-gen | tr -d '\n']),
+        [dcjones@cs.washington.ed])
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 
@@ -79,7 +81,6 @@ AC_CHECK_HEADER(getopt.h, ,
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
-                 extra/Makefile
                  src/version.h])
 
 AM_CONFIG_HEADER([src/config.h])

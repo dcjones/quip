@@ -1,0 +1,13 @@
+#!/bin/sh
+
+if test -d .git
+then
+    desc=`git describe | sed 's/^v//'`
+    branch=`git symbolic-ref HEAD | grep -oP '[\w\d]+$'`
+    V=$desc-$branch
+else
+    V="unknown"
+fi
+
+echo $V
+
