@@ -73,11 +73,17 @@ typedef uint32_t symb_t;
 #include "dist_impl.h"
 #include "dist_template_off.h"
 
-void dist_encode_uint32(ac_t* ac, cond_dist256_t* d, uint32_t x);
-uint32_t dist_decode_uint32(ac_t* ac, cond_dist256_t* d);
+typedef cond_dist256_t uint32_enc_t;
+void uint32_enc_init(uint32_enc_t*);
+void uint32_enc_free(uint32_enc_t*);
+void uint32_enc_encode(ac_t*, uint32_enc_t*, uint32_t);
+uint32_t uint32_enc_decode(ac_t*, uint32_enc_t*);
 
-void dist_encode_uint64(ac_t* ac, cond_dist256_t* d, uint64_t x);
-uint64_t dist_decode_uint64(ac_t* ac, cond_dist256_t* d);
+typedef cond_dist256_t uint64_enc_t;
+void uint64_enc_init(uint64_enc_t*);
+void uint64_enc_free(uint64_enc_t*);
+void uint64_enc_encode(ac_t*, uint64_enc_t*, uint64_t);
+uint64_t uint64_enc_decode(ac_t*, uint64_enc_t*);
 
 #endif
 

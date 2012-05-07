@@ -95,11 +95,17 @@ static const size_t max_count = 1 << 15;
 #include "dist_template_off.h"
 
 
-/* Functions for general-purpose markov-chain
- * encoding of unsigned integers.
- */
+void uint32_enc_init(uint32_enc_t* d)
+{
+    cond_dist256_init(d, 5 * 256);
+}
 
-void dist_encode_uint32(ac_t* ac, cond_dist256_t* d, uint32_t x)
+void uint32_enc_free(uint32_enc_t* d)
+{
+    cond_dist256_free(d);
+}
+
+void uint32_enc_encode(ac_t* ac, uint32_enc_t* d, uint32_t x)
 {
     uint32_t y, y0;
 
@@ -120,7 +126,7 @@ void dist_encode_uint32(ac_t* ac, cond_dist256_t* d, uint32_t x)
     cond_dist256_encode(ac, d, 0x300 | y0, y);
 }
 
-uint32_t dist_decode_uint32(ac_t* ac, cond_dist256_t* d)
+uint32_t uint32_enc_decode(ac_t* ac, uint32_enc_t* d)
 {
     uint32_t y, y0, x;
 
@@ -142,8 +148,17 @@ uint32_t dist_decode_uint32(ac_t* ac, cond_dist256_t* d)
     return x;
 }
 
+void uint64_enc_init(uint64_enc_t* d)
+{
+    cond_dist256_init(d, 9 * 256);
+}
 
-void dist_encode_uint64(ac_t* ac, cond_dist256_t* d, uint64_t x)
+void uint64_enc_free(uint64_enc_t* d)
+{
+    cond_dist256_free(d);
+}
+
+void uint64_enc_encode(ac_t* ac, uint64_enc_t* d, uint64_t x)
 {
     uint64_t y0 = 0, y;
     size_t k = 0;
@@ -159,7 +174,7 @@ void dist_encode_uint64(ac_t* ac, cond_dist256_t* d, uint64_t x)
 }
 
 
-uint64_t dist_decode_uint64(ac_t* ac, cond_dist256_t* d)
+uint64_t uint64_enc_decode(ac_t* ac, uint64_enc_t* d)
 {
     uint64_t x, y0;
 

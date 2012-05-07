@@ -65,7 +65,7 @@ struct seqenc_t_
     dist2_t d_aln_strand;
 
     /* distribution over the offset into the contig */
-    cond_dist256_t d_contig_off;
+    uint32_enc_t d_contig_off;
 
     /* distribution over match/mismatces in reference alignments */
     dist2_t d_ref_match;
@@ -89,13 +89,13 @@ struct seqenc_t_
      * the short_read_t structure. */
 
     /* flags */
-    cond_dist256_t  d_ext_flags;
+    uint32_enc_t d_ext_flags;
 
     /* sequence name */
     cond_dist128_t  d_ext_seqname;
 
     /* genomic position, conditioned on sequence index */
-    cond_dist256_t* d_ext_pos;
+    uint32_enc_t*   d_ext_pos;
 
     /* map quality */
     dist256_t       d_ext_map_qual;
@@ -104,13 +104,13 @@ struct seqenc_t_
     cond_dist16_t   d_ext_cigar_op;
 
     /* cigar length, conditioned on the operation */
-    cond_dist256_t  d_ext_cigar_len[9];
+    uint32_enc_t    d_ext_cigar_len[9];
 
     /* whether the mate is aligned to the same sequence */
     dist2_t         d_ext_mate_sameseq;
 
     /* template length */
-    cond_dist256_t  d_ext_tlen;
+    uint32_enc_t    d_ext_tlen;
 };
 
 
@@ -300,22 +300,21 @@ static void decode_seqname(seqenc_t* E, str_t* seqname)
 
 void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
 {
-
-    dist_encode_uint32(E->ac, &E->d_ext_flags, x->flags);
+    uint32_enc_encode(E->ac, &E->d_ext_flags, x->flags);
     dist256_encode(E->ac, &E->d_ext_map_qual, x->map_qual);
-    dist_encode_uint32(E->ac, &E->d_ext_tlen, x->tlen);
+    uint32_enc_encode(E->ac, &E->d_ext_tlen, x->tlen);
 
     uint32_t seqidx = 0;
     if ((x->flags & BAM_FUNMAP) == 0) {
         encode_seqname(E, &x->seqname);
         seqidx = get_seq_idx(E, &x->seqname);
-        dist_encode_uint32(E->ac, &E->d_ext_pos[seqidx], x->pos);
+        uint32_enc_encode(E->ac, &E->d_ext_pos[seqidx], x->pos);
 
         uint8_t last_op = 9;
         size_t i;
         for (i = 0; i < x->cigar.n; ++i) {
             cond_dist16_encode(E->ac, &E->d_ext_cigar_op, last_op, x->cigar.ops[i]);
-            dist_encode_uint32(E->ac, &E->d_ext_cigar_len[x->cigar.ops[i]], x->cigar.lens[i]);
+            uint32_enc_encode(E->ac, &E->d_ext_cigar_len[x->cigar.ops[i]], x->cigar.lens[i]);
             last_op = x->cigar.ops[i];
         }
     }
@@ -332,24 +331,24 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
             seqidx = get_seq_idx(E, &x->mate_seqname);
         }
 
-        dist_encode_uint32(E->ac, &E->d_ext_pos[seqidx], x->mate_pos);
+        uint32_enc_encode(E->ac, &E->d_ext_pos[seqidx], x->mate_pos);
     }
 }
 
 
 void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
 {
-    x->flags    = dist_decode_uint32(E->ac, &E->d_ext_flags);
+    x->flags    = uint32_enc_decode(E->ac, &E->d_ext_flags);
     x->strand   = (x->flags & BAM_FREVERSE) ? 1 : 0;
     x->map_qual = dist256_decode(E->ac, &E->d_ext_map_qual);
-    x->tlen     = dist_decode_uint32(E->ac, &E->d_ext_tlen);
+    x->tlen     = uint32_enc_decode(E->ac, &E->d_ext_tlen);
 
     x->cigar.n = 0;
     uint32_t seqidx = 0;
     if ((x->flags & BAM_FUNMAP) == 0) {
         decode_seqname(E, &x->seqname);
         seqidx = get_seq_idx(E, &x->seqname);
-        x->pos = dist_decode_uint32(E->ac, &E->d_ext_pos[seqidx]);
+        x->pos = uint32_enc_decode(E->ac, &E->d_ext_pos[seqidx]);
 
         uint8_t last_op = 9;
         size_t i = 0;
@@ -357,7 +356,7 @@ void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
         do {
             cigar_reserve(&x->cigar, i + 1);
             x->cigar.ops[i] = cond_dist16_decode(E->ac, &E->d_ext_cigar_op, last_op);
-            x->cigar.lens[i] = dist_decode_uint32(E->ac, &E->d_ext_cigar_len[x->cigar.ops[i]]);
+            x->cigar.lens[i] = uint32_enc_decode(E->ac, &E->d_ext_cigar_len[x->cigar.ops[i]]);
             cigarlen += x->cigar.lens[i];
             last_op = x->cigar.ops[i];
             x->cigar.n++;
@@ -374,7 +373,7 @@ void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
             seqidx = get_seq_idx(E, &x->mate_seqname);
         }
 
-        x->mate_pos = dist_decode_uint32(E->ac, &E->d_ext_pos[seqidx]);
+        x->mate_pos = uint32_enc_decode(E->ac, &E->d_ext_pos[seqidx]);
     }
 }
 
@@ -473,7 +472,7 @@ void seqenc_encode_alignment(
 
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_ALIGNMENT);
     dist2_encode(E->ac, &E->d_aln_strand, strand);
-    dist_encode_uint32(E->ac, &E->d_contig_off, spos);
+    uint32_enc_encode(E->ac, &E->d_contig_off, spos);
 
 
     kmer_t u;
@@ -681,7 +680,7 @@ static void seqenc_decode_alignment(seqenc_t* E, short_read_t* x, size_t qlen)
     str_reserve(&x->seq, qlen + 1);
 
     uint8_t  strand = dist2_decode(E->ac, &E->d_aln_strand);
-    uint32_t spos   = dist_decode_uint32(E->ac, &E->d_contig_off);
+    uint32_t spos   = uint32_enc_decode(E->ac, &E->d_contig_off);
 
     size_t slen = E->supercontig_motif.n;
     

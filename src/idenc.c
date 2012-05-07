@@ -106,7 +106,7 @@ struct idenc_t_
     dist16_t* d_off;
 
     /* distribution over byte values used when encoding numbers */
-    cond_dist256_t* d_num;
+    uint64_enc_t* d_num;
 
     /* number of tokenized groups allowed for */
     size_t max_group_cnt;
@@ -178,7 +178,7 @@ void idenc_free(idenc_t* E)
     size_t i;
     for (i = 0; i < E->max_group_cnt; ++i){
         cond_dist128_free(&E->d_str_char[i]);
-        cond_dist256_free(&E->d_num[i]);
+        uint64_enc_free(&E->d_num[i]);
     }
 
     free(E->d_type);
@@ -211,7 +211,7 @@ static void idenc_add_group(idenc_t* E)
 
     /* these allocate quite a bit, so we initialized them lazily */
     memset(&E->d_str_char[i], 0, sizeof(cond_dist128_t));
-    memset(&E->d_num[i], 0, sizeof(cond_dist256_t));
+    memset(&E->d_num[i], 0, sizeof(uint64_enc_t));
 }
 
 
@@ -277,7 +277,7 @@ static void encode_num(idenc_t* E, size_t i, const uint8_t* str, tok_t* tok)
 
     /* lazy initialization of d_num */
     if (E->d_num[i].n == 0) {
-        cond_dist256_init(&E->d_num[i], 9 * 256);
+        uint64_enc_init(&E->d_num[i]);
     }
 
     /* Encode numbers as offsets from a previous number when possible. */
@@ -290,7 +290,7 @@ static void encode_num(idenc_t* E, size_t i, const uint8_t* str, tok_t* tok)
     }
     else {
         dist4_encode(E->ac, &E->d_type[i], ID_GROUP_NUM);
-        dist_encode_uint64(E->ac, &E->d_num[i], x);
+        uint64_enc_encode(E->ac, &E->d_num[i], x);
     }
 }
 
@@ -398,12 +398,12 @@ void idenc_decode(idenc_t* E, str_t* id)
 
             /* lazy initialization of d_num */
             if (E->d_num[i].n == 0) {
-                cond_dist256_init(&E->d_num[i], 9 * 256);
+                uint64_enc_init(&E->d_num[i]);
             }
 
             tok.type = ID_TOK_NUM;
             tok.pos  = j;
-            tok.num  = dist_decode_uint64(E->ac, &E->d_num[i]);
+            tok.num  = uint64_enc_decode(E->ac, &E->d_num[i]);
             tok.len  = snprintf((char*) id->s + j, 20, "%"PRIu64, tok.num);
             j += tok.len;
         }
