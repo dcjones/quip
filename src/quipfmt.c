@@ -18,7 +18,7 @@ static const uint8_t quip_header_magic[6] =
 static const uint8_t quip_header_version = 0x02;
 
 /* maximum number of bases per block */
-static const size_t block_size = 65000000;
+static const size_t block_size = 100000000;
 
 /* highest quality score supported. */
 static const char qual_scale_size = 64;

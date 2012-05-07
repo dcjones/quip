@@ -34,12 +34,21 @@ static const double max_align_score = 0.22;
 static const size_t min_contig_len = 200;
 
 /* Number of duplicates of a read needed to use it to seed a contig. */
-static const uint32_t min_seed_count = 2;
+static const uint32_t min_seed_weight = 10;
 
 /* Sizes of fixed-size data structures. */
-static const size_t seqset_n = 50000;
-static const size_t bloom_n  = 3000000;
-static const size_t bloom_m  = 8;
+static const size_t seeds_n = 500000;
+static const size_t bloom_n = 4000000;
+static const size_t bloom_m = 8;
+
+
+/* Contigs assemblies are seeded with read sequences, We choose the best first
+ * weighted by the number of copies of the middle k-mer.  */
+typedef struct seed_t_
+{
+    twobit_t* seq;
+    uint32_t weight;
+} seed_t;
 
 
 static bool has_N(const str_t* seq)
@@ -64,8 +73,9 @@ struct assembler_t_
     quip_writer_t writer;
     void* writer_data;
 
-    /* read set */
-    seqset_t* S;
+    /* candidate seeds */
+    seed_t* seeds;
+    size_t seeds_len;
 
     /* current read */
     twobit_t* x;
@@ -118,7 +128,10 @@ assembler_t* assembler_alloc(
     /* If we are not assembling, we do not need any of the data structure
      * initialized below. */
     if (!quick) {
-        A->S = seqset_alloc_fixed(seqset_n);
+        A->seeds = malloc_or_die(seeds_n * sizeof(seed_t));
+        memset(A->seeds, 0, seeds_n * sizeof(seed_t));
+        A->seeds_len = 0;
+
         A->B = bloom_alloc(bloom_n, bloom_m);
         A->x = twobit_alloc();
         A->H = kmerhash_alloc();
@@ -132,7 +145,14 @@ assembler_t* assembler_alloc(
 
 void assembler_free(assembler_t* A)
 {
-    seqset_free(A->S);
+    if (A == NULL) return;
+
+    size_t i;
+    for (i = 0; i < A->seeds_len; ++i) {
+        twobit_free(A->seeds[i].seq);
+    }
+    free(A->seeds);
+
     bloom_free(A->B);
     kmerhash_free(A->H);
     twobit_free(A->x);
@@ -290,8 +310,15 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
     }
     else if (A->initial_block) {
         if (!has_N(&seq->seq)) {
-            twobit_copy_n(A->x, (char*) seq->seq.s, seq->seq.n);
-            seqset_inc(A->S, A->x);
+            twobit_copy_str_n(A->x, (char*) seq->seq.s, seq->seq.n);
+
+            if (A->seeds_len < seeds_n && seq->seq.n >= assemble_k) {
+                A->seeds[A->seeds_len].seq =
+                    twobit_alloc_n(seq->seq.n);
+                twobit_copy(A->seeds[A->seeds_len].seq, A->x);
+                A->seeds_len++;
+            }
+
             count_kmers(A->B, A->x);
         }
 
@@ -299,7 +326,7 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
     }
     else {
         if (!has_N(&seq->seq)) {
-            twobit_copy_n(A->x, (char*) seq->seq.s, seq->seq.n);
+            twobit_copy_str_n(A->x, (char*) seq->seq.s, seq->seq.n);
             if (align_read(A, A->x)) A->stat_assemble_count++;
         }
         else {
@@ -404,16 +431,16 @@ static void make_contig(bloom_t* B, twobit_t* seed, twobit_t* contig)
 }
 
 
-static int seqset_value_cnt_cmp(const void* a_, const void* b_)
+static int seed_cmp(const void* a_, const void* b_)
 {
-    seqset_value_t* a = (seqset_value_t*) a_;
-    seqset_value_t* b = (seqset_value_t*) b_;
+    const seed_t* a = (const seed_t*) a_;
+    const seed_t* b = (const seed_t*) b_;
 
-    if      (a->cnt < b->cnt) return  1;
-    else if (a->cnt > b->cnt) return -1;
-    else                      return  0;
+    if      (a->weight < b->weight) return  1;
+    else if (a->weight > b->weight) return -1;
+    else                            return  0;
+
 }
-
 
 
 static void build_kmer_hash(assembler_t* A)
@@ -453,9 +480,23 @@ static void make_contigs(
     twobit_t** supercontig,
     twobit_t** supercontig_rc,
     bloom_t* B,
-    seqset_value_t* xs, size_t n)
+    seed_t* seeds, size_t n)
 {
     if (quip_verbose) fprintf(stderr, "assembling contigs ... ");
+
+    /* weight seeds */
+    size_t i;
+    kmer_t x;
+    for (i = 0; i < n; ++i) {
+        x = twobit_get_kmer_rev(
+                seeds[i].seq,
+                (twobit_len(seeds[i].seq) - assemble_k) / 2,
+                assemble_k);
+
+        seeds[i].weight = bloom_get(B, kmer_canonical(x, assemble_k));
+    }
+
+    qsort(seeds, n, sizeof(seed_t), seed_cmp);
 
     *supercontig = twobit_alloc();
     twobit_t* contig = twobit_alloc();
@@ -463,9 +504,8 @@ static void make_contigs(
 
     size_t contig_cnt = 0;
 
-    size_t i;
-    for (i = 0; i < n && xs[i].cnt >= min_seed_count; ++i) {
-        make_contig(B, xs[i].seq, contig);
+    for (i = 0; i < n && seeds[i].weight >= min_seed_weight; ++i) {
+        make_contig(B, seeds[i].seq, contig);
 
         /* reject over terribly short contigs */
         len = twobit_len(contig);
@@ -493,26 +533,23 @@ size_t assembler_finish(assembler_t* A)
     size_t bytes = 0;
 
     if (!A->quick && A->initial_block) {
-
-        /* dump reads and sort by copy number*/
-        seqset_value_t* xs = seqset_dump(A->S);
-        qsort(xs, seqset_size(A->S), sizeof(seqset_value_t), seqset_value_cnt_cmp);
-
-        size_t n = seqset_size(A->S);
-
-        make_contigs(&A->supercontig, &A->supercontig_rc, A->B, xs, n);
+        make_contigs(&A->supercontig, &A->supercontig_rc, A->B, A->seeds, A->seeds_len);
 
         /* Free up memory we won't need any more */
         bloom_free(A->B);
         A->B = NULL;
 
+        size_t i;
+        for (i = 0; A->seeds_len; ++i) {
+            twobit_free(A->seeds[i].seq);
+        }
+        free(A->seeds);
+        A->seeds = 0;
+        A->seeds_len = 0;
+
         seqenc_set_supercontig(A->seqenc, A->supercontig);
 
         index_contigs(A);
-
-        free(xs);
-        seqset_free(A->S);
-        A->S = NULL;
     }
 
     bytes += seqenc_finish(A->seqenc);
@@ -560,8 +597,9 @@ struct disassembler_t_
     twobit_t* supercontig;
     twobit_t* supercontig_rc;
 
-    /* read set */
-    seqset_t* S;
+    /* candidate seeds */
+    seed_t* seeds;
+    size_t seeds_len;
 
     /* current read */
     twobit_t* x;
@@ -598,7 +636,10 @@ disassembler_t* disassembler_alloc(
     D->initial_state = true;
 
     if (!quick) {
-        D->S = seqset_alloc_fixed(seqset_n);
+        D->seeds = malloc_or_die(seeds_n * sizeof(seed_t));
+        memset(D->seeds, 0, seeds_n * sizeof(seed_t));
+        D->seeds_len = 0;
+
         D->B = bloom_alloc(bloom_n, bloom_m);
         D->x = twobit_alloc();
     }
@@ -609,15 +650,20 @@ disassembler_t* disassembler_alloc(
 
 void disassembler_free(disassembler_t* D)
 {
-    if (D != NULL) {
-        seqenc_free(D->seqenc);
-        seqset_free(D->S);
-        bloom_free(D->B);
-        twobit_free(D->x);
-        twobit_free(D->supercontig);
-        twobit_free(D->supercontig_rc);
-        free(D);
+    if (D == NULL) return;
+
+    size_t i;
+    for (i = 0; i < D->seeds_len; ++i) {
+        twobit_free(D->seeds[i].seq);
     }
+    free(D->seeds);
+
+    seqenc_free(D->seqenc);
+    bloom_free(D->B);
+    twobit_free(D->x);
+    twobit_free(D->supercontig);
+    twobit_free(D->supercontig_rc);
+    free(D);
 }
 
 void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
@@ -632,8 +678,15 @@ void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
 
     if (D->initial_block && (seq->flags & BAM_FUNMAP) != 0) {
         if (!has_N(&seq->seq)) {
-            twobit_copy_n(D->x, (char*) seq->seq.s, seq->seq.n);
-            seqset_inc(D->S, D->x);
+            twobit_copy_str_n(D->x, (char*) seq->seq.s, seq->seq.n);
+
+            if (D->seeds_len < seeds_n && seq->seq.n >= assemble_k) {
+                D->seeds[D->seeds_len].seq =
+                twobit_alloc_n(seq->seq.n);
+                twobit_copy(D->seeds[D->seeds_len].seq, D->x);
+                D->seeds_len++;
+            }
+
             count_kmers(D->B, D->x);
         }
     }
@@ -642,24 +695,22 @@ void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
 void disassembler_reset(disassembler_t* D)
 {
     if (D->initial_block && !D->initial_state) {
-        /* dump reads and sort by copy number*/
-        seqset_value_t* xs = seqset_dump(D->S);
-        qsort(xs, seqset_size(D->S), sizeof(seqset_value_t), seqset_value_cnt_cmp);
-
-        size_t n = seqset_size(D->S);
-
-        make_contigs(&D->supercontig, &D->supercontig_rc, D->B, xs, n);
+        make_contigs(&D->supercontig, &D->supercontig_rc, D->B, D->seeds, D->seeds_len);
 
         /* Free up memory we won't need any more */
         bloom_free(D->B);
         D->B = NULL;
 
-        /* Now that we have some memory to spare, bring up the sequence encoder. */
+        size_t i;
+        for (i = 0; i < D->seeds_len; ++i) {
+            twobit_free(D->seeds[i].seq);
+        }
+        free(D->seeds);
+        D->seeds = 0;
+        D->seeds_len = 0;
+
         seqenc_set_supercontig(D->seqenc, D->supercontig);
 
-        free(xs);
-        seqset_free(D->S);
-        D->S = NULL;
         D->initial_block = false;
     }
 

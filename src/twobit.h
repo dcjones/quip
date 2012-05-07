@@ -29,8 +29,9 @@ void      twobit_reserve(twobit_t* s, size_t seqlen);
 void      twobit_free_reserve(twobit_t* s);
 
 size_t twobit_len(const twobit_t*);
-void   twobit_copy(twobit_t*, const char*);
-void   twobit_copy_n(twobit_t*, const char*, size_t);
+void   twobit_copy(twobit_t*, const twobit_t*);
+void   twobit_copy_str(twobit_t*, const char*);
+void   twobit_copy_str_n(twobit_t*, const char*, size_t);
 void   twobit_append(twobit_t*, const char*);
 void   twobit_append_char(twobit_t*, char);
 void   twobit_append_n(twobit_t*, const char*, size_t);

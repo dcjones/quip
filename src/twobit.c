@@ -89,14 +89,22 @@ size_t twobit_len(const twobit_t* s)
     return s->len;
 }
 
-void twobit_copy(twobit_t* s, const char* seqstr)
+void twobit_copy(twobit_t* dest, const twobit_t* src)
+{
+    dest->n = kmers_needed(src->len);
+    dest->seq = realloc_or_die(dest->seq, dest->n * sizeof(kmer_t));
+    dest->len = src->len;
+    memcpy(dest->seq, src->seq, dest->n * sizeof(kmer_t));
+}
+
+void twobit_copy_str(twobit_t* s, const char* seqstr)
 {
     twobit_clear(s);
     twobit_append(s, seqstr);
 }
 
 
-void twobit_copy_n(twobit_t* s, const char* seqstr, size_t seqlen)
+void twobit_copy_str_n(twobit_t* s, const char* seqstr, size_t seqlen)
 {
     twobit_clear(s);
     twobit_append_n(s, seqstr, seqlen);
