@@ -14,8 +14,7 @@
 #include "config.h"
 #include <stdio.h>
 #include <stdint.h>
-
-void or_die(int b, const char* msg);
+#include <stdarg.h>
 
 void* malloc_or_die(size_t);
 void* realloc_or_die(void*, size_t);
@@ -53,6 +52,11 @@ uint32_t murmurhash3(const uint8_t* data, size_t len);
 
 void str_revcomp(unsigned char* seq, size_t n);
 void str_rev(unsigned char* seq, size_t n);
+
+#ifndef HAVE_VASPRINTF
+int vasprintf(char **ret, const char *format, va_list args);
+#endif
+
 
 #endif
 

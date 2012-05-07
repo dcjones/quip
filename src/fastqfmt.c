@@ -186,10 +186,8 @@ short_read_t* quip_fastq_read(quip_fastq_in_t* in)
                     in->state = STATE_SEQ;
                 }
                 else {
-                    fprintf(stderr,
-                            "Malformed FASTQ file: expecting an '@' or '>', saw a '%c'\n",
-                            *in->c);
-                    exit(EXIT_FAILURE);
+                    quip_error(
+                        "Malformed FASTQ file: expecting an '@' or '>', saw a '%c'");
                 }
                 break;
 

@@ -7,8 +7,56 @@
 #include "samfmt.h"
 #include "sam/bam.h"
 #include <stdlib.h>
+#include <stdarg.h>
 
 bool quip_verbose = false;
+const char* quip_prog_name = "quip";
+const char* quip_in_fname = "";
+
+
+static void remove_output_file()
+{
+    /* TODO */
+}
+
+
+void quip_abort()
+{
+    remove_output_file();
+    exit(EXIT_FAILURE);
+}
+
+
+void quip_error(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    char* msg;
+    vasprintf(&msg, fmt, args);
+    va_end(args);
+
+    fprintf(stderr, "\n%s: %s: %s\n",
+            quip_prog_name, quip_in_fname, msg);
+
+    free(msg);
+
+    quip_abort();
+}
+
+
+void quip_warning(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    char* msg;
+    vasprintf(&msg, fmt, args);
+    va_end(args);
+
+    fprintf(stderr, "\n%s: %s: %s\n",
+            quip_prog_name, quip_in_fname, msg);
+
+    free(msg);
+}
 
 
 void str_init(str_t* str)
@@ -214,12 +262,10 @@ quip_out_t* quip_out_open(
             break;
 
         case QUIP_FMT_UNDEFINED:
-            fprintf(stderr, "Undefined format given.\n");
-            exit(EXIT_FAILURE);
+            quip_error("Undefined format given.");
 
         case QUIP_FMT_NULL:
-            fprintf(stderr, "Null format given.\n");
-            exit(EXIT_FAILURE);
+            quip_error("Null format given.");
     }
 
     return out;

@@ -499,10 +499,9 @@ void seqenc_encode_reference_alignment(
     const twobit_t* refseq = seqmap_get(E->ref, (const char*) r->seqname.s);
 
     if (refseq == NULL) {
-        fprintf(stderr,
+        quip_error(
             "A read was aligned to sequence %s, which was not found in the reference.\n",
             r->seqname.s);
-        exit(EXIT_FAILURE);
     }
 
     str_copy(&E->tmpseq, &r->seq);
@@ -570,16 +569,13 @@ void seqenc_encode_reference_alignment(
                 break;
 
             case BAM_CPAD:
-                /* TODO: I have no fucking clue what this is supposed to mean. */
-                fprintf(stderr, "Unsupported cigar operation.\n");
-                exit(EXIT_FAILURE);
+                quip_error("Cigar PAD operation is unsupported.");
                 break;
         }
     }
 
     if (read_pos != r->seq.n) {
-        fprintf(stderr, "Cigar operations do not account for full read length.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Cigar operations do not account for full read length.");
     }
 
     /* encode N mask */
@@ -716,10 +712,9 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
     const twobit_t* refseq = seqmap_get(E->ref, (const char*) r->seqname.s);
 
     if (refseq == NULL) {
-        fprintf(stderr,
-            "A read was aligned to sequence %s, which was not found in the reference.\n",
+        quip_error(
+            "A read was aligned to sequence %s, which was not found in the reference.",
             r->seqname.s);
-        exit(EXIT_FAILURE);
     }
 
     str_reserve(&r->seq, seqlen + 1);
@@ -781,8 +776,7 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
                 break;
 
             case BAM_CPAD:
-                fprintf(stderr, "Unsupported cigar operation.\n");
-                exit(EXIT_FAILURE);
+                quip_error("Unsupported cigar operation.");
                 break;
         }
     }
@@ -790,8 +784,7 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
     r->seq.n = seqlen;
 
     if (read_pos != seqlen) {
-        fprintf(stderr, "Cigar operations do not account for full read length.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Cigar operations do not account for full read length.");
     }
 
     /* decode N mask */

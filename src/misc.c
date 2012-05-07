@@ -7,17 +7,10 @@
 
 
 #include "misc.h"
+#include <stdarg.h>
 #include <stdlib.h>
+#include <stdio.h>
 
-
-
-void or_die(int b, const char* msg)
-{
-    if (b == 0) {
-        fputs(msg, stderr);
-        exit(1);
-    }
-}
 
 
 void* malloc_or_die(size_t n)
@@ -25,7 +18,7 @@ void* malloc_or_die(size_t n)
     void* p = malloc(n);
     if (p == NULL) {
         fprintf(stderr, "Can not allocate %zu bytes.\n", n);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     return p;
 }
@@ -36,7 +29,7 @@ void* realloc_or_die(void* ptr, size_t n)
     void* p = realloc(ptr, n);
     if (p == NULL) {
         fprintf(stderr, "Can not allocate %zu bytes.\n", n);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     return p;
 }
@@ -47,7 +40,7 @@ FILE* fopen_or_die(const char* path, const char* mode)
     FILE* f = fopen(path, mode);
     if (f == NULL) {
         fprintf(stderr, "Can not open file %s with mode %s.\n", path, mode);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
     return f;
 }
@@ -177,4 +170,34 @@ void str_rev(unsigned char* seq, size_t n)
         i++; j--;
     }
 }
+
+#ifndef HAVE_VASPRINTF
+
+int vasprintf(char **ret, const char *format, va_list args)
+{
+    va_list copy;
+    va_copy(copy, args);
+
+    /* Make sure it is determinate, despite manuals indicating otherwise */
+    *ret = 0;
+
+    int count = vsnprintf(NULL, 0, format, args);
+    if (count >= 0)
+    {
+        char* buffer = malloc(count + 1);
+        if (buffer != NULL)
+        {
+            count = vsnprintf(buffer, count + 1, format, copy);
+            if (count < 0)
+                free(buffer);
+            else
+                *ret = buffer;
+        }
+    }
+    va_end(copy);  // Each va_start() or va_copy() needs a va_end()
+
+    return count;
+}
+
+#endif
 

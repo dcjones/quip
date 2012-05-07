@@ -80,8 +80,7 @@ static bool is_nt_char(char c)
 
 static void fasta_unexpected_char(char c)
 {
-    fprintf(stderr, "quip: error parsing fasta file: unexpected character '%c'\n", c);
-    exit(EXIT_FAILURE);
+    quip_error("Error parsing FASTA file: unexpected character '%c'.", c);
 }
 
 
@@ -95,9 +94,8 @@ static void check_unique(const seqmap_t* M)
     size_t i;
     for (i = 1; i < M->n; ++i) {
         if (strcmp(M->seqs[i].seqname, M->seqs[i - 1].seqname) == 0) {
-            fprintf(stderr, "quip: reference contains multiple sequences of the same name: %s\n",
+            quip_error("Reference contains multiple sequences of the same name: '%s'.",
                             M->seqs[i].seqname);
-            exit(EXIT_FAILURE);
         }
     }
 }

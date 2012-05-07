@@ -42,9 +42,7 @@ void check_header_version(uint8_t v)
             default: version_str = "a newer version"; break;
         }
 
-        fprintf(stderr, "Input was compressed with a different version of quip. Use %s.\n",
-            version_str);
-        exit(EXIT_FAILURE);
+        quip_error("Input was compressed with a different version of quip. Use %s", version_str);
     }
 
 }
@@ -84,12 +82,7 @@ static void write_uint64(quip_writer_t writer, void* writer_data, uint64_t x)
 static uint8_t read_uint8(quip_reader_t reader, void* reader_data)
 {
     uint8_t x;
-    size_t cnt = reader(reader_data, &x, 1);
-
-    if (cnt == 0) {
-        fprintf(stderr, "Unexpected end of file.\n");
-        exit(EXIT_FAILURE);
-    }
+    if (reader(reader_data, &x, 1) == 0) quip_error("Unexpected end of file.");
 
     return x;
 }
@@ -98,12 +91,7 @@ static uint8_t read_uint8(quip_reader_t reader, void* reader_data)
 static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
 {
     uint8_t bytes[4];
-    size_t cnt = reader(reader_data, bytes, 4);
-
-    if (cnt < 4) {
-        fprintf(stderr, "Unexpected end of file.\n");
-        exit(EXIT_FAILURE);
-    }
+    if (reader(reader_data, bytes, 4) < 4) quip_error("Unexpected end of file.");
 
     return ((uint32_t) bytes[0] << 24) |
            ((uint32_t) bytes[1] << 16) |
@@ -115,12 +103,7 @@ static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
 static uint64_t read_uint64(quip_reader_t reader, void* reader_data)
 {
     uint8_t bytes[8];
-    size_t cnt = reader(reader_data, bytes, 8);
-
-    if (cnt < 8) {
-        fprintf(stderr, "Unexpected end of file.\n");
-        exit(EXIT_FAILURE);
-    }
+    if (reader(reader_data, bytes, 8) < 8) quip_error("Unexpected end of file.");
 
     return ((uint64_t) bytes[0] << 56) |
            ((uint64_t) bytes[1] << 48) |
@@ -137,26 +120,26 @@ static void pthread_join_or_die(pthread_t thread, void** value_ptr)
 {
     int ret = pthread_join(thread, value_ptr);
     if (ret != 0) {
-        fputs("pthread_join error: ", stderr);
+        const char* err_msg;
         switch (ret)
         {
             case EDEADLK:
-                fputs("deadlock detected.\n", stderr);
+                err_msg = "deadlock detected.";
                 break;
 
             case EINVAL:
-                fputs("non-joinable thread joined.\n", stderr);
+                err_msg = "non-joinable thread joined.";
                 break;
 
             case ESRCH:
-                fputs("thread could not be found.\n", stderr);
+                err_msg = "thread could not be found.";
                 break;
 
             default:
-                fputs("mysterious non-specific error.\n", stderr);
+                err_msg = "mysterious non-specific error.";
         }
 
-        exit(EXIT_FAILURE);
+        quip_error("pthread_join error: %s", err_msg);;
     }
 }
 
@@ -165,22 +148,22 @@ static void pthread_create_or_die(
 {
     int ret = pthread_create(thread, attr, start_routine, arg);
     if (ret != 0) {
-        fputs("pthread_create error: ", stderr);
+        const char* err_msg;
         switch (ret) 
         {
             case EAGAIN:
-                fputs("insufficient resources.\n", stderr);
+                err_msg = "insufficient resources.";
                 break;
 
             case EINVAL:
-                fputs("invalid attributes.\n", stderr);
+                err_msg = "invalid attributes.";
                 break;
 
             default:
-                fputs("mysterious non-specific error.\n", stderr);
+                err_msg = "mysterious non-specific error.";
         }
 
-        exit(EXIT_FAILURE);
+        quip_error("pthread_create error: %s", err_msg);
     }
 }
 
@@ -527,9 +510,8 @@ static void update_qual_scheme_guess(quip_quip_out_t* C)
     }
 
     if (max_qual - min_qual > max_qual) {
-        fprintf(stderr, "Invalid quality score scheme: are large range is used than quip "
-                        "currently supports..\n");
-        exit(EXIT_FAILURE);
+        quip_error("Invalid quality score scheme: are large range is used than quip "
+                        "currently supports.");
     }
 
     if (min_qual <  last_base_qual ||
@@ -936,8 +918,7 @@ quip_quip_in_t* quip_quip_in_open(
     uint8_t header[8];
     if (D->reader(D->reader_data, header, 8) < 8 ||
         memcmp(quip_header_magic, header, 6) != 0) {
-        fprintf(stderr, "Input is not a quip file.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Input file is not a quip file.");
     }
 
     uint8_t header_version = header[6];
@@ -950,17 +931,13 @@ quip_quip_in_t* quip_quip_in_open(
 
     if (ref_based) {
         if (ref == NULL) {
-            fprintf(stderr,
-                "A reference sequence is needed for decompression.\n");
-            exit(EXIT_FAILURE);
+            quip_error("A reference sequence is needed for decompression.");
         }
 
         uint64_t ref_hash = read_uint64(D->reader, D->reader_data);
 
         if (seqmap_crc64(ref) != ref_hash) {
-            fprintf(stderr,
-                "Incorrect reference sequence: a different sequence was used for compression.\n");
-            exit(EXIT_FAILURE);
+            quip_error("Incorrect reference sequence: a different sequence was used for compression.");
         }
     }
 
@@ -1112,29 +1089,25 @@ static void quip_in_read_block_header(quip_quip_in_t* D)
     /* read compressed data into buffers */
     D->idbuf_len = D->reader(D->reader_data, D->idbuf, id_byte_cnt);
     if (D->idbuf_len < id_byte_cnt) {
-        fprintf(stderr, "Unexpected end of file.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Unexpected end of file.");
     }
     D->idbuf_pos = 0;
 
     D->auxbuf_len = D->reader(D->reader_data, D->auxbuf, aux_byte_cnt);
     if (D->auxbuf_len < aux_byte_cnt) {
-        fprintf(stderr, "Unexpected end of file.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Unexpected end of file.");
     }
     D->auxbuf_pos = 0;
 
     D->seqbuf_len = D->reader(D->reader_data, D->seqbuf, seq_byte_cnt);
     if (D->seqbuf_len < seq_byte_cnt) {
-        fprintf(stderr, "Unexpected end of file.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Unexpected end of file.");
     }
     D->seqbuf_pos = 0;
 
     D->qualbuf_len = D->reader(D->reader_data, D->qualbuf, qual_byte_cnt);
     if (D->qualbuf_len < qual_byte_cnt) {
-        fprintf(stderr, "Unexpected end of file.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Unexpected end of file.");
     }
     D->qualbuf_pos = 0;
 
@@ -1167,27 +1140,27 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
 
     if (D->pending_reads == 0) {
         if (D->id_crc != D->exp_id_crc) {
-            fprintf(stderr,
+            quip_warning(
                 "Warning: ID checksums in block %u do not match. "
-                "ID data may be corrupt.\n", D->block_num);
+                "ID data may be corrupt.", D->block_num);
         }
 
         if (D->aux_crc != D->exp_aux_crc) {
-            fprintf(stderr,
+            quip_warning(
                 "Warning: Aux checksums in block %u do not match. "
-                "Aux data may be corrupt.\n", D->block_num);
+                "Aux data may be corrupt.", D->block_num);
         }
  
         if (D->seq_crc != D->exp_seq_crc) {
              fprintf(stderr,
                 "Warning: Sequence checksums in block %u do not match. "
-                "Sequence data may be corrupt.\n", D->block_num);
+                "Sequence data may be corrupt.", D->block_num);
         }
 
         if (D->qual_crc != D->exp_qual_crc) {
               fprintf(stderr,
                 "Warning: Quality checksums in block %u do not match. "
-                "Quality data may be corrupt.\n", D->block_num);
+                "Quality data may be corrupt.", D->block_num);
         }
 
         quip_in_read_block_header(D);
@@ -1262,13 +1235,11 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
     uint8_t header[7];
     if (reader(reader_data, header, 7) < 7 ||
         memcmp(quip_header_magic, header, 6) != 0) {
-        fprintf(stderr, "Input is not a quip file.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Input is not a quip file.");
     }
 
     if (header[6] != quip_header_version) {
-        fprintf(stderr, "Input is an old quip format --- an older version of quip is needed.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Input is an old quip format --- an older version of quip is needed.");
     }
 
 

@@ -30,8 +30,6 @@
 #define O_BINARY 0
 #endif 
 
-const char* prog_name;
-
 bool force_flag  = false;
 bool quick_flag  = false;
 bool stdout_flag = false;
@@ -125,16 +123,17 @@ static bool yesno()
 /* Open an input file, or die trying */
 static FILE* open_fin(const char* fn)
 {
+    quip_in_fname = fn;
     int fd = open(fn, O_RDONLY | O_NOCTTY | O_BINARY);
 
     if (fd == -1) {
         switch (errno) {
             case EACCES:
-                fprintf(stderr, "%s: %s: Permission denied.\n", prog_name, fn);
+                quip_error("Permission denied.");
                 break;
 
             default:
-                fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, fn);
+                quip_error("Error opening file.");
         }
 
         return NULL;
@@ -143,7 +142,7 @@ static FILE* open_fin(const char* fn)
     FILE* f = fdopen(fd, "rb");
 
     if (f == NULL) {
-        fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, fn);
+        quip_error("Error opening file.");
         close(fd);
         return NULL;
     }
@@ -164,7 +163,7 @@ static FILE* open_fout(const char* fn)
             case EEXIST:
                 if (force_flag) overwrite = true;
                 else {
-                    fprintf(stderr, "%s: %s: File already exists.\n", prog_name, fn);
+                    fprintf(stderr, "%s: %s: File already exists.\n", quip_prog_name, fn);
                     if (isatty(fileno(stdin))) {
                         fprintf(stderr, "Would you like to overwrite it (y or n)? ");
                         fflush(stderr);
@@ -174,17 +173,17 @@ static FILE* open_fout(const char* fn)
 
                 if (overwrite) {
                     if (unlink(fn) == 0) return open_fout(fn);
-                    fprintf(stderr, "%s: %s: Cannot overwrite file.\n", prog_name, fn);
+                    fprintf(stderr, "%s: %s: Cannot overwrite file.\n", quip_prog_name, fn);
                 }
 
                 break;
 
             case EACCES:
-                fprintf(stderr, "%s: %s: Permission denied.\n", prog_name, fn);
+                fprintf(stderr, "%s: %s: Permission denied.\n", quip_prog_name, fn);
                 break;
 
             default:
-                fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, fn);
+                fprintf(stderr, "%s: %s: Error opening file.\n", quip_prog_name, fn);
 
         }
 
@@ -194,7 +193,7 @@ static FILE* open_fout(const char* fn)
     FILE* f = fdopen(fd, "wb");
 
     if (f == NULL) {
-        fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, fn);
+        fprintf(stderr, "%s: %s: Error opening file.\n", quip_prog_name, fn);
         close(fd);
         return NULL;
     }
@@ -214,7 +213,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
     if (ref_fn != NULL) {
         FILE* ref_f = fopen(ref_fn, "rb");
         if (ref_f == NULL) {
-            fprintf(stderr, "%s: %s: Error opening file.\n", prog_name, ref_fn);
+            fprintf(stderr, "%s: %s: Error opening file.\n", quip_prog_name, ref_fn);
             return EXIT_FAILURE;
         }
 
@@ -230,7 +229,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
 
     if (fn_count == 0) {
         if (in_fmt == QUIP_FMT_UNDEFINED) {
-            fprintf(stderr, "%s: stdin: Assuming input is FASTQ.\n", prog_name);
+            quip_warning("assuming input in FASTQ.");
             in_fmt = QUIP_FMT_FASTQ;
         }
 
@@ -244,11 +243,9 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         if (!force_flag && (out_fmt == QUIP_FMT_BAM || out_fmt == QUIP_FMT_QUIP) &&
             isatty(fileno(stdout)))
         {
-            fprintf(stderr,
-                "%s: refusing to write compressed data to your terminal screen.\n\n"
-                "Use -f is you really want to do this. (Hint: you don't.)\n",
-                prog_name);
-            return EXIT_FAILURE;
+            quip_error(
+                "refusing to write compressed data to your terminal screen.\n\n"
+                "Use -f is you really want to do this. (Hint: you don't.)");
         }
 
         in  = quip_in_open(block_reader,  (void*) stdin,  in_fmt, 0, ref);
@@ -265,7 +262,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
     else {
         size_t i;
         for (i = 0; i < fn_count; ++i) {
-
+            /* TODO */
         }
     }
 
@@ -318,8 +315,7 @@ static int quip_cmd_list(char** fns, size_t fn_count)
             fn_len = strlen(fn);
 
             if (fn_len < 3 || memcmp(fn + (fn_len - 3), ".qp", 3) != 0) {
-                fprintf(stderr, "%s: %s: Unknown suffix -- ignored.\n",
-                    prog_name, fn);
+                quip_warning("unknown suffix -- ignored.");
                 continue;
             }
 
@@ -373,19 +369,19 @@ int main(int argc, char* argv[])
     int opt, opt_idx;
 
     /* determine the base program name */
-    prog_name = argv[0];
+    quip_prog_name = argv[0];
     char* p;
-    if ((p = strrchr(argv[0], '/')) != NULL) prog_name = p + 1;
+    if ((p = strrchr(argv[0], '/')) != NULL) quip_prog_name = p + 1;
 #if defined(WIN32) || defined(MSDOS)
-    if ((p = strrchr(argv[0], '\\')) != NULL) prog_name = p + 1;
+    if ((p = strrchr(argv[0], '\\')) != NULL) quip_prog_name = p + 1;
 #endif
 
 
     /* default to decompress when invoked under the name 'unquip' */
-    if (strcmp(prog_name, "unquip") == 0) {
+    if (strcmp(quip_prog_name, "unquip") == 0) {
         in_fmt = QUIP_FMT_QUIP;
     }
-    else if (strcmp(prog_name, "quipcat") == 0) {
+    else if (strcmp(quip_prog_name, "quipcat") == 0) {
         stdout_flag = true;
     }
     

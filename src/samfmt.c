@@ -65,8 +65,7 @@ quip_sam_out_t* quip_sam_out_open(
     bam_header_destroy(header);
 
     if (out->f == NULL) {
-        fprintf(stderr, "Unable to open SAM/BAM output stream.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Unable to open SAM/BAM output stream.");
     }
 
     out->b = bam_init1();
@@ -372,8 +371,7 @@ quip_sam_in_t* quip_sam_in_open(
     in->f = samopen_in(reader, reader_data, binary, NULL);
 
     if (in->f == NULL) {
-        fprintf(stderr, "Unable to open SAM/BAM input stream.\n");
-        exit(EXIT_FAILURE);
+        quip_error("Unable to open SAM/BAM input stream.");
     }
 
     in->b = bam_init1();

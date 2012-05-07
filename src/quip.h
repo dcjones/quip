@@ -256,6 +256,22 @@ bool quip_pipe(quip_in_t* in, quip_out_t* out);
 /* Print a great deal of useless information while running. */
 extern bool quip_verbose;
 
+/* Program name. */
+extern const char* quip_prog_name;
+
+/* Input file name. */
+extern const char* quip_in_fname;
+
+/* Exit with cleanup. */
+void quip_abort();
+
+/* Fatal errors. */
+void quip_error(const char* fmt, ...);
+
+/* Nonfatal errors. */
+void quip_warning(const char* fmt, ...);
+
+
 
 #ifdef __cplusplus
 }

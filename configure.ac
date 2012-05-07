@@ -1,7 +1,7 @@
 
 AC_INIT([quip],
         m4_esyscmd([./git-version-gen | tr -d '\n']),
-        [dcjones@cs.washington.ed])
+        [dcjones@cs.washington.edu])
 AM_INIT_AUTOMAKE([foreign -Wall -Werror])
 m4_ifdef([AM_SILENT_RULES],[AM_SILENT_RULES([yes])])
 
@@ -62,6 +62,9 @@ CC="$PTHREAD_CC"
 
 AC_DEFINE([_FILE_OFFSET_BITS], [64],
           [Do not crash on >4GB files on 32bit machines.])
+
+# We need to define asprintf on non-gnu systems 
+AC_CHECK_FUNCS(vasprintf)
 
 # These are POSIX standards, but we check just to be careful.
 AC_CHECK_FUNC(open, ,
