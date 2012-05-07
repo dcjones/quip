@@ -540,7 +540,7 @@ size_t assembler_finish(assembler_t* A)
         A->B = NULL;
 
         size_t i;
-        for (i = 0; A->seeds_len; ++i) {
+        for (i = 0; i < A->seeds_len; ++i) {
             twobit_free(A->seeds[i].seq);
         }
         free(A->seeds);

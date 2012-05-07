@@ -246,9 +246,9 @@ static void* aux_compressor_thread(void* ctx)
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
         idenc_encode(C->auxenc, &C->chunk[i].aux);
-        C->id_crc = crc64_update(
+        C->aux_crc = crc64_update(
             C->chunk[i].aux.s,
-            C->chunk[i].aux.n, C->id_crc);
+            C->chunk[i].aux.n, C->aux_crc);
     }
 
     return NULL;
@@ -1141,25 +1141,25 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
     if (D->pending_reads == 0) {
         if (D->id_crc != D->exp_id_crc) {
             quip_warning(
-                "Warning: ID checksums in block %u do not match. "
+                "ID checksums in block %u do not match. "
                 "ID data may be corrupt.", D->block_num);
         }
 
         if (D->aux_crc != D->exp_aux_crc) {
             quip_warning(
-                "Warning: Aux checksums in block %u do not match. "
+                "Aux checksums in block %u do not match. "
                 "Aux data may be corrupt.", D->block_num);
         }
  
         if (D->seq_crc != D->exp_seq_crc) {
-             fprintf(stderr,
-                "Warning: Sequence checksums in block %u do not match. "
+            quip_warning(
+                "Sequence checksums in block %u do not match. "
                 "Sequence data may be corrupt.", D->block_num);
         }
 
         if (D->qual_crc != D->exp_qual_crc) {
-              fprintf(stderr,
-                "Warning: Quality checksums in block %u do not match. "
+            quip_warning(
+                "Quality checksums in block %u do not match. "
                 "Quality data may be corrupt.", D->block_num);
         }
 
