@@ -201,3 +201,16 @@ int vasprintf(char **ret, const char *format, va_list args)
 
 #endif
 
+#ifndef HAVE_ASPRINTF
+
+int asprintf(char **ret, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    int count = vasprintf(ret, format, args);
+    va_end(args);
+    return(count);
+}
+
+#endif
+

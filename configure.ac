@@ -65,6 +65,7 @@ AC_DEFINE([_FILE_OFFSET_BITS], [64],
 
 # We need to define asprintf on non-gnu systems 
 AC_CHECK_FUNCS(vasprintf)
+AC_CHECK_FUNCS(asprintf)
 
 # These are POSIX standards, but we check just to be careful.
 AC_CHECK_FUNC(open, ,

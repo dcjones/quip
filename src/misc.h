@@ -57,6 +57,9 @@ void str_rev(unsigned char* seq, size_t n);
 int vasprintf(char **ret, const char *format, va_list args);
 #endif
 
+#ifndef HAVE_VASPRINTF
+int asprintf(char **ret, const char *format, ...);
+#endif
 
 #endif
 
