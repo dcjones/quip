@@ -157,10 +157,6 @@ void ac_start_decoder(ac_t* ac)
 {
     ac->bufavail = ac->reader(ac->reader_data, ac->buf, ac->buflen);
 
-    if (ac->bufavail < 4) {
-        quip_error("Malformed compressed data encountered.");
-    }
-
     ac->v = ((uint32_t) ac->buf[0] << 24) | ((uint32_t) ac->buf[1] << 16) |
     ((uint32_t) ac->buf[2] << 8)  | ((uint32_t) ac->buf[3]);
 
