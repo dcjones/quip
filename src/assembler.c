@@ -5,7 +5,6 @@
 #include "kmerhash.h"
 #include "misc.h"
 #include "seqenc.h"
-#include "seqset.h"
 #include "twobit.h"
 #include "sam/bam.h"
 #include <assert.h>
