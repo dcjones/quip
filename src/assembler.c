@@ -554,6 +554,8 @@ size_t assembler_finish(assembler_t* A)
 {
     size_t bytes = seqenc_finish(A->seqenc);
 
+    /* This leads to slightly better compression, but slows things
+       down a lot on large assemblies. */
 /*
     if (!A->quick && A->assembly_pending_n == 0) {
         seqenc_get_supercontig_consensus(A->seqenc, A->supercontig);

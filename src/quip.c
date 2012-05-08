@@ -30,22 +30,31 @@
 #define O_BINARY 0
 #endif 
 
-bool force_flag  = false;
-bool quick_flag  = false;
-bool stdout_flag = false;
+static bool force_flag  = false;
+static bool quick_flag  = false;
+static bool stdout_flag = false;
 
-enum {
+static enum {
     QUIP_CMD_CONVERT,
     QUIP_CMD_LIST,
 } quip_cmd = QUIP_CMD_CONVERT;
 
-quip_fmt_t in_fmt  = QUIP_FMT_UNDEFINED;
-quip_fmt_t out_fmt = QUIP_FMT_UNDEFINED;
+static quip_fmt_t in_fmt  = QUIP_FMT_UNDEFINED;
+static quip_fmt_t out_fmt = QUIP_FMT_UNDEFINED;
 
-const char* ref_fn = NULL;
+static bool force_in_fmt  = false;
+static bool force_out_fmt = false;
+
+static const char* ref_fn = NULL;
+
+const char* fmt_suffix[] =
+    {"", "", "fastq", "sam", "bam", "qp"};
 
 
-void print_help()
+
+
+
+static void print_help()
 {
     printf(
 "Usage: quip [OPTION]... [FILE]...\n"
@@ -202,6 +211,45 @@ static FILE* open_fout(const char* fn)
 }
 
 
+/* Peek into a file to try to guess the type. */
+static quip_fmt_t guess_file_format(const char* fn)
+{
+    char buf[1024];
+    FILE* f = open_fin(fn);
+    quip_fmt_t fmt;
+
+    size_t n = fread(buf, sizeof(char), sizeof(buf), f);
+
+    if (n == 0) fmt = QUIP_FMT_UNDEFINED;
+    else {
+        /* Check gzip header magic. */
+        if (n >= 2 && memcmp(buf, "\037\036", 2) == 0) {
+            fmt = QUIP_FMT_BAM;
+        }
+        /* Check quip header magic. */
+        else if (n >= 6 && memcmp(buf, "\377QUIP\000", 6) == 0) {
+            fmt = QUIP_FMT_QUIP;
+        }
+        else {
+            /* Look at the leading character of consecutive lines
+             * to choose between SAM and FASTQ. */
+            char v, u = buf[0];
+            char* line2 = strchr(buf, '\n');
+            if (line2 == NULL) fmt = QUIP_FMT_UNDEFINED;
+            v = line2[1];
+
+            if (u != '@' ||
+                (u == '@' && v == '@') ||
+                strchr(line2, '\t') != NULL) fmt = QUIP_FMT_SAM;
+            else fmt = QUIP_FMT_FASTQ;
+       }
+    }
+
+    fclose(f);
+    return fmt;
+}
+
+
 
 static int quip_cmd_convert(char** fns, size_t fn_count)
 {
@@ -222,12 +270,19 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         fclose(ref_f);
     }
 
+    char* out_fn = NULL;
+
+    FILE* fin;
+    FILE* fout;
+
     quip_in_t*  in;
     quip_out_t* out;
     quip_aux_t  aux;
     str_init(&aux.data);
 
     if (fn_count == 0) {
+        quip_in_fname = "stdin";
+
         if (in_fmt == QUIP_FMT_UNDEFINED) {
             quip_warning("assuming input in FASTQ.");
             in_fmt = QUIP_FMT_FASTQ;
@@ -262,7 +317,104 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
     else {
         size_t i;
         for (i = 0; i < fn_count; ++i) {
-            /* TODO */
+            /* Determine the input format */
+            if (in_fmt == QUIP_FMT_UNDEFINED) {
+                in_fmt = guess_file_format(fns[i]);
+                if (in_fmt == QUIP_FMT_UNDEFINED) {
+                    quip_error("Unrecognized file format.");
+                }
+            }
+
+            /* Determine the output format. */
+            if (out_fmt == QUIP_FMT_UNDEFINED) {
+                if (in_fmt == QUIP_FMT_FASTQ ||
+                    in_fmt == QUIP_FMT_SAM ||
+                    in_fmt == QUIP_FMT_BAM) {
+                    out_fmt = QUIP_FMT_QUIP;
+                }
+                else {
+                    /* Try guessing the output format from the file extension. */
+                    char* b = strrchr(fns[i], '.');
+                    char* a;
+                    for (a = b - 1; a >= fns[i] && *a != '.'; --a);
+
+                    if (a >= fns[i] && *a == '.') {
+                        ++a;
+                        if      (strcmp(a, "sam.qp") == 0) out_fmt = QUIP_FMT_SAM;
+                        else if (strcmp(a, "bam.qp") == 0) out_fmt = QUIP_FMT_BAM;
+                        else if (strcmp(a, "fastq.qp") == 0 ||
+                                 strcmp(a, "fq.qp") == 0)  out_fmt = QUIP_FMT_FASTQ;
+                    }
+
+                    /* Our last resort guess of output format */
+                    else if (ref == NULL) out_fmt = QUIP_FMT_FASTQ;
+                    else             out_fmt = QUIP_FMT_SAM;
+                }
+            }
+
+            fin = open_fin(fns[i]);
+            in  = quip_in_open(block_reader, (void*) fin, in_fmt, 0, ref);
+
+            quip_get_aux(in, &aux);
+
+            /* Make a reasonable name for the output file. */
+            if (stdout_flag) {
+                fout = stdout;
+            }
+            else {
+                if (out_fmt == QUIP_FMT_QUIP) {
+                    asprintf(&out_fn, "%s.qp", fns[i]);
+                }
+                else if (in_fmt == QUIP_FMT_QUIP) {
+                    size_t fn_len = strlen(fns[i]);
+
+                    if (fn_len >= 3 && strcmp(fns[i] + fn_len - 3, ".qp") == 0) {
+                        out_fn = malloc_or_die(fn_len - 3 + 1);
+                        memcpy(out_fn, fns[i], fn_len - 3);
+                        out_fn[fn_len] = '\0';
+                    }
+                    else {
+                        asprintf(&out_fn, "%s.%s", fns[i], fmt_suffix[out_fmt]);
+                    }
+                }
+                else {
+                    size_t fn_len = strlen(fns[i]);
+                    size_t in_suf_len = strlen(fmt_suffix[in_fmt]);
+
+                    if (fn_len >= in_suf_len &&
+                        strcmp(fns[i] + fn_len - in_suf_len, fmt_suffix[in_fmt]) == 0)
+                    {
+                        size_t out_suf_len = strlen(fmt_suffix[out_fmt]);
+                        out_fn = malloc_or_die(fn_len - in_suf_len + 1 + out_suf_len);
+                        memcpy(out_fn, fns[i], fn_len - in_suf_len);
+                        memcpy(out_fn + fn_len - in_suf_len, fmt_suffix[out_fmt], out_suf_len);
+                        out_fn[fn_len - in_suf_len + out_suf_len] = '\0';
+
+                    }
+                    else {
+                        asprintf(&out_fn, "%s.%s", fns[i], fmt_suffix[out_fmt]);
+                    }
+                }
+
+                fout = open_fout(out_fn);
+
+                free(out_fn);
+            }
+
+            out = quip_out_open(block_writer, (void*) fout, out_fmt, 0, &aux, ref);
+
+            while (quip_pipe(in, out));
+
+            fflush(fout);
+
+            quip_out_close(out);
+            quip_in_close(in);
+
+            if (fout != stdout) fclose(fout);
+            fclose(fin);
+
+            if (!force_in_fmt)  in_fmt  = QUIP_FMT_UNDEFINED;
+            if (!force_out_fmt) out_fmt = QUIP_FMT_UNDEFINED;
         }
     }
 
@@ -393,10 +545,12 @@ int main(int argc, char* argv[])
         switch (opt) {
             case 'i':
                 in_fmt = parse_format(optarg);
+                force_in_fmt = true;
                 break;
 
             case 'o':
                 out_fmt = parse_format(optarg);
+                force_out_fmt = true;
                 break;
 
             case 'r':
