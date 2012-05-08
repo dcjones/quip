@@ -255,7 +255,7 @@ static void encode_num(idenc_t* E, size_t i, const uint8_t* str, tok_t* tok)
     /* is this the same the number that was previously encoded:
         avoid relatively expensive to strtoull when we can */
     if (i < E->toks_len && E->toks[i].type == ID_TOK_NUM &&
-        tok->len == E->toks[i].len && memcmp(str, E->lastid + E->toks[i].pos, tok->len) == 0) {
+        tok->len == E->toks[i].len && memcmp(s, E->lastid + E->toks[i].pos, tok->len) == 0) {
 
         dist4_encode(E->ac, &E->d_type[i], ID_GROUP_NUM_OFF);
         dist16_encode(E->ac, &E->d_off[i], 0);
