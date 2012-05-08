@@ -223,7 +223,7 @@ static quip_fmt_t guess_file_format(const char* fn)
     if (n == 0) fmt = QUIP_FMT_UNDEFINED;
     else {
         /* Check gzip header magic. */
-        if (n >= 2 && memcmp(buf, "\037\036", 2) == 0) {
+        if (n >= 2 && memcmp(buf, "\037\213", 2) == 0) {
             fmt = QUIP_FMT_BAM;
         }
         /* Check quip header magic. */
@@ -235,13 +235,17 @@ static quip_fmt_t guess_file_format(const char* fn)
              * to choose between SAM and FASTQ. */
             char v, u = buf[0];
             char* line2 = strchr(buf, '\n');
-            if (line2 == NULL) fmt = QUIP_FMT_UNDEFINED;
-            v = line2[1];
+            if (line2 == NULL) {
+                fmt = QUIP_FMT_UNDEFINED;
+            } 
+            else {
+                v = line2[1];
 
-            if (u != '@' ||
-                (u == '@' && v == '@') ||
-                strchr(line2, '\t') != NULL) fmt = QUIP_FMT_SAM;
-            else fmt = QUIP_FMT_FASTQ;
+                if (u != '@' ||
+                    (u == '@' && v == '@') ||
+                    strchr(line2, '\t') != NULL) fmt = QUIP_FMT_SAM;
+                else fmt = QUIP_FMT_FASTQ;
+            }
        }
     }
 
