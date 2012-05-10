@@ -279,6 +279,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
     FILE* fin;
     FILE* fout;
 
+    quip_opt_t  opts;
     quip_in_t*  in;
     quip_out_t* out;
     quip_aux_t  aux;
@@ -309,7 +310,11 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
 
         in  = quip_in_open(block_reader,  (void*) stdin,  in_fmt, 0, ref);
         quip_get_aux(in, &aux);
-        out = quip_out_open(block_writer, (void*) stdout, out_fmt, 0, &aux, ref);
+
+        if (out_fmt == QUIP_FMT_QUIP && quick_flag) opts = QUIP_OPT_QUIP_ASSEMBLY_FREE;
+        else opts = 0;
+
+        out = quip_out_open(block_writer, (void*) stdout, out_fmt, opts, &aux, ref);
 
         while (quip_pipe(in, out));
 
@@ -405,7 +410,10 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
                 free(out_fn);
             }
 
-            out = quip_out_open(block_writer, (void*) fout, out_fmt, 0, &aux, ref);
+            if (out_fmt == QUIP_FMT_QUIP && quick_flag) opts = QUIP_OPT_QUIP_ASSEMBLY_FREE;
+            else opts = 0;
+
+            out = quip_out_open(block_writer, (void*) fout, out_fmt, opts, &aux, ref);
 
             while (quip_pipe(in, out));
 
