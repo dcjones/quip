@@ -416,10 +416,17 @@ static void make_contigs(
     for (i = 0; i < n; ++i) {
         x = twobit_get_kmer_rev(
                 seeds[i].seq,
-                (twobit_len(seeds[i].seq) - assemble_k) / 2,
+                0, 
                 assemble_k);
 
         seeds[i].weight = bloom_get(B, kmer_canonical(x, assemble_k));
+
+        x = twobit_get_kmer_rev(
+                seeds[i].seq,
+                twobit_len(seeds[i].seq) - assemble_k - 1, 
+                assemble_k);
+
+        seeds[i].weight += bloom_get(B, kmer_canonical(x, assemble_k));
     }
 
     qsort(seeds, n, sizeof(seed_t), seed_cmp);
