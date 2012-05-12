@@ -41,7 +41,7 @@ static const size_t bloom_n = 4000000;
 static const size_t bloom_m = 8;
 
 /* Number of reads to be used for assembly. */
-static const size_t assembly_n = 5000000;
+static const size_t assembly_n = 2500000;
 
 
 /* Contigs assemblies are seeded with read sequences, We choose the best first
@@ -51,19 +51,6 @@ typedef struct seed_t_
     twobit_t* seq;
     uint32_t weight;
 } seed_t;
-
-
-static bool has_N(const str_t* seq)
-{
-    size_t i;
-    for (i = 0; i < seq->n; ++i) {
-        if (seq->s[i] == 'N') {
-            return true;
-        }
-    }
-
-    return false;
-}
 
 
 struct assembler_t_
@@ -186,13 +173,13 @@ static void count_kmers(bloom_t* B, const twobit_t* seq)
 
 /* Try desperately to align the given read. If no good alignment is found, just
  * encode the sequence. Return true if an alignment was found. */
-static bool align_read(assembler_t* A, const twobit_t* seq)
+static bool align_read(assembler_t* A, const unsigned char* seq_str, const twobit_t* seq)
 {
     /* We only consider the first few seed hits found in the hash table. The
      * should be in an approximately random order. */
     static const size_t max_seeds = 100;
 
-    /* position of the seed with the subject and query sequecne, resp. */
+    /* position of the seed with the subject and query sequence, resp. */
     int spos, qpos;
 
     /* subject and query lengths, reps */
@@ -216,7 +203,7 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
     /* Don't try to align any reads that are shorter than the seed length */
     qlen = twobit_len(seq);
     if ((size_t) qlen < align_k) {
-        seqenc_encode_twobit_seq(A->seqenc, seq);
+        seqenc_encode_twobit_seq(A->seqenc, seq_str, seq);
         return false;
     }
 
@@ -283,12 +270,12 @@ static bool align_read(assembler_t* A, const twobit_t* seq)
 
     if (best_aln_score < HUGE_VAL) {
         seqenc_encode_alignment(
-            A->seqenc, best_spos, best_strand, seq);
+            A->seqenc, best_spos, best_strand, seq_str, seq);
 
         return true;
     }
     else {
-        seqenc_encode_twobit_seq(A->seqenc, seq);
+        seqenc_encode_twobit_seq(A->seqenc, seq_str, seq);
         return false;
     }
 }
@@ -506,23 +493,18 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
         seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
     }
     else if (A->assembly_pending_n > 0) {
-        if (!has_N(&seq->seq)) {
-            twobit_copy_str_n(A->x, (char*) seq->seq.s, seq->seq.n);
+        twobit_copy_str_n(A->x, (char*) seq->seq.s, seq->seq.n);
 
-            if (A->seeds_len < seeds_n && seq->seq.n >= assemble_k) {
-                A->seeds[A->seeds_len].seq =
-                    twobit_alloc_n(seq->seq.n);
-                twobit_copy(A->seeds[A->seeds_len].seq, A->x);
-                A->seeds_len++;
-            }
+        if (A->seeds_len < seeds_n && seq->seq.n >= assemble_k) {
+            A->seeds[A->seeds_len].seq =
+                twobit_alloc_n(seq->seq.n);
+            twobit_copy(A->seeds[A->seeds_len].seq, A->x);
+            A->seeds_len++;
+        }
 
-            count_kmers(A->B, A->x);
-            seqenc_encode_twobit_seq(A->seqenc, A->x);
-            --A->assembly_pending_n;
-        }
-        else {
-            seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
-        }
+        count_kmers(A->B, A->x);
+        seqenc_encode_twobit_seq(A->seqenc, seq->seq.s, A->x);
+        --A->assembly_pending_n;
 
         if (A->assembly_pending_n == 0) {
             make_contigs(&A->supercontig, &A->supercontig_rc, A->B, A->seeds, A->seeds_len);
@@ -545,13 +527,8 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
         }
     }
     else {
-        if (!has_N(&seq->seq)) {
-            twobit_copy_str_n(A->x, (char*) seq->seq.s, seq->seq.n);
-            if (align_read(A, A->x)) A->stat_assemble_count++;
-        }
-        else {
-            seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
-        }
+        twobit_copy_str_n(A->x, (char*) seq->seq.s, seq->seq.n);
+        if (align_read(A, seq->seq.s, A->x)) A->stat_assemble_count++;
     }
 }
 
@@ -688,19 +665,17 @@ void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
     seqenc_decode(D->seqenc, seq, n);
 
     if (D->assembly_pending_n > 0 && (seq->flags & BAM_FUNMAP) != 0) {
-        if (!has_N(&seq->seq)) {
-            twobit_copy_str_n(D->x, (char*) seq->seq.s, seq->seq.n);
+        twobit_copy_str_n(D->x, (char*) seq->seq.s, seq->seq.n);
 
-            if (D->seeds_len < seeds_n && seq->seq.n >= assemble_k) {
-                D->seeds[D->seeds_len].seq =
-                twobit_alloc_n(seq->seq.n);
-                twobit_copy(D->seeds[D->seeds_len].seq, D->x);
-                D->seeds_len++;
-            }
-
-            count_kmers(D->B, D->x);
-            --D->assembly_pending_n;
+        if (D->seeds_len < seeds_n && seq->seq.n >= assemble_k) {
+            D->seeds[D->seeds_len].seq =
+            twobit_alloc_n(seq->seq.n);
+            twobit_copy(D->seeds[D->seeds_len].seq, D->x);
+            D->seeds_len++;
         }
+
+        count_kmers(D->B, D->x);
+        --D->assembly_pending_n;
 
         if (D->assembly_pending_n == 0) {
             make_contigs(&D->supercontig, &D->supercontig_rc, D->B, D->seeds, D->seeds_len);

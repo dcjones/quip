@@ -39,7 +39,7 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x);
 void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen);
 
 void seqenc_encode_char_seq(seqenc_t*, const uint8_t*, size_t len);
-void seqenc_encode_twobit_seq(seqenc_t*, const twobit_t*);
+void seqenc_encode_twobit_seq(seqenc_t*, const unsigned char* seq_str, const twobit_t* seq);
 
 void seqenc_encode_reference_alignment(
         seqenc_t* E,
@@ -48,6 +48,7 @@ void seqenc_encode_reference_alignment(
 void seqenc_encode_alignment(
         seqenc_t* E,
         uint32_t spos, uint8_t strand,
+        const unsigned char *query_str,
         const twobit_t* query);
 
 size_t seqenc_finish(seqenc_t* E);

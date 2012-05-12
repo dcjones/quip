@@ -378,7 +378,7 @@ void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
 }
 
 
-void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
+void seqenc_encode_twobit_seq(seqenc_t* E, const unsigned char* x_str, const twobit_t* x)
 {
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_SEQUENCE);
 
@@ -409,8 +409,16 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const twobit_t* x)
     }
 
     /* encode N mask */
+    uint32_t nmask_ctx = 0;
     for (i = 0; i < n; ++i) {
-        cond_dist2_encode(E->ac, &E->d_nmask, 0, 0);
+        if (x_str[i] == 'N') {
+            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 1);
+            nmask_ctx = ((nmask_ctx << 1) | 1) & E->nmask_ctx_mask;
+        }
+        else {
+            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 0);
+            nmask_ctx = (nmask_ctx << 1) & E->nmask_ctx_mask;
+        }
     }
 }
 
@@ -463,6 +471,7 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
 void seqenc_encode_alignment(
         seqenc_t* E,
         uint32_t spos, uint8_t strand,
+        const unsigned char* query_str,
         const twobit_t* query)
 {
     size_t qlen = twobit_len(query);
@@ -487,6 +496,19 @@ void seqenc_encode_alignment(
         for (i = 0; i < qlen; ++i) {
             u = twobit_get(query, i);
             cond_dist4_encode(E->ac, &E->supercontig_motif, spos + i, u);
+        }
+    }
+
+    /* encode N mask */
+    uint32_t nmask_ctx = 0;
+    for (i = 0; i < qlen; ++i) {
+        if (query_str[i] == 'N') {
+            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 1);
+            nmask_ctx = ((nmask_ctx << 1) | 1) & E->nmask_ctx_mask;
+        }
+        else {
+            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 0);
+            nmask_ctx = (nmask_ctx << 1) & E->nmask_ctx_mask;
         }
     }
 }
@@ -701,6 +723,14 @@ static void seqenc_decode_alignment(seqenc_t* E, short_read_t* x, size_t qlen)
             u = cond_dist4_decode(E->ac, &E->supercontig_motif, spos + i);
             x->seq.s[i] = kmertochar[u];
         }
+    }
+
+    uint32_t nmask_ctx = 0;
+    for (i = 0; i < qlen; ++i) {
+        nmask_ctx = (nmask_ctx << 1) | cond_dist2_decode(E->ac, &E->d_nmask, nmask_ctx);
+        nmask_ctx &= E->nmask_ctx_mask;
+
+        if (nmask_ctx & 0x1) x->seq.s[i] = 'N';
     }
 
     x->seq.s[qlen] = '\0';
