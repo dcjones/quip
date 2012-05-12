@@ -97,6 +97,11 @@ struct seqenc_t_
     /* genomic position, conditioned on sequence index */
     uint32_enc_t*   d_ext_pos;
 
+    /* genomic position as offset from the previous */
+    uint32_t        last_ref_pos;
+    dist2_t         d_ext_pos_off_flag;
+    dist256_t       d_ext_pos_off;
+
     /* map quality */
     dist256_t       d_ext_map_qual;
 
@@ -174,6 +179,10 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
     cond_dist128_init(&E->d_ext_seqname, 128);
 
     E->d_ext_pos = NULL;
+
+    E->last_ref_pos = 0;
+    dist2_init(&E->d_ext_pos_off_flag);
+    dist256_init(&E->d_ext_pos_off);
 
     dist256_init(&E->d_ext_map_qual);
     cond_dist16_init(&E->d_ext_cigar_op, 10);
@@ -308,7 +317,17 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
     if ((x->flags & BAM_FUNMAP) == 0) {
         encode_seqname(E, &x->seqname);
         seqidx = get_seq_idx(E, &x->seqname);
-        uint32_enc_encode(E->ac, &E->d_ext_pos[seqidx], x->pos);
+
+        if (x->pos < E->last_ref_pos || x->pos - E->last_ref_pos >= 256) {
+            dist2_encode(E->ac, &E->d_ext_pos_off_flag, 0);
+            uint32_enc_encode(E->ac, &E->d_ext_pos[seqidx], x->pos);
+        }
+        else {
+            dist2_encode(E->ac, &E->d_ext_pos_off_flag, 1);
+            dist256_encode(E->ac, &E->d_ext_pos_off, x->pos - E->last_ref_pos);
+        }
+
+        E->last_ref_pos = x->pos;
 
         uint8_t last_op = 9;
         size_t i;
@@ -348,7 +367,16 @@ void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
     if ((x->flags & BAM_FUNMAP) == 0) {
         decode_seqname(E, &x->seqname);
         seqidx = get_seq_idx(E, &x->seqname);
-        x->pos = uint32_enc_decode(E->ac, &E->d_ext_pos[seqidx]);
+
+        if (dist2_decode(E->ac, &E->d_ext_pos_off_flag)) {
+            x->pos =
+                E->last_ref_pos + dist256_decode(E->ac, &E->d_ext_pos_off);
+        }
+        else {
+            x->pos = uint32_enc_decode(E->ac, &E->d_ext_pos[seqidx]);
+        }
+
+        E->last_ref_pos = x->pos;
 
         uint8_t last_op = 9;
         size_t i = 0;
