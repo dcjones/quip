@@ -508,8 +508,9 @@ void seqenc_encode_reference_alignment(
         str_revcomp(E->tmpseq.s, E->tmpseq.n);
     }
 
-    uint32_t ref_pos  = r->pos;
-    uint32_t read_pos = 0;
+    uint32_t ref_pos   = r->pos;
+    uint32_t read_pos  = 0;
+    uint32_t hard_clip = 0;
 
     size_t i = 0; /* cigar operation */
     size_t j; /* position within the cigar op */
@@ -563,8 +564,9 @@ void seqenc_encode_reference_alignment(
                 break;
 
             case BAM_CHARD_CLIP:
-                read_pos += r->cigar.lens[i];
-                ref_pos  += r->cigar.lens[i];
+                read_pos  += r->cigar.lens[i];
+                ref_pos   += r->cigar.lens[i];
+                hard_clip += r->cigar.lens[i];
                 break;
 
             case BAM_CPAD:
@@ -573,7 +575,7 @@ void seqenc_encode_reference_alignment(
         }
     }
 
-    if (read_pos != r->seq.n) {
+    if (read_pos != r->seq.n + hard_clip) {
         quip_error("Cigar operations do not account for full read length.");
     }
 
@@ -719,8 +721,9 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
     str_reserve(&r->seq, seqlen + 1);
     r->seq.n = 0;
 
-    uint32_t ref_pos  = r->pos;
-    uint32_t read_pos = 0;
+    uint32_t ref_pos   = r->pos;
+    uint32_t read_pos  = 0;
+    uint32_t hard_clip = 0;
 
     size_t i = 0; /* cigar operation */
     size_t j; /* position within the cigar op */
@@ -770,8 +773,9 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
                 break;
 
             case BAM_CHARD_CLIP:
-                read_pos += r->cigar.lens[i];
-                ref_pos  += r->cigar.lens[i];
+                read_pos  += r->cigar.lens[i];
+                ref_pos   += r->cigar.lens[i];
+                hard_clip += r->cigar.lens[i];
                 break;
 
             case BAM_CPAD:

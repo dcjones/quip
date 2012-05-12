@@ -478,9 +478,11 @@ void quip_out_flush_block(quip_quip_out_t* C)
     C->id_bytes       = 0;
     C->qual_bytes     = 0;
     C->seq_bytes      = 0;
+    C->aux_bytes      = 0;
     C->id_crc         = 0;
     C->seq_crc        = 0;
     C->qual_crc       = 0;
+    C->aux_crc        = 0;
     C->readlen_count  = 0;
 
     C->qual_scheme_vals[0] = C->qual_scheme_vals[C->qual_scheme_count - 1];
