@@ -102,6 +102,7 @@ void            samopt_table_free(samopt_table_t*);
 void            samopt_table_clear(samopt_table_t*);
 samopt_t*       samopt_table_get(samopt_table_t* M, const unsigned char key[2]);
 size_t          samopt_table_size(const samopt_table_t* M);
+void            samopt_table_copy(samopt_table_t* dest, const samopt_table_t* src);
 
 
 /* A read, either aligned or unaligned. */

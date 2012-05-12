@@ -100,61 +100,59 @@ static void format_aux_field(str_t* s, const uint8_t** a_, uint8_t type)
     switch ((char) type) {
         case 'A':
             str_reserve_extra(s, 4);
-            s->n += snprintf((char*) s->s + s->n, 4, "A:%c", (char) *a++);
+            s->n += snprintf((char*) s->s + s->n, 4, "%c", (char) *a++);
             break;
 
         case 'C':
             str_reserve_extra(s, 6);
-            s->n += snprintf((char*) s->s + s->n, 6, "i:%"PRIu8, *(uint8_t*) a);
+            s->n += snprintf((char*) s->s + s->n, 6, "%"PRIu8, *(uint8_t*) a);
             a++;
             break;
 
         case 'c':
             str_reserve_extra(s, 7);
-            s->n += snprintf((char*) s->s + s->n, 7, "i:%"PRId8, *(int8_t*) a);
+            s->n += snprintf((char*) s->s + s->n, 7, "%"PRId8, *(int8_t*) a);
             a++;
             break;
 
         case 'S':
             str_reserve_extra(s, 8);
-            s->n += snprintf((char*) s->s + s->n, 8, "i:%"PRIu16, *(uint16_t*) a);
+            s->n += snprintf((char*) s->s + s->n, 8, "%"PRIu16, *(uint16_t*) a);
             a += 2;
             break;
 
         case 's':
             str_reserve_extra(s, 9);
-            s->n += snprintf((char*) s->s + s->n, 9, "i:%"PRId16, *(int16_t*) a);
+            s->n += snprintf((char*) s->s + s->n, 9, "%"PRId16, *(int16_t*) a);
             a += 2;
             break;
 
         case 'I':
             str_reserve_extra(s, 13);
-            s->n += snprintf((char*) s->s + s->n, 13, "i:%"PRIu32, *(uint32_t*) a);
+            s->n += snprintf((char*) s->s + s->n, 13, "%"PRIu32, *(uint32_t*) a);
             a += 4;
             break;
 
         case 'i':
             str_reserve_extra(s, 14);
-            s->n += snprintf((char*) s->s + s->n, 14, "i:%"PRId32, *(int32_t*) a);
+            s->n += snprintf((char*) s->s + s->n, 14, "%"PRId32, *(int32_t*) a);
             a += 4;
             break;
 
         case 'f':
             str_reserve_extra(s, 20);
-            s->n += snprintf((char*) s->s + s->n, 20, "f:%g", *(float*) a);
+            s->n += snprintf((char*) s->s + s->n, 20, "%g", *(float*) a);
             a += 4;
             break;
 
         case 'd':
             str_reserve_extra(s, 40);
-            s->n += snprintf((char*) s->s + s->n, 40, "d:%lg", *(double*) a);
+            s->n += snprintf((char*) s->s + s->n, 40, "%lg", *(double*) a);
             a += 8;
             break;
 
         case 'Z':
         case 'H':
-            str_reserve_extra(s, 3);
-            s->n += snprintf((char*) s->s + s->n, 3, "%c:", type);
             while (*a) {
                 str_reserve_extra(s, 2);
                 s->s[s->n++] = *a++;
@@ -166,8 +164,8 @@ static void format_aux_field(str_t* s, const uint8_t** a_, uint8_t type)
             subtype = *a++;
             memcpy(&array_len, a, 4);
             a += 4;
-            str_reserve_extra(s, 4);
-            s->n += snprintf((char*) s->s + s->n, 4, "%c:%c", type, subtype);
+            str_reserve_extra(s, 2);
+            s->n += snprintf((char*) s->s + s->n, 2, "%c", subtype);
 
             for (i = 0; i < array_len; ++i) {
                 str_append_cstr(s, ",");
@@ -509,6 +507,7 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
     }
 
     /* 12. aux */
+    /* TODO: correctly check if there are no optional fields */
     if (samopt_table_size(r->aux) > 0) {
         str_append_cstr(s, "\t");
         /* TODO: printing a samopt_table */

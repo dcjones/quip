@@ -1,8 +1,10 @@
 
 
-#include "quip.h"
+#include "samoptenc.h"
 #include "kmer.h"
 #include "misc.h"
+#include "ac.h"
+#include "dist.h"
 #include <string.h>
 
 
@@ -19,8 +21,8 @@ struct samopt_table_t_
 
 static uint32_t samopt_key_hash(const unsigned char key[2])
 {
-    /* TODO: a more appropriate hash function */
-    return kmer_hash(*(kmer_t*) key);
+    kmer_t k = ((kmer_t) key[1] << 8) | (kmer_t) key[0];
+    return kmer_hash(k);
 }
 
 
@@ -129,7 +131,7 @@ static samopt_t* samopt_table_get_priv(const samopt_table_t* M, const unsigned c
 {
     uint32_t h = samopt_key_hash(key);
     uint32_t probe_num = 1;
-    uint32_t k = h & M->n;
+    uint32_t k = h % M->n;
 
     while (true) {
         if (samopt_table_empty(&M->xs[k]) ||
@@ -138,7 +140,7 @@ static samopt_t* samopt_table_get_priv(const samopt_table_t* M, const unsigned c
             return &M->xs[k];
         }
 
-        k = probe(h, ++probe_num) & M->n;
+        k = probe(h, ++probe_num) % M->n;
     }
 
     return NULL;
@@ -154,6 +156,7 @@ samopt_t* samopt_table_get(samopt_table_t* M, const unsigned char key[2])
     if (samopt_table_empty(opt)) {
         opt->key[0] = key[0];
         opt->key[1] = key[1];
+        M->m++;
     }
 
     if (opt->data == NULL) {
@@ -164,22 +167,6 @@ samopt_t* samopt_table_get(samopt_table_t* M, const unsigned char key[2])
     return opt;
 }
 
-#if 0
-void samopt_table_put(samopt_table_t* M, unsigned char key[2], unsigned char type, const str_t* data)
-{
-    if (M->m + 1 >= M->max_m) samopt_table_expand(M);
-
-    samopt_t* opt = samopt_table_get_priv(M, key);
-    opt->key[0] = key[0]; opt->key[1] = key[1];
-    opt->type = type;
-    if (opt->data == NULL) {
-        opt->data = malloc_or_die(sizeof(str_t));
-        str_init(opt->data);
-    }
-    str_copy(opt->data, data);
-}
-#endif
-
 
 void samopt_table_clear(samopt_table_t* M)
 {
@@ -187,8 +174,228 @@ void samopt_table_clear(samopt_table_t* M)
     for (i = 0; i < M->n; ++i) {
         if (M->xs[i].data) M->xs[i].data->n = 0;
     }
-
-    M->m = 0;
 }
 
+void samopt_table_copy(samopt_table_t* dest, const samopt_table_t* src)
+{
+    samopt_table_clear(dest);
+    samopt_t* opt;
+    size_t i;
+    for (i = 0; i < src->n; ++i) {
+        if (samopt_table_empty(&src->xs[i])) continue;
+
+        opt = samopt_table_get(dest, src->xs[i].key);
+        opt->type = src->xs[i].type;
+        str_copy(opt->data, src->xs[i].data);
+    }
+}
+
+
+/* the size of keyspace: [A-Za-z][A-Za-z0-9] */
+#define keys_N 3224
+
+
+typedef enum samoptenc_flag_t_ {
+    SAMOPTENC_FLAG_INSERT,
+    SAMOPTENC_FLAG_START
+} samoptenc_flag_t;
+
+struct samoptenc_t_
+{
+    ac_t* ac;
+
+    /* a table containing all tags seen so far */
+    samopt_table_t* last;
+
+    /* distribution leading insertion flags */
+    dist2_t d_encflag;
+
+    /* distribution over tag characters */
+    dist128_t d_tag_char;
+
+    /* types, conditioned on tag */
+    dist16_t* d_type[keys_N];
+
+    /* data, conditioned on tag */
+    cond_dist128_t* d_data[keys_N];
+};
+
+
+static void samoptenc_init(samoptenc_t* E)
+{
+    E->last = samopt_table_alloc();
+
+    dist2_init(&E->d_encflag);
+    dist128_init(&E->d_tag_char);
+    memset(E->d_type, 0, keys_N * sizeof(dist16_t*));
+    memset(E->d_data, 0, keys_N * sizeof(dist128_t*));
+}
+
+
+samoptenc_t* samoptenc_alloc_encoder(quip_writer_t writer, void* writer_data)
+{
+    samoptenc_t* E = malloc_or_die(sizeof(samoptenc_t));
+    E->ac = ac_alloc_encoder(writer, writer_data);
+    samoptenc_init(E);
+
+    return E;
+}
+
+
+samoptenc_t* samoptenc_alloc_decoder(quip_reader_t reader, void* reader_data)
+{
+    samoptenc_t* E = malloc_or_die(sizeof(samoptenc_t));
+    E->ac = ac_alloc_decoder(reader, reader_data);
+    samoptenc_init(E);
+
+    return E;
+}
+
+
+void samoptenc_free(samoptenc_t* E)
+{
+    if (E) {
+        ac_free(E->ac);
+        samopt_table_free(E->last);
+
+        size_t i;
+        for (i = 0; i < keys_N; ++i) {
+            free(E->d_type[i]);
+            if (E->d_data[i]) {
+                cond_dist128_free(E->d_data[i]);
+                free(E->d_data[i]);
+            }
+        }
+
+        free(E);
+    }
+}
+
+
+/* Map a key in [A-Za-z][A-Za-z0-9] to a number in [0,key_N] */
+static uint32_t samopt_key_num(const unsigned char key[2])
+{
+    uint32_t x = 0;
+
+    if      ('A' <= key[0] && key[0] <= 'Z') x = (uint32_t) (key[0] - 'A');
+    else if ('a' <= key[0] && key[0] <= 'z') x = 26 + (uint32_t) (key[0] - 'a');
+    x *= 52;
+
+    if      ('A' <= key[1] && key[1] <= 'Z') x += (uint32_t) (key[1] - 'A');
+    else if ('a' <= key[1] && key[1] <= 'z') x += 26 + (uint32_t) (key[1] - 'a');
+    else if ('0' <= key[1] && key[1] <= '9') x += 52 + (uint32_t) (key[1] - '0');
+
+    return x;
+}
+
+/* Map a field type into [0, 16] */
+static uint32_t samopt_type_num(unsigned char t)
+{
+    switch (t) {
+        case 'A': return  0;
+        case 'C': return  1;
+        case 'c': return  2;
+        case 'S': return  3;
+        case 's': return  4;
+        case 'I': return  5;
+        case 'i': return  6;
+        case 'f': return  7;
+        case 'd': return  8;
+        case 'Z': return  9;
+        case 'H': return 10;
+        case 'B': return 11;
+        default:
+            quip_error("Unknown SAM field type: %c", t);
+            return 16;
+    }
+}
+
+
+void samoptenc_encode(samoptenc_t* E, const samopt_table_t* T)
+{
+    samopt_table_clear(E->last);
+
+    uint32_t k;
+    samopt_t* opt;
+    size_t i, j;
+    for (i = 0; i < T->n; ++i) {
+        if (samopt_table_empty(&T->xs[i])) continue;
+        opt = samopt_table_get_priv(E->last, T->xs[i].key);
+
+        if (samopt_table_empty(opt)) {
+            opt->key[0] = T->xs[i].key[0];
+            opt->key[1] = T->xs[i].key[1];
+            E->last->m++;
+
+            if (opt->data == NULL) {
+                opt->data = malloc_or_die(sizeof(str_t));
+                str_init(opt->data);
+            }
+
+            k = samopt_key_num(opt->key);
+
+            E->d_type[k] = malloc_or_die(sizeof(dist16_t));
+            dist16_init(E->d_type[k]);
+
+            E->d_data[k] = malloc_or_die(sizeof(cond_dist128_t));
+            cond_dist128_init(E->d_data[k], 128);
+
+            dist2_encode(E->ac, &E->d_encflag, SAMOPTENC_FLAG_INSERT);
+            dist128_encode(E->ac, &E->d_tag_char, T->xs[i].key[0]);
+            dist128_encode(E->ac, &E->d_tag_char, T->xs[i].key[1]);
+        }
+
+        opt->type= T->xs[i].type;
+        str_copy(opt->data, T->xs[i].data);
+    }
+
+    dist2_encode(E->ac, &E->d_encflag, SAMOPTENC_FLAG_START);
+
+    for (i = 0; i < E->last->n; ++i) {
+        if (samopt_table_empty(&E->last->xs[i])) continue;
+
+        opt = &E->last->xs[i];
+
+        k = samopt_key_num(opt->key);
+        dist16_encode(E->ac, E->d_type[k], samopt_type_num(opt->type));
+
+        unsigned char c = 0;
+        for (j = 0; j < opt->data->n; ++j) {
+            cond_dist128_encode(E->ac, E->d_data[k], c, opt->data->s[j]);
+            c = opt->data->s[j];
+        }
+
+        cond_dist128_encode(E->ac, E->d_data[k], c, '\0');
+    }
+}
+
+
+void samoptenc_decode(samoptenc_t* E, samopt_table_t* T)
+{
+    /* TODO */
+}
+
+
+size_t samoptenc_finish(samoptenc_t* E)
+{
+    return ac_finish_encoder(E->ac);
+}
+
+
+void samoptenc_flush(samoptenc_t* E)
+{
+    ac_flush_encoder(E->ac);
+}
+
+
+void samoptenc_start_decoder(samoptenc_t* E)
+{
+    ac_start_decoder(E->ac);
+}
+
+
+void samoptenc_reset_decoder(samoptenc_t* E)
+{
+    ac_reset_decoder(E->ac);
+}
 

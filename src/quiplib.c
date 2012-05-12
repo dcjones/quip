@@ -212,10 +212,7 @@ void short_read_copy(short_read_t* dest, const short_read_t* src)
     str_copy(&dest->qual, &src->qual);
     str_copy(&dest->seqname, &src->seqname);
     str_copy(&dest->mate_seqname, &src->mate_seqname);
-
-    /* TODO: samopt_table copy */
-    // str_copy(&dest->aux, &src->aux);
-
+    samopt_table_copy(dest->aux, src->aux);
     cigar_copy(&dest->cigar, &src->cigar);
     dest->flags    = src->flags;
     dest->strand   = src->strand;

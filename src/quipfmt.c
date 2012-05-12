@@ -4,6 +4,7 @@
 #include "misc.h"
 #include "qualenc.h"
 #include "idenc.h"
+#include "samoptenc.h"
 #include "seqmap.h"
 #include "crc64.h"
 #include "sam/bam.h"
@@ -184,7 +185,7 @@ struct quip_quip_out_t_
 
     /* algorithms to compress ids, qualities, and sequences, resp. */
     idenc_t*     idenc;
-    idenc_t*     auxenc;
+    samoptenc_t* auxenc;
     qualenc_t*   qualenc;
     assembler_t* assembler;
 
@@ -245,8 +246,9 @@ static void* aux_compressor_thread(void* ctx)
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
-        /* TODO: encoding samopt_table */
-        // idenc_encode(C->auxenc, &C->chunk[i].aux);
+        samoptenc_encode(C->auxenc, C->chunk[i].aux);
+
+        /* TODO: how can we do CRC checks? */
         // C->aux_crc = crc64_update(
         //     C->chunk[i].aux.s,
         //     C->chunk[i].aux.n, C->aux_crc);
@@ -336,7 +338,7 @@ quip_quip_out_t* quip_quip_out_open(
     C->total_bases = 0;
 
     C->idenc     = idenc_alloc_encoder(writer, (void*) writer_data);
-    C->auxenc    = idenc_alloc_encoder(writer, (void*) writer_data);
+    C->auxenc    = samoptenc_alloc_encoder(writer, (void*) writer_data);
     C->qualenc   = qualenc_alloc_encoder(writer, (void*) writer_data);
     C->assembler = assembler_alloc(writer, (void*) writer_data, quick, ref);
 
@@ -419,7 +421,7 @@ void quip_out_flush_block(quip_quip_out_t* C)
 
     /* finish coding */
     size_t comp_id_bytes   = idenc_finish(C->idenc);
-    size_t comp_aux_bytes  = idenc_finish(C->auxenc);
+    size_t comp_aux_bytes  = samoptenc_finish(C->auxenc);
     size_t comp_seq_bytes  = assembler_finish(C->assembler);
     size_t comp_qual_bytes = qualenc_finish(C->qualenc);
 
@@ -449,7 +451,7 @@ void quip_out_flush_block(quip_quip_out_t* C)
     }
 
     /* write compressed aux */
-    idenc_flush(C->auxenc);
+    samoptenc_flush(C->auxenc);
     if (quip_verbose) {
         fprintf(stderr, "\taux: %u / %u (%0.2f%%)\n",
                 (unsigned int) comp_aux_bytes, (unsigned int) C->aux_bytes,
@@ -651,7 +653,7 @@ struct quip_quip_in_t_
 
     /* algorithms to decompress ids, qualities, and sequences, resp. */
     idenc_t*        idenc;
-    idenc_t*        auxenc;
+    samoptenc_t*    auxenc;
     disassembler_t* disassembler;
     qualenc_t*      qualenc;
 
@@ -732,8 +734,9 @@ static void* aux_decompressor_thread(void* ctx)
                     chunk_size : D->pending_reads;
     size_t i;
     for (i = 0; i < cnt; ++i) {
-        /* TODO: decoding samopt_table */
-        // idenc_decode(D->auxenc, &D->chunk[i].aux);
+        samoptenc_decode(D->auxenc, D->chunk[i].aux);
+
+        /* TODO: crc check somehow */
         // D->aux_crc = crc64_update(
         //     D->chunk[i].aux.s,
         //     D->chunk[i].aux.n, D->aux_crc);
@@ -955,7 +958,7 @@ quip_quip_in_t* quip_quip_in_open(
     D->aux_data.n = aux_size;
 
     D->idenc   = idenc_alloc_decoder(id_buf_reader, (void*) D);
-    D->auxenc  = idenc_alloc_decoder(aux_buf_reader, (void*) D);
+    D->auxenc  = samoptenc_alloc_decoder(aux_buf_reader, (void*) D);
     D->disassembler = disassembler_alloc(seq_buf_reader, (void*) D, quick, ref);
     D->qualenc = qualenc_alloc_decoder(qual_buf_reader, (void*) D);
 
@@ -979,7 +982,7 @@ void quip_quip_in_close(quip_quip_in_t* D)
     str_free(&D->aux_data);
 
     idenc_free(D->idenc);
-    idenc_free(D->auxenc);
+    samoptenc_free(D->auxenc);
     disassembler_free(D->disassembler);
     qualenc_free(D->qualenc);
     free(D->idbuf);
@@ -1176,8 +1179,8 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
         idenc_reset_decoder(D->idenc);
         idenc_start_decoder(D->idenc);
 
-        idenc_reset_decoder(D->auxenc);
-        idenc_start_decoder(D->auxenc);
+        samoptenc_reset_decoder(D->auxenc);
+        samoptenc_start_decoder(D->auxenc);
 
         disassembler_reset(D->disassembler);
 
