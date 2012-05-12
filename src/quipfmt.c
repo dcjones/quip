@@ -381,7 +381,7 @@ static void quip_out_add_readlen(quip_quip_out_t* C, size_t l)
             }
 
             C->readlen_vals = realloc_or_die(C->readlen_vals, C->readlen_size * sizeof(uint32_t));
-            C->readlen_lens = realloc_or_die(C->readlen_vals, C->readlen_size * sizeof(uint32_t));
+            C->readlen_lens = realloc_or_die(C->readlen_lens, C->readlen_size * sizeof(uint32_t));
         }
 
         C->readlen_vals[C->readlen_count] = l;
@@ -1126,6 +1126,7 @@ static void quip_in_read_block_header(quip_quip_in_t* D)
     qualenc_set_base_qual(D->qualenc, D->qual_scheme_vals[D->qual_scheme_idx]);
 
     D->id_crc   = 0;
+    D->aux_crc  = 0;
     D->seq_crc  = 0;
     D->qual_crc = 0;
     ++D->block_num;

@@ -11,6 +11,7 @@ struct quip_sam_out_t_
     samfile_t* f;
     bam1_t* b;
 
+    str_t tmp;
     str_t sambuf;
     unsigned char* sambuf_next;
     tamFile sambuf_file;
@@ -69,6 +70,7 @@ quip_sam_out_t* quip_sam_out_open(
     }
 
     out->b = bam_init1();
+    str_init(&out->tmp);
     str_init(&out->sambuf);
     out->sambuf_file = sam_open_in(sambuf_reader, (void*) &out->sambuf_next);
 
@@ -81,6 +83,7 @@ void quip_sam_out_close(quip_sam_out_t* out)
         samclose(out->f);
         bam_destroy1(out->b);
         sam_close(out->sambuf_file);
+        str_free(&out->tmp);
         str_free(&out->sambuf);
         free(out);
     }
@@ -321,7 +324,14 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
     /* 10. seq */
     if (r->seq.n > 0) {
         str_append_cstr(s, "\t");
-        str_append(s, &r->seq);
+        if (r->strand) {
+            str_copy(&out->tmp, &r->seq);
+            str_revcomp(out->tmp.s, out->tmp.n);
+            str_append(s, &out->tmp);
+        }
+        else {
+            str_append(s, &r->seq);
+        }
     }
     else {
         str_append_cstr(s, "\t*");
@@ -330,7 +340,14 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
     /* 11. qual */
     if (r->qual.n > 0) {
         str_append_cstr(s, "\t");
-        str_append(s, &r->qual);
+        if (r->strand) {
+            str_copy(&out->tmp, &r->qual);
+            str_rev(out->tmp.s, out->tmp.n);
+            str_append(s, &out->tmp);
+        }
+        else {
+            str_append(s, &r->qual);
+        }
     }
     else {
         str_append_cstr(s, "\t*");
