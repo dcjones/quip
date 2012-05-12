@@ -88,6 +88,22 @@ void cigar_free(cigar_t*);
 void cigar_copy(cigar_t*, const cigar_t*);
 
 
+/* Sam optional fields. */
+typedef struct samopt_t_
+{
+    unsigned char key[2];
+    unsigned char type;
+    str_t*        data;
+} samopt_t;
+
+typedef struct samopt_table_t_ samopt_table_t;
+samopt_table_t* samopt_table_alloc();
+void            samopt_table_free(samopt_table_t*);
+void            samopt_table_clear(samopt_table_t*);
+samopt_t*       samopt_table_get(samopt_table_t* M, const unsigned char key[2]);
+size_t          samopt_table_size(const samopt_table_t* M);
+
+
 /* A read, either aligned or unaligned. */
 typedef struct short_read_t_
 {
@@ -116,8 +132,8 @@ typedef struct short_read_t_
     uint32_t mate_pos;
     int32_t  tlen;
 
-    /* auxiliary SAM fields */
-    str_t aux;
+    /* optional SAM fields */
+    samopt_table_t* aux;
 
 } short_read_t;
 

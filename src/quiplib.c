@@ -181,7 +181,7 @@ void short_read_init(short_read_t* sr)
     str_init(&sr->qual);
     str_init(&sr->seqname);
     str_init(&sr->mate_seqname);
-    str_init(&sr->aux);
+    sr->aux = samopt_table_alloc();
     cigar_init(&sr->cigar);
     sr->flags    = BAM_FUNMAP;
     sr->strand   = 0;
@@ -200,7 +200,7 @@ void short_read_free(short_read_t* sr)
         str_free(&sr->qual);
         str_free(&sr->seqname);
         str_free(&sr->mate_seqname);
-        str_free(&sr->aux);
+        samopt_table_free(sr->aux);
     }
 }
 
@@ -212,7 +212,10 @@ void short_read_copy(short_read_t* dest, const short_read_t* src)
     str_copy(&dest->qual, &src->qual);
     str_copy(&dest->seqname, &src->seqname);
     str_copy(&dest->mate_seqname, &src->mate_seqname);
-    str_copy(&dest->aux, &src->aux);
+
+    /* TODO: samopt_table copy */
+    // str_copy(&dest->aux, &src->aux);
+
     cigar_copy(&dest->cigar, &src->cigar);
     dest->flags    = src->flags;
     dest->strand   = src->strand;

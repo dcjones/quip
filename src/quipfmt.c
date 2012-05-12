@@ -245,10 +245,11 @@ static void* aux_compressor_thread(void* ctx)
 
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
-        idenc_encode(C->auxenc, &C->chunk[i].aux);
-        C->aux_crc = crc64_update(
-            C->chunk[i].aux.s,
-            C->chunk[i].aux.n, C->aux_crc);
+        /* TODO: encoding samopt_table */
+        // idenc_encode(C->auxenc, &C->chunk[i].aux);
+        // C->aux_crc = crc64_update(
+        //     C->chunk[i].aux.s,
+        //     C->chunk[i].aux.n, C->aux_crc);
     }
 
     return NULL;
@@ -563,7 +564,8 @@ static void quip_out_flush_chunk(quip_quip_out_t* C)
     for (i = 0; i < C->chunk_len; ++i) {
         quip_out_add_readlen(C, C->chunk[i].seq.n);
         C->id_bytes   += C->chunk[i].id.n;
-        C->aux_bytes  += C->chunk[i].aux.n;
+        /* TODO: samopt_table bytes */
+        // C->aux_bytes  += C->chunk[i].aux.n;
         C->qual_bytes += C->chunk[i].qual.n;
         C->seq_bytes  += C->chunk[i].seq.n;
         C->buffered_bases += C->chunk[i].seq.n;
@@ -730,10 +732,11 @@ static void* aux_decompressor_thread(void* ctx)
                     chunk_size : D->pending_reads;
     size_t i;
     for (i = 0; i < cnt; ++i) {
-        idenc_decode(D->auxenc, &D->chunk[i].aux);
-        D->aux_crc = crc64_update(
-            D->chunk[i].aux.s,
-            D->chunk[i].aux.n, D->aux_crc);
+        /* TODO: decoding samopt_table */
+        // idenc_decode(D->auxenc, &D->chunk[i].aux);
+        // D->aux_crc = crc64_update(
+        //     D->chunk[i].aux.s,
+        //     D->chunk[i].aux.n, D->aux_crc);
     }
 
     return NULL;   
