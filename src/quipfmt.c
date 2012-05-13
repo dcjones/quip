@@ -316,10 +316,12 @@ quip_quip_out_t* quip_quip_out_open(
     C->buffered_bases = 0;
 
     C->id_crc   = 0;
+    C->aux_crc  = 0;
     C->seq_crc  = 0;
     C->qual_crc = 0;
 
     C->id_bytes   = 0;
+    C->aux_bytes  = 0;
     C->qual_bytes = 0;
     C->seq_bytes  = 0;
 
@@ -625,6 +627,7 @@ void quip_quip_out_close(quip_quip_out_t* C)
     }
 
     idenc_free(C->idenc);
+    samoptenc_free(C->auxenc);
     qualenc_free(C->qualenc);
     assembler_free(C->assembler);
     free(C->readlen_vals);

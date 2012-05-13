@@ -100,8 +100,8 @@ void quip_fastq_in_close(quip_fastq_in_t* in)
 {
     if (in) {
         free(in->buf);
-        free(in);
         short_read_free(&in->sr);
+        free(in);
     }
 }
 

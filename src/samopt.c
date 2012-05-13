@@ -104,7 +104,7 @@ size_t samopt_table_bytes(const samopt_table_t* M)
     }
 
     /* don't count a trailing tab */
-    bytes -= 1;
+    if (bytes > 0) bytes -= 1;
 
     return bytes;
 }

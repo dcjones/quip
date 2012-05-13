@@ -218,7 +218,8 @@ static quip_fmt_t guess_file_format(const char* fn)
     FILE* f = open_fin(fn);
     quip_fmt_t fmt;
 
-    size_t n = fread(buf, sizeof(char), sizeof(buf), f);
+    size_t n = fread(buf, sizeof(char), sizeof(buf) - 1, f);
+    buf[n] = '\0';
 
     if (n == 0) fmt = QUIP_FMT_UNDEFINED;
     else {
