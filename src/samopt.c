@@ -214,16 +214,27 @@ void samopt_table_copy(samopt_table_t* dest, const samopt_table_t* src)
 void samopt_table_append_str(const samopt_table_t* M, str_t* dest)
 {
     size_t i;
-    for (i = 0; i < dest->n; ++i) {
+    char type;
+    samopt_t* opt;
+    for (i = 0; i < M->n; ++i) {
         if (samopt_table_empty(&M->xs[i]) ||
             M->xs[i].data == NULL ||
             M->xs[i].data->n == 0) continue;
 
+        opt = &M->xs[i];
 
-        str_reserve_extra(dest, 7 + M->xs[i].data->n);
-        dest->n += snprintf((char*) dest->s + dest->n, 6, "\t%c%c:%c:",
-                            M->xs[i].key[0], M->xs[i].key[1], M->xs[i].type);
-        str_append(dest, M->xs[i].data);
+        str_reserve_extra(dest, 7 + opt->data->n);
+
+        if (opt->type == 'c' || opt->type == 's' || opt->type == 'i' ||
+            opt->type == 'C' || opt->type == 'S' || opt->type == 'I')
+        {
+            type = 'i';
+        }
+        else type = opt->type;
+
+        dest->n += snprintf((char*) dest->s + dest->n, 7, "\t%c%c:%c:",
+                            opt->key[0], opt->key[1], type);
+        str_append(dest, opt->data);
     }
 }
 
