@@ -566,8 +566,7 @@ static void quip_out_flush_chunk(quip_quip_out_t* C)
     for (i = 0; i < C->chunk_len; ++i) {
         quip_out_add_readlen(C, C->chunk[i].seq.n);
         C->id_bytes   += C->chunk[i].id.n;
-        /* TODO: samopt_table bytes */
-        // C->aux_bytes  += C->chunk[i].aux.n;
+        C->aux_bytes  += samopt_table_bytes(C->chunk[i].aux);
         C->qual_bytes += C->chunk[i].qual.n;
         C->seq_bytes  += C->chunk[i].seq.n;
         C->buffered_bases += C->chunk[i].seq.n;

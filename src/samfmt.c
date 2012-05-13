@@ -509,8 +509,7 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
     /* 12. aux */
     /* TODO: correctly check if there are no optional fields */
     if (samopt_table_size(r->aux) > 0) {
-        str_append_cstr(s, "\t");
-        /* TODO: printing a samopt_table */
+        samopt_table_append_str(r->aux, s);;
     }
 
     s->s[s->n] = '\0';

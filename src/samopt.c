@@ -6,6 +6,7 @@
 #include "ac.h"
 #include "dist.h"
 #include <string.h>
+#include <assert.h>
 
 
 struct samopt_table_t_
@@ -34,8 +35,9 @@ static bool samopt_table_empty(const samopt_t* opt)
 
 /* Prime numbers that a near powers of two, suitable for hash table sizes, when
  * using quadratic probing. */
-#define NUM_PRIMES 28
+#define NUM_PRIMES 30
 static const uint32_t primes[NUM_PRIMES] = {
+                                     11U,         23U,
            53U,         97U,        193U,        389U,    
           769U,       1543U,       3079U,       6151U,  
         12289U,      24593U,      49157U,      98317U,  
@@ -87,6 +89,24 @@ void samopt_table_free(samopt_table_t* M)
 size_t samopt_table_size(const samopt_table_t* M)
 {
     return M->m;
+}
+
+
+size_t samopt_table_bytes(const samopt_table_t* M)
+{
+    size_t i;
+    size_t bytes = 0;
+    for (i = 0; i < M->n; ++i) {
+        if (samopt_table_empty(&M->xs[i])) continue;
+        else if (M->xs[i].data && M->xs[i].data->n > 0) {
+            bytes += 5 + M->xs[i].data->n;
+        }
+    }
+
+    /* don't count a trailing tab */
+    bytes -= 1;
+
+    return bytes;
 }
 
 
@@ -191,6 +211,23 @@ void samopt_table_copy(samopt_table_t* dest, const samopt_table_t* src)
 }
 
 
+void samopt_table_append_str(const samopt_table_t* M, str_t* dest)
+{
+    size_t i;
+    for (i = 0; i < dest->n; ++i) {
+        if (samopt_table_empty(&M->xs[i]) ||
+            M->xs[i].data == NULL ||
+            M->xs[i].data->n == 0) continue;
+
+
+        str_reserve_extra(dest, 7 + M->xs[i].data->n);
+        dest->n += snprintf((char*) dest->s + dest->n, 6, "\t%c%c:%c:",
+                            M->xs[i].key[0], M->xs[i].key[1], M->xs[i].type);
+        str_append(dest, M->xs[i].data);
+    }
+}
+
+
 /* the size of keyspace: [A-Za-z][A-Za-z0-9] */
 #define keys_N 3224
 
@@ -288,6 +325,7 @@ static uint32_t samopt_key_num(const unsigned char key[2])
     return x;
 }
 
+
 /* Map a field type into [0, 16] */
 static uint32_t samopt_type_num(unsigned char t)
 {
@@ -307,6 +345,27 @@ static uint32_t samopt_type_num(unsigned char t)
         default:
             quip_error("Unknown SAM field type: %c", t);
             return 16;
+    }
+}
+
+static unsigned char samopt_type_num_rev(uint32_t t)
+{
+    switch (t) {
+        case  0: return 'A';
+        case  1: return 'C';
+        case  2: return 'c';
+        case  3: return 'S';
+        case  4: return 's';
+        case  5: return 'I';
+        case  6: return 'i';
+        case  7: return 'f';
+        case  8: return 'd';
+        case  9: return 'Z';
+        case 10: return 'H';
+        case 11: return 'B';
+        default:
+            quip_error("Unknown SAM field type: %c", t);
+            return '\0';
     }
 }
 
@@ -372,7 +431,58 @@ void samoptenc_encode(samoptenc_t* E, const samopt_table_t* T)
 
 void samoptenc_decode(samoptenc_t* E, samopt_table_t* T)
 {
-    /* TODO */
+    samopt_table_clear(E->last);
+
+    samopt_t* opt;
+    uint32_t k;
+    while (dist2_decode(E->ac, &E->d_encflag) == SAMOPTENC_FLAG_INSERT) {
+        unsigned char key[2];
+        key[0] = dist128_decode(E->ac, &E->d_tag_char);
+        key[1] = dist128_decode(E->ac, &E->d_tag_char);
+
+        opt = samopt_table_get_priv(E->last, key);
+        assert(samopt_table_empty(opt));
+
+        opt->key[0] = key[0];
+        opt->key[1] = key[1];
+        E->last->m++;
+
+        if (opt->data == NULL) {
+            opt->data = malloc_or_die(sizeof(str_t));
+            str_init(opt->data);
+        }
+
+        k = samopt_key_num(opt->key);
+
+        E->d_type[k] = malloc_or_die(sizeof(dist16_t));
+        dist16_init(E->d_type[k]);
+
+        E->d_data[k] = malloc_or_die(sizeof(cond_dist128_t));
+        cond_dist128_init(E->d_data[k], 128);
+    }
+
+    size_t i;
+    for (i = 0; i < E->last->n; ++i) {
+        if (samopt_table_empty(&E->last->xs[i])) continue;
+
+        opt = &E->last->xs[i];
+
+        k = samopt_key_num(opt->key);
+        opt->type = samopt_type_num_rev(dist16_decode(E->ac, E->d_type[k]));
+
+        unsigned char c = 0;
+        while (true) {
+            if (opt->data->n + 2 >= opt->data->size) str_reserve_extra(opt->data, 16);
+            c = opt->data->s[opt->data->n] = cond_dist128_decode(E->ac, E->d_data[k], c);
+
+            if (c == '\0') break;
+            else opt->data->n++;
+        }
+
+        opt->data->s[opt->data->n] = '\0';
+    }
+
+    samopt_table_copy(T, E->last);
 }
 
 
