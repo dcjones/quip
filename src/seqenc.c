@@ -14,9 +14,6 @@
 /* Order of the markov chain assigning probabilities to dinucleotides. */
 static const size_t k = 11;
 
-/* Order of the markov chain assigning probabilities to the N mask. */
-static const size_t k_nmask = 6;
-
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */
 static const size_t prefix_len = 4;
@@ -54,9 +51,8 @@ struct seqenc_t_
     /* special case models for the first 2 * prefix_les positions. */
     cond_dist16_t cs0[5];
 
-    /* N probability, given the last k_nmask bits. */
-    cond_dist2_t d_nmask;
-    uint32_t nmask_ctx_mask;
+    dist2_t* d_nmask;
+    size_t nmask_n; /* maximum read length supported by d_nmask */
 
     /* binary distribution of unique (0) / match (1) */
     dist2_t d_type;
@@ -157,13 +153,7 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
         cond_dist16_set_update_rate(&E->cs0[i], seq_update_rate);
     }
 
-    /* choose an initial distribution that is slightly more informed than
-     * uniform */
-    seqenc_setprior(E);
-
-    N = 1 << k_nmask;
-    E->nmask_ctx_mask = N -1 ;
-    cond_dist2_init(&E->d_nmask, N);
+    E->d_nmask = NULL;
 
     dist2_init(&E->d_type);
     dist2_init(&E->d_aln_strand);
@@ -195,6 +185,21 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
     cond_dist256_init(&E->d_ext_tlen, 9 * 256);
 
     E->seq_index = strmap_alloc();
+}
+
+
+static void reserve_nmask(seqenc_t* E, size_t readlen)
+{
+    if (readlen > E->nmask_n) {
+        E->d_nmask = realloc_or_die(E->d_nmask, readlen * sizeof(dist2_t));
+
+        size_t i;
+        for (i = E->nmask_n; i < readlen; ++i) {
+            dist2_init(&E->d_nmask[i]);
+        }
+
+        E->nmask_n = readlen;
+    }
 }
 
 
@@ -236,7 +241,7 @@ void seqenc_free(seqenc_t* E)
         cond_dist16_free(&E->cs0[i]);
     }
 
-    cond_dist2_free(&E->d_nmask);
+    free(E->d_nmask);
 
     cond_dist256_free(&E->d_contig_off);
     cond_dist4_free(&E->supercontig_motif);
@@ -420,7 +425,6 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const unsigned char* x_str, const two
     size_t n = twobit_len(x);
     if (n == 0) return;
 
-   
     kmer_t uv;
     uint32_t ctx = 0;
     size_t i;
@@ -444,19 +448,12 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const unsigned char* x_str, const two
     }
 
     /* encode N mask */
-    uint32_t nmask_ctx = 0;
+    reserve_nmask(E, n);
     for (i = 0; i < n; ++i) {
-        if (x_str[i] == 'N') {
-            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 1);
-            nmask_ctx = ((nmask_ctx << 1) | 1) & E->nmask_ctx_mask;
-        }
-        else {
-            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 0);
-            nmask_ctx = (nmask_ctx << 1) & E->nmask_ctx_mask;
-        }
+        dist2_encode(E->ac, &E->d_nmask[i],
+            x_str[i] == 'N' ? 1 : 0);
     }
 }
-
 
 
 void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
@@ -488,17 +485,12 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
     }
 
     /* encode N mask */
-    uint32_t nmask_ctx = 0;
+    reserve_nmask(E, len);
     for (i = 0; i < len; ++i) {
-        if (x[i] == 'N') {
-            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 1);
-            nmask_ctx = ((nmask_ctx << 1) | 1) & E->nmask_ctx_mask;
-        }
-        else {
-            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 0);
-            nmask_ctx = (nmask_ctx << 1) & E->nmask_ctx_mask;
-        }
+        dist2_encode(E->ac, &E->d_nmask[i],
+            x[i] == 'N' ? 1 : 0);
     }
+
 }
 
 
@@ -515,35 +507,31 @@ void seqenc_encode_alignment(
     assert(spos < slen);
 
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_ALIGNMENT);
+
+    /* encode N mask */
+    size_t i;
+    reserve_nmask(E, qlen);
+    for (i = 0; i < qlen; ++i) {
+        dist2_encode(E->ac, &E->d_nmask[i],
+            query_str[i] == 'N' ? 1 : 0);
+    }
+
     dist2_encode(E->ac, &E->d_aln_strand, strand);
     uint32_enc_encode(E->ac, &E->d_contig_off, spos);
 
-
     kmer_t u;
-    size_t i;
     if (strand) {
         for (i = 0; i < qlen; ++i) {
+            if (query_str[i] == 'N') continue;
             u = kmer_comp1(twobit_get(query, i));
             cond_dist4_encode(E->ac, &E->supercontig_motif, slen - (spos + i) - 1, u);
         }
     }
     else {
         for (i = 0; i < qlen; ++i) {
+            if (query_str[i] == 'N') continue;
             u = twobit_get(query, i);
             cond_dist4_encode(E->ac, &E->supercontig_motif, spos + i, u);
-        }
-    }
-
-    /* encode N mask */
-    uint32_t nmask_ctx = 0;
-    for (i = 0; i < qlen; ++i) {
-        if (query_str[i] == 'N') {
-            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 1);
-            nmask_ctx = ((nmask_ctx << 1) | 1) & E->nmask_ctx_mask;
-        }
-        else {
-            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 0);
-            nmask_ctx = (nmask_ctx << 1) & E->nmask_ctx_mask;
         }
     }
 }
@@ -565,10 +553,18 @@ void seqenc_encode_reference_alignment(
         str_revcomp(E->tmpseq.s, E->tmpseq.n);
     }
 
+    /* encode N mask */
+    size_t i;
+    reserve_nmask(E, r->seq.n);
+    for (i = 0; i < r->seq.n; ++i) {
+        dist2_encode(E->ac, &E->d_nmask[i],
+            E->tmpseq.s[i] == 'N' ? 1 : 0);
+    }
+
     uint32_t ref_pos   = r->pos;
     uint32_t read_pos  = 0;
 
-    size_t i = 0; /* cigar operation */
+    i = 0;    /* cigar operation */
     size_t j; /* position within the cigar op */
 
     kmer_t x; /* read nucleotide */
@@ -579,6 +575,7 @@ void seqenc_encode_reference_alignment(
             case BAM_CEQUAL:
             case BAM_CDIFF:
             case BAM_CMATCH:
+                /* TODO: avoid encoding N's */
                 for (j = 0; j < r->cigar.lens[i]; ++j) {
                     x = chartokmer[E->tmpseq.s[read_pos]];
                     y = twobit_get(refseq, ref_pos);
@@ -631,19 +628,6 @@ void seqenc_encode_reference_alignment(
 
     if (read_pos != r->seq.n) {
         quip_error("Cigar operations do not account for full read length.");
-    }
-
-    /* encode N mask */
-    uint32_t nmask_ctx = 0;
-    for (i = 0; i < r->seq.n; ++i) {
-        if (E->tmpseq.s[i] == 'N') {
-            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 1);
-            nmask_ctx = ((nmask_ctx << 1) | 1) & E->nmask_ctx_mask;
-        }
-        else {
-            cond_dist2_encode(E->ac, &E->d_nmask, nmask_ctx, 0);
-            nmask_ctx = (nmask_ctx << 1) & E->nmask_ctx_mask;
-        }
     }
 }
 
@@ -717,52 +701,50 @@ static void seqenc_decode_seq(seqenc_t* E, short_read_t* x, size_t n)
         x->seq.s[i] = kmertochar[v];
     }
 
-    uint32_t nmask_ctx = 0;
+    /* decode N mask */
+    reserve_nmask(E, n);
     for (i = 0; i < n; ++i) {
-        nmask_ctx = (nmask_ctx << 1) | cond_dist2_decode(E->ac, &E->d_nmask, nmask_ctx);
-        nmask_ctx &= E->nmask_ctx_mask;
-
-        if (nmask_ctx & 0x1) x->seq.s[i] = 'N';
+        if (dist2_decode(E->ac, &E->d_nmask[i])) x->seq.s[i] = 'N';
     }
-
 
     x->seq.s[n] = '\0';
     x->seq.n = n;
 }
 
 
+
 static void seqenc_decode_alignment(seqenc_t* E, short_read_t* x, size_t qlen)
 {
     str_reserve(&x->seq, qlen + 1);
+    memset(x->seq.s, '\0', qlen + 1);
+
+    /* decode N mask */
+    size_t i;
+    reserve_nmask(E, qlen);
+    for (i = 0; i < qlen; ++i) {
+        if (dist2_decode(E->ac, &E->d_nmask[i])) x->seq.s[i] = 'N';
+    }
 
     uint8_t  strand = dist2_decode(E->ac, &E->d_aln_strand);
     uint32_t spos   = uint32_enc_decode(E->ac, &E->d_contig_off);
-
     size_t slen = E->supercontig_motif.n;
     
     assert(spos < slen);
 
     kmer_t u;
-    size_t i;
     if (strand) {
         for (i = 0; i < qlen; ++i) {
+            if (x->seq.s[i] == 'N') continue;
             u = cond_dist4_decode(E->ac, &E->supercontig_motif, slen - (spos + i) - 1);
             x->seq.s[i] = kmertochar[kmer_comp1(u)];
         }
     }
     else {
         for (i = 0; i < qlen; ++i) {
+            if (x->seq.s[i] == 'N') continue;
             u = cond_dist4_decode(E->ac, &E->supercontig_motif, spos + i);
             x->seq.s[i] = kmertochar[u];
         }
-    }
-
-    uint32_t nmask_ctx = 0;
-    for (i = 0; i < qlen; ++i) {
-        nmask_ctx = (nmask_ctx << 1) | cond_dist2_decode(E->ac, &E->d_nmask, nmask_ctx);
-        nmask_ctx &= E->nmask_ctx_mask;
-
-        if (nmask_ctx & 0x1) x->seq.s[i] = 'N';
     }
 
     x->seq.s[qlen] = '\0';
@@ -783,13 +765,23 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
     str_reserve(&r->seq, seqlen + 1);
     r->seq.n = 0;
 
+    /* decode N mask */
+    size_t i;
+    reserve_nmask(E, seqlen);
+    memset(r->seq.s, '\0', seqlen + 1);
+    for (i = 0; i < seqlen; ++i) {
+        if (dist2_decode(E->ac, &E->d_nmask[i])) r->seq.s[i] = 'N';
+    }
+
     uint32_t ref_pos   = r->pos;
     uint32_t read_pos  = 0;
 
-    size_t i = 0; /* cigar operation */
+    i = 0;    /* cigar operation */
     size_t j; /* position within the cigar op */
 
     kmer_t y; /* reference nucleotide */
+
+    /* TODO: N skipping */
 
     for (i = 0; i < r->cigar.n; ++i) {
         switch (r->cigar.ops[i]) {
@@ -847,18 +839,6 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
 
     if (read_pos != seqlen) {
         quip_error("Cigar operations do not account for full read length.");
-    }
-
-    /* decode N mask */
-    uint32_t nmask_ctx = 0;
-    for (i = 0; i < seqlen; ++i) {
-        if (cond_dist2_decode(E->ac, &E->d_nmask, nmask_ctx)) {
-            r->seq.s[i] = 'N';
-            nmask_ctx = ((nmask_ctx << 1) | 1) & E->nmask_ctx_mask;
-        }
-        else {
-            nmask_ctx = (nmask_ctx << 1) & E->nmask_ctx_mask;
-        }
     }
 
     if (r->strand) str_revcomp(r->seq.s, r->seq.n);
