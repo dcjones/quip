@@ -1,6 +1,5 @@
 
 #include "seqenc.h"
-#include "seqenc_prior.h"
 #include "misc.h"
 #include "ac.h"
 #include "dist.h"
@@ -113,27 +112,6 @@ struct seqenc_t_
     /* template length */
     uint32_enc_t    d_ext_tlen;
 };
-
-
-static void seqenc_setprior(seqenc_t* E)
-{
-    size_t N = 1 << (2 * seqenc_prior_k);
-    size_t M = 1 << (2 * (k - seqenc_prior_k));
-    size_t u;
-    size_t i;
-
-    for (u = 0; u < N; ++u) {
-        for (i = 0; i < 16; ++i) {
-            E->cs.xss[u].xs[i].count = seqenc_prior[(u << 4) + i];
-        }
-        dist16_update(&E->cs.xss[u]);
-
-        for (i = 1; i < M; ++i) {
-            memcpy(&E->cs.xss[(i << (2 * seqenc_prior_k)) | u],
-                   &E->cs.xss[u], sizeof(dist16_t));
-        }
-    }
-}
 
 
 static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
