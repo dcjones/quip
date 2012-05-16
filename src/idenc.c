@@ -331,7 +331,7 @@ void idenc_encode(idenc_t* E, const str_t* id)
     memcpy(E->lastid, id->s, (id->n + 1) * sizeof(uint8_t));
     E->lastid_len = id->n + 1;
 
-    E->toks_len = i - 1;
+    E->toks_len = i;
 }
 
 
