@@ -132,6 +132,7 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
     }
 
     E->d_nmask = NULL;
+    E->nmask_n = 0;
 
     dist2_init(&E->d_type);
     dist2_init(&E->d_aln_strand);
@@ -755,8 +756,6 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
     size_t j; /* position within the cigar op */
 
     kmer_t y; /* reference nucleotide */
-
-    /* TODO: N skipping */
 
     for (i = 0; i < r->cigar.n; ++i) {
         switch (r->cigar.ops[i]) {
