@@ -553,8 +553,9 @@ void seqenc_encode_reference_alignment(
             case BAM_CEQUAL:
             case BAM_CDIFF:
             case BAM_CMATCH:
-                /* TODO: avoid encoding N's */
-                for (j = 0; j < r->cigar.lens[i]; ++j) {
+                for (j = 0; j < r->cigar.lens[i]; ++j, ++read_pos, ++ref_pos) {
+                    if (E->tmpseq.s[read_pos] == 'N') continue;
+                        
                     x = chartokmer[E->tmpseq.s[read_pos]];
                     y = twobit_get(refseq, ref_pos);
 
@@ -565,16 +566,13 @@ void seqenc_encode_reference_alignment(
                         dist2_encode(E->ac, &E->d_ref_match, SEQENC_REF_MISMATCH);
                         dist4_encode(E->ac, &E->d_ref_ins_nuc, chartokmer[E->tmpseq.s[read_pos]]);
                     }
-
-                    read_pos++;
-                    ref_pos++;
                 }
                 break;
 
             case BAM_CINS:
-                for (j = 0; j < r->cigar.lens[i]; ++j) {
+                for (j = 0; j < r->cigar.lens[i]; ++j, ++read_pos) {
+                    if (E->tmpseq.s[read_pos] == 'N') continue;
                     dist4_encode(E->ac, &E->d_ref_ins_nuc, chartokmer[E->tmpseq.s[read_pos]]);
-                    read_pos++;
                 }
                 break;
 
@@ -587,10 +585,9 @@ void seqenc_encode_reference_alignment(
                 break;
 
             case BAM_CSOFT_CLIP:
-                for (j = 0; j < r->cigar.lens[i]; ++j) {
+                for (j = 0; j < r->cigar.lens[i]; ++j, ++read_pos) {
+                    if (E->tmpseq.s[read_pos] == 'N') continue;
                     dist4_encode(E->ac, &E->d_ref_ins_nuc, chartokmer[E->tmpseq.s[read_pos]]);
-                    read_pos++;
-                    ref_pos++;
                 }
                 break;
 
@@ -766,7 +763,9 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
             case BAM_CEQUAL:
             case BAM_CDIFF:
             case BAM_CMATCH:
-                for (j = 0; j < r->cigar.lens[i]; ++j) {
+                for (j = 0; j < r->cigar.lens[i]; ++j, ++read_pos, ++ref_pos) {
+                    if (r->seq.s[read_pos] == 'N') continue;
+
                     if (dist2_decode(E->ac, &E->d_ref_match) == SEQENC_REF_MATCH) {
                         y = twobit_get(refseq, ref_pos);
                         r->seq.s[read_pos] = kmertochar[y];
@@ -774,16 +773,13 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
                     else {
                         r->seq.s[read_pos] = kmertochar[dist4_decode(E->ac, &E->d_ref_ins_nuc)];
                     }
-
-                    read_pos++;
-                    ref_pos++;
                 }
                 break;
 
             case BAM_CINS:
-                for (j = 0; j < r->cigar.lens[i]; ++j) {
+                for (j = 0; j < r->cigar.lens[i]; ++j, ++read_pos) {
+                    if (r->seq.s[read_pos] == 'N') continue;
                     r->seq.s[read_pos] = kmertochar[dist4_decode(E->ac, &E->d_ref_ins_nuc)];
-                    read_pos++;
                 }
                 break;
 
@@ -796,10 +792,9 @@ static void seqenc_decode_reference_alignment(seqenc_t* E, short_read_t* r, size
                 break;
 
             case BAM_CSOFT_CLIP:
-                for (j = 0; j < r->cigar.lens[i]; ++j) {
+                for (j = 0; j < r->cigar.lens[i]; ++j, ++read_pos) {
+                    if (r->seq.s[read_pos] == 'N') continue;
                     r->seq.s[read_pos] = kmertochar[dist4_decode(E->ac, &E->d_ref_ins_nuc)];
-                    read_pos++;
-                    ref_pos++;
                 }
                 break;
 
