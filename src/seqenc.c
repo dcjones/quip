@@ -280,10 +280,11 @@ static void decode_seqname(seqenc_t* E, str_t* seqname)
     unsigned char last = '\0';
     size_t i = 0;
     do {
-        str_reserve_extra(seqname, 1);
+        str_reserve_extra(seqname, 2);
         seqname->s[i] = \
             cond_dist128_decode(E->ac, &E->d_ext_seqname, last);
         last = seqname->s[i];
+        ++seqname->n;
         ++i;
 
     } while (last != '\0');
@@ -313,12 +314,24 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
 
         E->last_ref_pos = x->pos;
 
+        uint32_t cigarlen = 0;
         uint8_t last_op = 9;
         size_t i;
         for (i = 0; i < x->cigar.n; ++i) {
             cond_dist16_encode(E->ac, &E->d_ext_cigar_op, last_op, x->cigar.ops[i]);
             uint32_enc_encode(E->ac, &E->d_ext_cigar_len[x->cigar.ops[i]], x->cigar.lens[i]);
             last_op = x->cigar.ops[i];
+
+            if (x->cigar.ops[i] != BAM_CDEL &&
+                x->cigar.ops[i] != BAM_CREF_SKIP &&
+                x->cigar.ops[i] != BAM_CHARD_CLIP)
+            {
+                cigarlen += x->cigar.lens[i];
+            }
+        }
+
+        if (cigarlen != x->seq.n) {
+            quip_error("Cigar operations do not account for full read length.");
         }
     }
 
