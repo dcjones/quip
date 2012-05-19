@@ -623,7 +623,7 @@ void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
     if (D->assembly_pending_n > 0 && (seq->flags & BAM_FUNMAP) != 0) {
         twobit_copy_str_n(D->x, (char*) seq->seq.s, seq->seq.n);
 
-        if (D->seeds_len < seeds_n && seq->seq.n >= assemble_k) {
+        if (D->assembly_pending_n <= seeds_n - D->seeds_len) {
             D->seeds[D->seeds_len] =
                 twobit_alloc_n(seq->seq.n);
             twobit_copy(D->seeds[D->seeds_len], D->x);
