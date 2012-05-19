@@ -144,6 +144,9 @@ BGZF* bgzf_open_in (quip_reader_t reader, void* reader_data)
 
     fp->reader      = reader;
     fp->reader_data = reader_data;
+    
+    fp->block_offset = 0;
+    fp->block_length = 0;
 
     return fp;
 }

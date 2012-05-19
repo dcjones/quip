@@ -100,6 +100,9 @@ struct seqenc_t_
     /* map quality */
     dist256_t       d_ext_map_qual;
 
+    /* number of cigar operations */
+    uint32_enc_t    d_ext_cigar_n;
+
     /* cigar operation, conditioned on the previous cigar operation */
     cond_dist16_t   d_ext_cigar_op;
 
@@ -137,14 +140,14 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
     dist2_init(&E->d_type);
     dist2_init(&E->d_aln_strand);
 
-    cond_dist256_init(&E->d_contig_off, 9 * 256);
+    uint32_enc_init(&E->d_contig_off);
 
     dist2_init(&E->d_ref_match);
     dist4_init(&E->d_ref_ins_nuc);
 
     memset(&E->supercontig_motif, 0, sizeof(cond_dist4_t));
 
-    cond_dist256_init(&E->d_ext_flags,  9 * 256);
+    uint32_enc_init(&E->d_ext_flags);
     cond_dist128_init(&E->d_ext_seqname, 128);
 
     E->d_ext_pos = NULL;
@@ -154,14 +157,15 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
     dist256_init(&E->d_ext_pos_off);
 
     dist256_init(&E->d_ext_map_qual);
+    uint32_enc_init(&E->d_ext_cigar_n);
     cond_dist16_init(&E->d_ext_cigar_op, 10);
 
     for (i = 0; i < 9; ++i) {
-        cond_dist256_init(&E->d_ext_cigar_len[i], 9 * 256);
+        uint32_enc_init(&E->d_ext_cigar_len[i]);
     }
 
     dist2_init(&E->d_ext_mate_sameseq);
-    cond_dist256_init(&E->d_ext_tlen, 9 * 256);
+    uint32_enc_init(&E->d_ext_tlen);
 
     E->seq_index = strmap_alloc();
 }
@@ -222,10 +226,10 @@ void seqenc_free(seqenc_t* E)
 
     free(E->d_nmask);
 
-    cond_dist256_free(&E->d_contig_off);
+    uint32_enc_free(&E->d_contig_off);
     cond_dist4_free(&E->supercontig_motif);
 
-    cond_dist256_free(&E->d_ext_flags);
+    uint32_enc_free(&E->d_ext_flags);
     cond_dist128_free(&E->d_ext_seqname);
 
     size_t refsize = strmap_size(E->seq_index);
@@ -236,11 +240,12 @@ void seqenc_free(seqenc_t* E)
 
     cond_dist16_free(&E->d_ext_cigar_op);
 
+    uint32_enc_free(&E->d_ext_cigar_n);
     for (i = 0; i < 9; ++i) {
-        cond_dist256_free(&E->d_ext_cigar_len[i]);
+        uint32_enc_free(&E->d_ext_cigar_len[i]);
     }
 
-    cond_dist256_free(&E->d_ext_tlen);
+    uint32_enc_free(&E->d_ext_tlen);
 
     strmap_free(E->seq_index);
 
@@ -317,6 +322,8 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
         uint32_t cigarlen = 0;
         uint8_t last_op = 9;
         size_t i;
+
+        uint32_enc_encode(E->ac, &E->d_ext_cigar_n, x->cigar.n);
         for (i = 0; i < x->cigar.n; ++i) {
             cond_dist16_encode(E->ac, &E->d_ext_cigar_op, last_op, x->cigar.ops[i]);
             uint32_enc_encode(E->ac, &E->d_ext_cigar_len[x->cigar.ops[i]], x->cigar.lens[i]);
@@ -378,8 +385,10 @@ void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
         uint8_t last_op = 9;
         size_t i = 0;
         uint32_t cigarlen = 0;
-        do {
-            cigar_reserve(&x->cigar, i + 1);
+        x->cigar.n = uint32_enc_decode(E->ac, &E->d_ext_cigar_n);
+        cigar_reserve(&x->cigar, x->cigar.n);
+
+        for (i = 0; i < x->cigar.n; ++i) {
             x->cigar.ops[i] = cond_dist16_decode(E->ac, &E->d_ext_cigar_op, last_op);
             x->cigar.lens[i] = uint32_enc_decode(E->ac, &E->d_ext_cigar_len[x->cigar.ops[i]]);
 
@@ -391,9 +400,11 @@ void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
             }
 
             last_op = x->cigar.ops[i];
-            x->cigar.n++;
-            i++;
-        } while(cigarlen < seqlen);
+        }
+
+        if (cigarlen != seqlen) {
+            quip_error("Cigar operations do not account for full read length.");
+        }
     }
 
     if ((x->flags & BAM_FMUNMAP) == 0) {

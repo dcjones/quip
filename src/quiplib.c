@@ -118,8 +118,9 @@ void str_copy(str_t* dest, const str_t* src)
 {
     str_reserve(dest, src->n + 1);
     if (src->s == NULL) dest->s[0] = '\0';
-    else memcpy(dest->s, src->s, src->n + 1);
+    else memcpy(dest->s, src->s, src->n);
     dest->n = src->n;
+    dest->s[dest->n] = '\0';
 }
 
 
