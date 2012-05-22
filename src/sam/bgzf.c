@@ -48,6 +48,7 @@ extern int fseeko(FILE *stream, off_t offset, int whence);
 
 typedef int8_t bgzf_byte_t;
 
+static const int DEFAULT_COMPRESS_LEVEL = 5;
 static const int DEFAULT_BLOCK_SIZE = 64 * 1024;
 static const int MAX_BLOCK_SIZE = 64 * 1024;
 
@@ -113,8 +114,8 @@ BGZF* bgzf_open_out(quip_writer_t writer, void* writer_data)
     fp->file_descriptor = -1;
     fp->open_mode = 'w';
     fp->owned_file = 0;
-    fp->compress_level = compress_level < 0? Z_DEFAULT_COMPRESSION : compress_level; // Z_DEFAULT_COMPRESSION==-1
-    if (fp->compress_level > 9) fp->compress_level = Z_DEFAULT_COMPRESSION;
+    fp->compress_level = compress_level < 0? DEFAULT_COMPRESS_LEVEL: compress_level; // Z_DEFAULT_COMPRESSION==-1
+    if (fp->compress_level > 9) fp->compress_level = DEFAULT_COMPRESS_LEVEL;
 
     fp->writer = writer;
     fp->writer_data = writer_data;
