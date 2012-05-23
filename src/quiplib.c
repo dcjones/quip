@@ -133,6 +133,14 @@ void str_copy_cstr(str_t* dest, const char* src, size_t n)
 }
 
 
+void str_memcpy(str_t* dest, const uint8_t* src, size_t n)
+{
+    str_reserve(dest, n);
+    memcpy(dest->s, src, n);
+    dest->n = n;
+}
+
+
 void cigar_init(cigar_t* cig)
 {
     cig->n    = 0;

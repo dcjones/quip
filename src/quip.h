@@ -70,6 +70,7 @@ void str_append_char(str_t*, char);
 void str_free(str_t*);
 void str_copy(str_t* dest, const str_t* src);
 void str_copy_cstr(str_t* dest, const char* src, size_t n);
+void str_memcpy(str_t* dest, const uint8_t* src, size_t n);
 
 
 /* A series of CIGAR (edit) operations. */

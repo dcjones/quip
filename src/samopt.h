@@ -17,7 +17,6 @@
 #include "sam/bam.h"
 
 void samopt_table_bam_dump(const samopt_table_t*, bam1_t*);
-void samopt_table_append_str(const samopt_table_t* M, str_t* dest);
 
 #endif
 

@@ -91,134 +91,69 @@ void quip_sam_out_close(quip_sam_out_t* out)
 }
 
 
-static void format_aux_field(str_t* s, const uint8_t** a_, uint8_t type)
+static void copy_aux_field(str_t* s, const uint8_t** a_, uint8_t type)
 {
     const uint8_t* a = *a_;
     uint8_t subtype;
-    size_t i;
     uint32_t array_len;
 
     switch ((char) type) {
-        case 'A':
-            str_reserve_extra(s, 4);
-            s->n += snprintf((char*) s->s + s->n, 4, "%c", (char) *a++);
+        case 'A': case 'a': case 'c': case 'C':
+            str_memcpy(s, a, 1);
+            a += 1;
             break;
 
-        case 'C':
-            str_reserve_extra(s, 6);
-            s->n += snprintf((char*) s->s + s->n, 6, "%"PRIu8, *(uint8_t*) a);
-            a++;
-            break;
-
-        case 'c':
-            str_reserve_extra(s, 7);
-            s->n += snprintf((char*) s->s + s->n, 7, "%"PRId8, *(int8_t*) a);
-            a++;
-            break;
-
-        case 'S':
-            str_reserve_extra(s, 8);
-            s->n += snprintf((char*) s->s + s->n, 8, "%"PRIu16, *(uint16_t*) a);
+        case 'S': case 's':
+            str_memcpy(s, a, 2);
             a += 2;
             break;
 
-        case 's':
-            str_reserve_extra(s, 9);
-            s->n += snprintf((char*) s->s + s->n, 9, "%"PRId16, *(int16_t*) a);
-            a += 2;
-            break;
-
-        case 'I':
-            str_reserve_extra(s, 13);
-            s->n += snprintf((char*) s->s + s->n, 13, "%"PRIu32, *(uint32_t*) a);
-            a += 4;
-            break;
-
-        case 'i':
-            str_reserve_extra(s, 14);
-            s->n += snprintf((char*) s->s + s->n, 14, "%"PRId32, *(int32_t*) a);
-            a += 4;
-            break;
-
-        case 'f':
-            str_reserve_extra(s, 20);
-            s->n += snprintf((char*) s->s + s->n, 20, "%g", *(float*) a);
+        case 'I': case 'i': case 'f':
+            str_memcpy(s, a, 4);
             a += 4;
             break;
 
         case 'd':
-            str_reserve_extra(s, 40);
-            s->n += snprintf((char*) s->s + s->n, 40, "%lg", *(double*) a);
+            str_memcpy(s, a, 8);
             a += 8;
             break;
 
-        case 'Z':
-        case 'H':
-            while (*a) {
-                str_reserve_extra(s, 2);
-                s->s[s->n++] = *a++;
-            }
-            a++;
+        case 'Z': case 'H':
+            str_memcpy(s, a, strlen((char*) a) + 1);
+            a += s->n;
             break;
 
         case 'B':
-            subtype = *a++;
-            memcpy(&array_len, a, 4);
-            a += 4;
-            str_reserve_extra(s, 2);
-            s->n += snprintf((char*) s->s + s->n, 2, "%c", subtype);
+            subtype = *a;
+            memcpy(&array_len, a + 1, 4);
 
-            for (i = 0; i < array_len; ++i) {
-                str_append_cstr(s, ",");
-                switch (subtype) {
-                    case 'c':
-                        str_reserve_extra(s, 7);
-                        s->n += snprintf((char*) s->s + s->n, 7, "i:%"PRId8, *(int8_t*) a);
-                        a++;
-                        break;
+            switch (subtype) {
+                case 'A': case 'a': case 'c': case 'C':
+                    str_memcpy(s, a, 5 + array_len);
+                    break;
 
-                    case 'C':
-                        str_reserve_extra(s, 6);
-                        s->n += snprintf((char*) s->s + s->n, 6, "i:%"PRIu8, *(uint8_t*) a);
-                        a++;
-                        break;
+                case 'S': case 's':
+                    str_memcpy(s, a, 5 + 2 * array_len);
+                    break;
 
-                    case 'S':
-                        str_reserve_extra(s, 8);
-                        s->n += snprintf((char*) s->s + s->n, 8, "i:%"PRIu16, *(uint16_t*) a);
-                        a += 2;
-                        break;
+                case 'I': case 'i': case 'f':
+                    str_memcpy(s, a, 5 + 4 * array_len);
+                    break;
 
-                    case 'i':
-                        str_reserve_extra(s, 14);
-                        s->n += snprintf((char*) s->s + s->n, 14, "i:%"PRId32, *(int32_t*) a);
-                        a += 4;
-                        break;
+                case 'd':
+                    str_memcpy(s, a, 5 + 8 * array_len);
+                    break;
 
-                    case 'I':
-                        str_reserve_extra(s, 13);
-                        s->n += snprintf((char*) s->s + s->n, 13, "i:%"PRIu32, *(uint32_t*) a);
-                        a += 4;
-                        break;
-
-                    case 'f':
-                        str_reserve_extra(s, 20);
-                        s->n += snprintf((char*) s->s + s->n, 20, "f:%g", *(float*) a);
-                        a += 4;
-                        break;
-
-                    default:
-                        break;
-                }
+                default:
+                    break;
             }
-
+            a += s->n;
             break;
 
         default:
             break; // skip unknown aux type
     }
 
-    s->s[s->n] = '\0';
     *a_ = a;
 }
 
@@ -240,7 +175,7 @@ static void read_aux(const uint8_t* src, size_t len, samopt_table_t* T)
         opt = samopt_table_get(T, key);
         opt->type = type;
 
-        format_aux_field(opt->data, &a, type);
+        copy_aux_field(opt->data, &a, type);
     }
 }
 
@@ -279,7 +214,7 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
     c->tid = aligned ? bam_get_tid(out->f->header, (char*) r->seqname.s) : -1;
 
     /* 4. position */
-    c->pos = aligned ? (int32_t) c->pos : -1;
+    c->pos = aligned ? (int32_t) r->pos : -1;
 
     /* 5. mapq */
     c->qual = r->map_qual;
@@ -291,6 +226,7 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
         bam1_cigar(b)[i] =
             (r->cigar.lens[i] << BAM_CIGAR_SHIFT) | r->cigar.ops[i];
     }
+    doff += 4 * r->cigar.n;
 
     c->bin = bam_reg2bin(c->pos, bam_calend(c, bam1_cigar(b)));
 
@@ -343,6 +279,9 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
 
     /* 12. aux */
     samopt_table_bam_dump(r->aux, b);
+    doff += b->l_aux;
+
+    b->data_len = doff;
 
     samwrite(out->f, out->b);
 }

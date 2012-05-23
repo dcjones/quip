@@ -236,6 +236,7 @@ void samopt_table_bam_dump(const samopt_table_t* M, bam1_t* b)
     if ((int) size > b->m_data) {
         b->m_data = (int) size;
         b->data = realloc_or_die(b->data, b->m_data);
+        d = bam1_aux(b);
     }
 
     size_t i = 0;
@@ -254,35 +255,10 @@ void samopt_table_bam_dump(const samopt_table_t* M, bam1_t* b)
         d += opt->data->n;
     }
 
+    assert(d - bam1_aux(b) == (int) aux_size);
+
+
     b->l_aux = aux_size;
-}
-
-
-void samopt_table_append_str(const samopt_table_t* M, str_t* dest)
-{
-    size_t i;
-    char type;
-    samopt_t* opt;
-    for (i = 0; i < M->n; ++i) {
-        if (samopt_table_empty(&M->xs[i]) ||
-            M->xs[i].data == NULL ||
-            M->xs[i].data->n == 0) continue;
-
-        opt = &M->xs[i];
-
-        str_reserve_extra(dest, 7 + opt->data->n);
-
-        if (opt->type == 'c' || opt->type == 's' || opt->type == 'i' ||
-            opt->type == 'C' || opt->type == 'S' || opt->type == 'I')
-        {
-            type = 'i';
-        }
-        else type = opt->type;
-
-        dest->n += snprintf((char*) dest->s + dest->n, 7, "\t%c%c:%c:",
-                            opt->key[0], opt->key[1], type);
-        str_append(dest, opt->data);
-    }
 }
 
 
@@ -308,11 +284,14 @@ struct samoptenc_t_
     /* distribution over tag characters */
     dist128_t d_tag_char;
 
+    /* used/unused, conditioned on tag */
+    dist2_t* d_used[keys_N];
+
     /* types, conditioned on tag */
     dist16_t* d_type[keys_N];
 
     /* data, conditioned on tag */
-    cond_dist128_t* d_data[keys_N];
+    cond_dist256_t* d_data[keys_N];
 };
 
 
@@ -322,8 +301,9 @@ static void samoptenc_init(samoptenc_t* E)
 
     dist2_init(&E->d_encflag);
     dist128_init(&E->d_tag_char);
+    memset(E->d_used, 0, keys_N * sizeof(dist2_t*));
     memset(E->d_type, 0, keys_N * sizeof(dist16_t*));
-    memset(E->d_data, 0, keys_N * sizeof(dist128_t*));
+    memset(E->d_data, 0, keys_N * sizeof(dist256_t*));
 }
 
 
@@ -355,9 +335,10 @@ void samoptenc_free(samoptenc_t* E)
 
         size_t i;
         for (i = 0; i < keys_N; ++i) {
+            free(E->d_used[i]);
             free(E->d_type[i]);
             if (E->d_data[i]) {
-                cond_dist128_free(E->d_data[i]);
+                cond_dist256_free(E->d_data[i]);
                 free(E->d_data[i]);
             }
         }
@@ -406,6 +387,11 @@ static uint32_t samopt_type_num(unsigned char t)
     }
 }
 
+
+static const size_t aux_type_size[] =
+    {1, 1, 1, 2, 2, 4, 4, 4, 8, 0, 0, 0};
+
+
 static unsigned char samopt_type_num_rev(uint32_t t)
 {
     switch (t) {
@@ -451,11 +437,14 @@ void samoptenc_encode(samoptenc_t* E, const samopt_table_t* T)
 
             k = samopt_key_num(opt->key);
 
+            E->d_used[k] = malloc_or_die(sizeof(dist2_t));
+            dist2_init(E->d_used[k]);
+
             E->d_type[k] = malloc_or_die(sizeof(dist16_t));
             dist16_init(E->d_type[k]);
 
-            E->d_data[k] = malloc_or_die(sizeof(cond_dist128_t));
-            cond_dist128_init(E->d_data[k], 128);
+            E->d_data[k] = malloc_or_die(sizeof(cond_dist256_t));
+            cond_dist256_init(E->d_data[k], 256);
 
             dist2_encode(E->ac, &E->d_encflag, SAMOPTENC_FLAG_INSERT);
             dist128_encode(E->ac, &E->d_tag_char, T->xs[i].key[0]);
@@ -474,15 +463,22 @@ void samoptenc_encode(samoptenc_t* E, const samopt_table_t* T)
         opt = &E->last->xs[i];
 
         k = samopt_key_num(opt->key);
+
+        if (opt->data->n == 0) {
+            dist2_encode(E->ac, E->d_used[k], 0);
+            continue;
+        }
+        else {
+            dist2_encode(E->ac, E->d_used[k], 1);
+        }
+
         dist16_encode(E->ac, E->d_type[k], samopt_type_num(opt->type));
 
         unsigned char c = 0;
         for (j = 0; j < opt->data->n; ++j) {
-            cond_dist128_encode(E->ac, E->d_data[k], c, opt->data->s[j]);
+            cond_dist256_encode(E->ac, E->d_data[k], c, opt->data->s[j]);
             c = opt->data->s[j];
         }
-
-        cond_dist128_encode(E->ac, E->d_data[k], c, '\0');
     }
 }
 
@@ -512,32 +508,68 @@ void samoptenc_decode(samoptenc_t* E, samopt_table_t* T)
 
         k = samopt_key_num(opt->key);
 
+        E->d_used[k] = malloc_or_die(sizeof(dist2_t));
+        dist2_init(E->d_used[k]);
+
         E->d_type[k] = malloc_or_die(sizeof(dist16_t));
         dist16_init(E->d_type[k]);
 
-        E->d_data[k] = malloc_or_die(sizeof(cond_dist128_t));
-        cond_dist128_init(E->d_data[k], 128);
+        E->d_data[k] = malloc_or_die(sizeof(cond_dist256_t));
+        cond_dist256_init(E->d_data[k], 256);
     }
 
-    size_t i;
+    size_t size, i, j;
+    unsigned char c;
     for (i = 0; i < E->last->n; ++i) {
         if (samopt_table_empty(&E->last->xs[i])) continue;
 
         opt = &E->last->xs[i];
 
         k = samopt_key_num(opt->key);
+
+        if (dist2_decode(E->ac, E->d_used[k]) == 0) continue;
+
         opt->type = samopt_type_num_rev(dist16_decode(E->ac, E->d_type[k]));
 
-        unsigned char c = 0;
-        while (true) {
-            if (opt->data->n + 2 >= opt->data->size) str_reserve_extra(opt->data, 16);
-            c = opt->data->s[opt->data->n] = cond_dist128_decode(E->ac, E->d_data[k], c);
-
-            if (c == '\0') break;
-            else opt->data->n++;
+        /* decode strings */
+        if (opt->type == 'H' || opt->type == 'Z') {
+            c = 0;
+            opt->data->n = 0;
+            while (true) {
+                if (opt->data->n + 2 >= opt->data->size) str_reserve_extra(opt->data, 16);
+                c = opt->data->s[opt->data->n++] = cond_dist256_decode(E->ac, E->d_data[k], c);
+                if (c == '\0') break;
+            }
         }
+        /* decode arrays */
+        else if (opt->type == 'B') {
+            unsigned char subtype, arraylen[4];
+            c = subtype = cond_dist256_decode(E->ac, E->d_data[k], c);
+            c = arraylen[0] = cond_dist256_decode(E->ac, E->d_data[k], c);
+            c = arraylen[1] = cond_dist256_decode(E->ac, E->d_data[k], c);
+            c = arraylen[2] = cond_dist256_decode(E->ac, E->d_data[k], c);
+            c = arraylen[3] = cond_dist256_decode(E->ac, E->d_data[k], c);
 
-        opt->data->s[opt->data->n] = '\0';
+            size = *((uint32_t*) arraylen) * aux_type_size[samopt_type_num(opt->type)];
+            str_reserve(opt->data, size + 5);
+            opt->data->n = size + 5;
+            opt->data->s[0] = subtype;
+            memcpy(opt->data->s + 1, arraylen, 4);
+
+            for (j = 0; j < size; ++j) {
+                c = opt->data->s[5 + j] = cond_dist256_decode(E->ac, E->d_data[k], c);
+            }
+        }
+        /* decode simple types */
+        else {
+            size = aux_type_size[samopt_type_num(opt->type)];
+            str_reserve(opt->data, size);
+            opt->data->n = size;
+            c = 0;
+            for (j = 0; j < size; ++j) {
+                c = opt->data->s[j] = cond_dist256_decode(E->ac, E->d_data[k], c);
+            }
+        }
     }
 
     samopt_table_copy(T, E->last);
