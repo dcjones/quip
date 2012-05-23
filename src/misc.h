@@ -50,6 +50,7 @@ FILE* fopen_or_die(const char*, const char*);
 /* Generic hashing, using MurmurHash3 */
 uint32_t murmurhash3(const uint8_t* data, size_t len);
 
+unsigned char complement(unsigned char c);
 void str_revcomp(unsigned char* seq, size_t n);
 void str_rev(unsigned char* seq, size_t n);
 

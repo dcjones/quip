@@ -12,7 +12,7 @@ libquip_a_SOURCES = \
           kmer.h            kmer.c \
           kmerhash.h        kmerhash.c \
           misc.h            misc.c \
-                            samopt.c \
+          samopt.h          samopt.c \
           seqenc.h          seqenc.c \
           seqmap.h          seqmap.c \
           strmap.h          strmap.c \

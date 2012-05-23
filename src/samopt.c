@@ -1,5 +1,6 @@
 
 
+#include "samopt.h"
 #include "samoptenc.h"
 #include "kmer.h"
 #include "misc.h"
@@ -208,6 +209,52 @@ void samopt_table_copy(samopt_table_t* dest, const samopt_table_t* src)
         opt->type = src->xs[i].type;
         str_copy(opt->data, src->xs[i].data);
     }
+}
+
+
+static size_t samopt_table_bam_bytes(const samopt_table_t* M)
+{
+    size_t i;
+    size_t bytes = 0;
+    for (i = 0; i < M->n; ++i) {
+        if (samopt_table_empty(&M->xs[i])) continue;
+        else if (M->xs[i].data && M->xs[i].data->n > 0) {
+            bytes += 3 + M->xs[i].data->n;
+        }
+    }
+
+    return bytes;
+}
+
+
+void samopt_table_bam_dump(const samopt_table_t* M, bam1_t* b)
+{
+    uint8_t* d = bam1_aux(b);
+    size_t aux_size = samopt_table_bam_bytes(M);
+    size_t size = (d - b->data) + aux_size;
+
+    if ((int) size > b->m_data) {
+        b->m_data = (int) size;
+        b->data = realloc_or_die(b->data, b->m_data);
+    }
+
+    size_t i = 0;
+    samopt_t* opt;
+    for (i = 0; i < M->n; ++i) {
+        if (samopt_table_empty(&M->xs[i]) ||
+            M->xs[i].data == NULL ||
+            M->xs[i].data->n == 0) continue;
+
+        opt = &M->xs[i];
+
+        *d++ = opt->key[0]; *d++ = opt->key[1];
+        *d++ = opt->type;
+
+        memcpy(d, opt->data->s, opt->data->n);
+        d += opt->data->n;
+    }
+
+    b->l_aux = aux_size;
 }
 
 

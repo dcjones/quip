@@ -122,7 +122,7 @@ uint32_t murmurhash3(const uint8_t* data, size_t len_)
 }
 
 
-static unsigned char complement(unsigned char c)
+unsigned char complement(unsigned char c)
 {
     switch (c) {
         case 'a': return 't';

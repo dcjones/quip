@@ -1,5 +1,6 @@
 
 #include "samfmt.h"
+#include "samopt.h"
 #include "misc.h"
 #include "sam/sam.h"
 #include "sam/kseq.h"
@@ -244,129 +245,105 @@ static void read_aux(const uint8_t* src, size_t len, samopt_table_t* T)
 }
 
 
+
+static void bam_reserve_data(bam1_t* b, size_t size)
+{
+    if (b->m_data < (int) size) {
+        b->m_data = (int) size;
+        b->data = realloc_or_die(b->data, b->m_data);
+    }
+}
+
+
 void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
 {
-    /* Packing SAM data into a bam1_t is complicated. Instead, I output a read
-     * formatted in the SAM format to a temporary buffer and let samtools do the
-     * conversion. */
+    /* for the sake of terseness */
+    bam1_t*      b = out->b; 
+    bam1_core_t* c = &b->core;
 
-    bool aligned = !(r->flags & BAM_FUNMAP);
+    bool aligned      = !(r->flags & BAM_FUNMAP);
+    bool mate_aligned = !(r->flags & BAM_FMUNMAP);
 
-    str_t* s = &out->sambuf; /* for convenience */
-    s->n = 0;
+    size_t i, doff = 0;
 
     /* 1. qname */
-    str_append(s, &r->id);
+    c->l_qname = r->id.n + 1;
+    bam_reserve_data(b, c->l_qname);
+    memcpy(b->data + doff, r->id.s, c->l_qname);
+    doff += c->l_qname;
 
-    /* 2. flag */
-    str_reserve_extra(s, 12);
-    s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32"\t", r->flags);
+    /* 2. flags */
+    c->flag = r->flags;
 
     /* 3. rname */
-    if (aligned) {
-        str_append(s, &r->seqname);
-    }
-    else {
-        str_append_cstr(s, "*");
-    }
+    c->tid = aligned ? bam_get_tid(out->f->header, (char*) r->seqname.s) : -1;
 
-    /* 4. pos */
-    if (aligned) {
-        str_reserve_extra(s, 12);
-        s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32, r->pos + 1);
-    }
-    else {
-        str_append_cstr(s, "\t0");
-    }
+    /* 4. position */
+    c->pos = aligned ? (int32_t) c->pos : -1;
 
     /* 5. mapq */
-    str_reserve_extra(s, 6);
-    s->n += snprintf((char*) s->s + s->n, 6, "\t%"PRIu8"\t",
-            aligned ? r->map_qual : 255);
+    c->qual = r->map_qual;
 
-    /* 6. cigar */
-    const char* cigar_chars = "MIDNSHP=X";
-    size_t i;
+    /* 6. cigar (and bin) */
+    bam_reserve_data(b, doff + 4 * r->cigar.n);
+    c->n_cigar = r->cigar.n;
+    for (i = 0; i < r->cigar.n; ++i) {
+        bam1_cigar(b)[i] =
+            (r->cigar.lens[i] << BAM_CIGAR_SHIFT) | r->cigar.ops[i];
+    }
 
-    if (aligned && r->cigar.n > 0) {
-        str_reserve_extra(s, r->cigar.n * 11 + 1);
-        for (i = 0; i < r->cigar.n; ++i) {
-            if (r->cigar.ops[i] > 8) continue;
-            s->n += snprintf((char*) s->s + s->n, 12, "%"PRIu32"%c",
-                        r->cigar.lens[i],
-                        cigar_chars[r->cigar.ops[i]]);
-        }
-    }
-    else {
-        str_append_cstr(s, "*");
-    }
+    c->bin = bam_reg2bin(c->pos, bam_calend(c, bam1_cigar(b)));
 
     /* 7. rnext */
-    if (aligned && r->mate_seqname.n > 0) {
-        str_append_cstr(s, "\t");
-        str_append(s, &r->mate_seqname);
-    }
-    else {
-        str_append_cstr(s, "\t*");
-    }
+    c->mtid = (mate_aligned && r->mate_seqname.n > 0) ?
+        bam_get_tid(out->f->header, (char*) r->mate_seqname.s) : -1;
 
     /* 8. pnext */
-    if (aligned) {
-        str_reserve_extra(s, 12);
-        s->n += snprintf((char*) s->s + s->n, 12, "\t%"PRIu32, r->mate_pos + 1);
-    }
-    else {
-        str_append_cstr(s, "\t0");
-    }
+    c->mpos = mate_aligned ? (int32_t) r->mate_pos : -1;
 
     /* 9. tlen */
-    str_reserve_extra(s, 13);
-    s->n += snprintf((char*) s->s + s->n, 13, "\t%"PRId32,
-                aligned ? r->tlen : 0);
+    c->isize = r->tlen;
 
-    /* 10. seq */
-    if (r->seq.n > 0) {
-        str_append_cstr(s, "\t");
-        if (r->strand) {
-            str_copy(&out->tmp, &r->seq);
-            str_revcomp(out->tmp.s, out->tmp.n);
-            str_append(s, &out->tmp);
+    /* 10. seq and qual */
+    c->l_qseq = r->qual.n;
+    bam_reserve_data(b, doff + c->l_qseq + (c->l_qseq + 1) / 2);
+    uint8_t* s = bam1_seq(b);
+    memset(s, 0, (c->l_qseq + 1) / 2);
+
+    /* Quip stores read in their original orientation. We need to reorient
+     * for SAM/BAM. */
+    if (r->strand) {
+        uint8_t u;
+        for (i = 0; i < r->seq.n; ++i) {
+            u = complement(r->seq.s[r->seq.n - 1 - i]);
+            s[i/2] |= bam_nt16_table[u] << (4 * (1 - i % 2));
         }
-        else {
-            str_append(s, &r->seq);
+        doff += (c->l_qseq + 1) / 2;
+        s = b->data + doff;
+
+        for (i = 0; i < r->seq.n; ++i) {
+            u = r->qual.s[r->qual.n - 1 - i];
+            s[i] = u == '*' ? 0xff : u - 33;
         }
+        doff += c->l_qseq;
     }
     else {
-        str_append_cstr(s, "\t*");
+        for (i = 0; i < r->seq.n; ++i) {
+            s[i/2] |= bam_nt16_table[(int) r->seq.s[i]] << (4 * (1 - i % 2));
+        }
+        doff += (c->l_qseq + 1) / 2;
+        s = b->data + doff;
+
+        for (i = 0; i < r->seq.n; ++i) {
+            s[i] = r->qual.s[i] == '*' ? 0xff : r->qual.s[i] - 33;
+        }
+        doff += c->l_qseq;
     }
 
-    /* 11. qual */
-    if (r->qual.n > 0) {
-        str_append_cstr(s, "\t");
-        if (r->strand) {
-            str_copy(&out->tmp, &r->qual);
-            str_rev(out->tmp.s, out->tmp.n);
-            str_append(s, &out->tmp);
-        }
-        else {
-            str_append(s, &r->qual);
-        }
-    }
-    else {
-        str_append_cstr(s, "\t*");
-    }
 
     /* 12. aux */
-    /* TODO: correctly check if there are no optional fields */
-    if (samopt_table_size(r->aux) > 0) {
-        samopt_table_append_str(r->aux, s);;
-    }
+    samopt_table_bam_dump(r->aux, b);
 
-    s->s[s->n] = '\0';
-
-    out->sambuf_next = out->sambuf.s;
-    sam_rewind(out->sambuf_file);
-    sam_read1(out->sambuf_file, out->f->header, out->b);
     samwrite(out->f, out->b);
 }
 
