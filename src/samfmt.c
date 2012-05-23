@@ -11,29 +11,7 @@ struct quip_sam_out_t_
 {
     samfile_t* f;
     bam1_t* b;
-
-    str_t tmp;
-    str_t sambuf;
-    unsigned char* sambuf_next;
-    tamFile sambuf_file;
 };
-
-
-size_t sambuf_reader(void* reader_data, uint8_t* data, size_t size)
-{
-    char** sambuf_next = (char**) reader_data;
-
-    char* c = *sambuf_next;
-    size_t i;
-    for (i = 0; i < size && c[i]; ++i) {
-        data[i] = (uint8_t) c[i];
-    }
-
-    *sambuf_next = c + i;
-
-    return i;
-}
-
 
 quip_sam_out_t* quip_sam_out_open(
     quip_writer_t     writer,
@@ -71,9 +49,6 @@ quip_sam_out_t* quip_sam_out_open(
     }
 
     out->b = bam_init1();
-    str_init(&out->tmp);
-    str_init(&out->sambuf);
-    out->sambuf_file = sam_open_in(sambuf_reader, (void*) &out->sambuf_next);
 
     return out;
 }
@@ -83,9 +58,6 @@ void quip_sam_out_close(quip_sam_out_t* out)
     if (out) {
         samclose(out->f);
         bam_destroy1(out->b);
-        sam_close(out->sambuf_file);
-        str_free(&out->tmp);
-        str_free(&out->sambuf);
         free(out);
     }
 }
