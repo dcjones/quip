@@ -270,8 +270,10 @@ struct quip_sam_in_t_
 quip_sam_in_t* quip_sam_in_open(
                     quip_reader_t reader,
                     void*         reader_data,
-                    ATTRIB_UNUSED quip_opt_t opts)
+                    quip_opt_t    opts)
 {
+    UNUSED(opts);
+
     quip_sam_in_t* in = malloc_or_die(sizeof(quip_sam_in_t));
 
     bool binary = (opts & QUIP_OPT_SAM_BAM) != 0;

@@ -52,7 +52,7 @@ static const int DEFAULT_COMPRESS_LEVEL = 5;
 static const int DEFAULT_BLOCK_SIZE = 64 * 1024;
 static const int MAX_BLOCK_SIZE = 64 * 1024;
 
-static const int BLOCK_HEADER_LENGTH = 18;
+#define BLOCK_HEADER_LENGTH 18
 static const int BLOCK_FOOTER_LENGTH = 8;
 
 static const int GZIP_ID1 = 31;
@@ -450,16 +450,22 @@ int bgzf_close(BGZF* fp)
     return 0;
 }
 
-int bgzf_check_EOF(ATTRIB_UNUSED BGZF *fp)
+int bgzf_check_EOF(BGZF *fp)
 {
+    UNUSED(fp);
+
     /* quip I/O behaves like a pipe, so we cannot seek to check
      * if the file as the proper EOF magic. */
     errno = ESPIPE;
     return -1;
 }
 
-int64_t bgzf_seek(ATTRIB_UNUSED BGZF* fp, ATTRIB_UNUSED int64_t pos, ATTRIB_UNUSED int where)
+int64_t bgzf_seek(BGZF* fp, int64_t pos, int where)
 {
+    UNUSED(fp);
+    UNUSED(pos);
+    UNUSED(where);
+
     /* quip I/O behaves like a pipe, so we cannot seek. */
     errno = ESPIPE;
     return -1;

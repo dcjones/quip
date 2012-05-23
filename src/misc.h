@@ -26,14 +26,7 @@ FILE* fopen_or_die(const char*, const char*);
 #define prefetch(p, rw, locality)
 #endif
 
-#ifndef __attribute__
-#if __GNUC__ < 2 || (__GNUC__ == 2 && __GNUC_MINOR__ < 8) || __STRICT_ANSI__
-#define __attribute__(x)
-#endif
-#endif
-
-#define ATTRIB_UNUSED __attribute__((__unused__))
-
+#define UNUSED(x) (void)(x)
 
 /* Windows reads/writes in "text mode" by default. This is confusing 
  * and wrong, so we need to disable it.

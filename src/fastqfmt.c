@@ -18,8 +18,10 @@ struct quip_fastq_out_t_
 quip_fastq_out_t* quip_fastq_out_open(
                     quip_writer_t writer,
                     void*         writer_data,
-                    ATTRIB_UNUSED quip_opt_t opts)
+                    quip_opt_t    opts)
 {
+    UNUSED(opts);
+
     quip_fastq_out_t* out = malloc_or_die(sizeof(quip_fastq_out_t));
     out->writer      = writer;
     out->writer_data = writer_data;
@@ -80,8 +82,10 @@ struct quip_fastq_in_t_
 quip_fastq_in_t* quip_fastq_in_open(
                     quip_reader_t reader,
                     void*         reader_data,
-                    ATTRIB_UNUSED quip_opt_t opts)
+                    quip_opt_t    opts)
 {
+    UNUSED(opts);
+
     quip_fastq_in_t* in = malloc_or_die(sizeof(quip_fastq_in_t));
 
     in->reader      = reader;

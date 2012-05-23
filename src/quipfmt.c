@@ -871,8 +871,10 @@ static size_t seq_buf_reader(void* param, uint8_t* data, size_t size)
 
 quip_quip_in_t* quip_quip_in_open(
     quip_reader_t reader, void* reader_data,
-    ATTRIB_UNUSED quip_opt_t opts, const seqmap_t* ref)
+    quip_opt_t opts, const seqmap_t* ref)
 {
+    UNUSED(opts);
+
     quip_quip_in_t* D = malloc_or_die(sizeof(quip_quip_in_t));
 
     D->reader = reader;
