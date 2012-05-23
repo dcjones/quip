@@ -1245,15 +1245,24 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
 
     uint64_t block_bytes;
 
-    uint8_t header[7];
-    if (reader(reader_data, header, 7) < 7 ||
+    uint8_t header[8];
+    if (reader(reader_data, header, 8) < 8 ||
         memcmp(quip_header_magic, header, 6) != 0) {
         quip_error("Input is not a quip file.");
     }
 
-    if (header[6] != quip_header_version) {
-        quip_error("Input is an old quip format --- an older version of quip is needed.");
+    check_header_version(header[6]);
+
+    if (header[7] & QUIP_FLAG_REFERENCE) {
+        if (reader(reader_data, NULL, 8) < 8) {
+            quip_error("Unexpected end of file.");
+        }
     }
+
+    /* read aux data */
+    l->lead_fmt   = read_uint8(reader, reader_data);
+    l->lead_bytes = read_uint64(reader, reader_data);
+    reader(reader_data, NULL, l->lead_bytes);
 
 
     while (true) {
@@ -1287,6 +1296,13 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
         l->id_bytes[0] += read_uint32(reader, reader_data);
         n = read_uint32(reader, reader_data);
         l->id_bytes[1] += n;
+        block_bytes += n;
+        read_uint64(reader, reader_data);
+
+        /* aux byte-count and checksum */
+        l->aux_bytes[0] += read_uint32(reader, reader_data);
+        n = read_uint32(reader, reader_data);
+        l->aux_bytes[1] += n;
         block_bytes += n;
         read_uint64(reader, reader_data);
 

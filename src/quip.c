@@ -440,23 +440,51 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
 
 static void quip_print_list(const char* fn, quip_list_t* l)
 {
-    const uint64_t read_overhead = 6;
+    if (quip_verbose) {
+        printf("%10"PRIu64"  "
+               "%12"PRIu64"     "
+               "%12"PRIu64"   "
+               "%12"PRIu64"    "
+               "%0.4f      "
+               "%12"PRIu64"    "
+               "%12"PRIu64"         "
+               "%0.4f      "
+               "%12"PRIu64"    "
+               "%12"PRIu64"     "
+               "%0.4f       "
+               "%12"PRIu64"     "
+               "%12"PRIu64"      "
+               "%0.4f  "
+               "%s"
+               "\n",
+               l->num_reads, l->num_bases,
+               l->id_bytes[0],   l->id_bytes[1],
+               (double) l->id_bytes[1] / (double) l->id_bytes[0],
+               l->aux_bytes[0],  l->aux_bytes[1],
+               (double) l->aux_bytes[1] / (double) l->aux_bytes[0],
+               l->seq_bytes[0],  l->seq_bytes[1],
+               (double) l->seq_bytes[1] / (double) l->seq_bytes[0],
+               l->qual_bytes[0], l->qual_bytes[1],
+               (double) l->qual_bytes[1] / (double) l->qual_bytes[0],
+               fn);
+    }
+    else {
+        uint64_t total_bytes[2];
+        total_bytes[0] = l->id_bytes[0] + l->aux_bytes[0] + l->seq_bytes[0] + l->qual_bytes[0] + l->num_reads;
+        total_bytes[1] = l->id_bytes[1] + l->aux_bytes[1] + l->seq_bytes[1] + l->qual_bytes[1] + l->header_bytes;
 
-    uint64_t total_bytes[2];
-    total_bytes[0] = l->id_bytes[0] + l->seq_bytes[0] + l->qual_bytes[0] + read_overhead * l->num_reads;
-    total_bytes[1] = l->id_bytes[1] + l->seq_bytes[1] + l->qual_bytes[1] + l->header_bytes;
-
-    printf("%10"PRIu64"  "
-           "%12"PRIu64"  "
-           "%12"PRIu64"  "
-           "%12"PRIu64"  "
-           "%0.4f  "
-           "%s"
-           "\n",
-           l->num_reads, l->num_bases,
-           total_bytes[0], total_bytes[1],
-           (double) total_bytes[1] / (double) total_bytes[0],
-           fn);
+        printf("%10"PRIu64"  "
+               "%12"PRIu64"  "
+               "%12"PRIu64"  "
+               "%12"PRIu64"  "
+               "%0.4f  "
+               "%s"
+               "\n",
+               l->num_reads, l->num_bases,
+               total_bytes[0], total_bytes[1],
+               (double) total_bytes[1] / (double) total_bytes[0],
+               fn);
+    }
 }
 
 
@@ -468,7 +496,17 @@ static int quip_cmd_list(char** fns, size_t fn_count)
     size_t i;
     quip_list_t l;
 
-    printf("     Reads         Bases  Uncompressed    Compressed   Ratio  Filename\n");
+    if (quip_verbose) {
+        printf("     Reads         Bases  "
+               "ID Uncompressed  ID Compressed  ID Ratio  "
+               "Aux Uncompressed  Aux Compressed   Aux Ratio  "
+               "Seq Uncompressed  Seq Compressed  Seq Ratio  "
+               "Qual Uncompressed  Qual Compressed  Qual Ratio  "
+               "Filename\n");
+    }
+    else {
+        printf("     Reads         Bases  Uncompressed    Compressed   Ratio  Filename\n");
+    }
 
     if (fn_count == 0) {
         quip_list(block_reader, stdin, &l);

@@ -90,6 +90,10 @@ following header.
     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+    | Uncomp. Bytes |  Comp. Bytes  |        CRC64 Checksum         |   (Aux chunk description)
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
+
+    +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
     | Uncomp. Bytes |  Comp. Bytes  |        CRC64 Checksum         |   (Sequence chunk description)
     +---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+---+
 
@@ -123,6 +127,16 @@ qualities.
 
 Compressed Id Chunk
 -------------------
+
+    +---+ ... +---+
+    |    Data     |
+    +---+ ... +---+
+
+Compressed ids are pure arithmetic coded data.
+
+
+Compressed Aux Chunk
+--------------------
 
     +---+ ... +---+
     |    Data     |

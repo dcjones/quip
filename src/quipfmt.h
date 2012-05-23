@@ -45,6 +45,10 @@ typedef struct quip_list_t_
     uint64_t num_bases;
     uint64_t num_reads;
 
+    /* leading extra bytes (e.g. SAM header) */
+    quip_fmt_t lead_fmt;
+    uint64_t   lead_bytes;
+
     /* the uncompressed (0) and compressed (1) byte counts */
     uint64_t id_bytes[2];
     uint64_t aux_bytes[2];
