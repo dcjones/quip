@@ -517,7 +517,7 @@ static int quip_cmd_list(char** fns, size_t fn_count)
             fn = fns[i];
             fn_len = strlen(fn);
 
-            if (fn_len < 3 || memcmp(fn + (fn_len - 3), ".qp", 3) != 0) {
+            if (!force_flag && (fn_len < 3 || memcmp(fn + (fn_len - 3), ".qp", 3) != 0)) {
                 quip_warning("unknown suffix -- ignored.");
                 continue;
             }

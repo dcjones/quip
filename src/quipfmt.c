@@ -1235,8 +1235,6 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
 
 void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
 {
-    /* TODO: update to the new format. */
-
     memset(l, 0, sizeof(quip_list_t));
     uint32_t block_reads;
     uint32_t readlen_count;
