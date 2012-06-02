@@ -2,7 +2,6 @@
 
 #include "samopt.h"
 #include "samoptenc.h"
-#include "kmer.h"
 #include "misc.h"
 #include "ac.h"
 #include "dist.h"
@@ -24,8 +23,14 @@ struct samopt_table_t_
 
 static uint32_t samopt_key_hash(const unsigned char key[2])
 {
-    kmer_t k = ((kmer_t) key[1] << 8) | (kmer_t) key[0];
-    return kmer_hash(k);
+    uint32_t x = ((uint32_t) key[1] << 8) | key[0];
+    x = (x + 0x7ed55d16) + (x << 12);
+    x = (x ^ 0xc761c23c) ^ (x >> 19);
+    x = (x + 0x165667b1) + (x << 5);
+    x = (x + 0xd3a2646c) ^ (x << 9);
+    x = (x + 0xfd7046c5) + (x << 3);
+    x = (x ^ 0xb55a4f09) ^ (x >> 16);
+    return x;
 }
 
 
