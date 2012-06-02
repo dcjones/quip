@@ -52,6 +52,28 @@ decompression.
     |  Reference Sequence Checksum  |
     +---+---+---+---+---+---+---+---+
 
+This is followed by the file-name of the reference sequence, which is preceded by its length.
+
+    +---+---+---+---+---+---+---+---+---+- ... -+
+    | Ref. Name Len | Reference File Name       |
+    +---+---+---+---+---+---+---+---+---+- ... -+
+
+We then list an index of all the sequences present in the reference along with
+their lengths.
+
+    +---+---+---+---+
+    |   Num. Seqs.  |
+    +---+---+---+---+
+
+    +---+---+---+---+---+---+---+---+- ... -+---+---+---+---+---+---+---+---+
+    | Seq. Name Len.| Sequence Name         |       Sequence Length         |
+    +---+---+---+---+---+---+---+---+- ... -+---+---+---+---+---+---+---+---+
+
+    ...
+
+None of this information is strictly necessary for decompression, but very useful
+when one needs to locate the correct reference sequence.
+
 
 Auxiliary Data
 --------------

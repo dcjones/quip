@@ -49,13 +49,13 @@ void check_header_version(uint8_t v)
 }
 
 
-static void write_uint8(quip_writer_t writer, void* writer_data, uint8_t x)
+void write_uint8(quip_writer_t writer, void* writer_data, uint8_t x)
 {
     writer(writer_data, &x, 1);
 }
 
 
-static void write_uint32(quip_writer_t writer, void* writer_data, uint32_t x)
+void write_uint32(quip_writer_t writer, void* writer_data, uint32_t x)
 {
     uint8_t bytes[4] = { (uint8_t) (x >> 24),
                          (uint8_t) (x >> 16),
@@ -65,7 +65,7 @@ static void write_uint32(quip_writer_t writer, void* writer_data, uint32_t x)
 }
 
 
-static void write_uint64(quip_writer_t writer, void* writer_data, uint64_t x)
+void write_uint64(quip_writer_t writer, void* writer_data, uint64_t x)
 {
     uint8_t bytes[8] = { (uint8_t) (x >> 56),
                          (uint8_t) (x >> 48),
@@ -80,7 +80,7 @@ static void write_uint64(quip_writer_t writer, void* writer_data, uint64_t x)
 }
 
 
-static uint8_t read_uint8(quip_reader_t reader, void* reader_data)
+uint8_t read_uint8(quip_reader_t reader, void* reader_data)
 {
     uint8_t x;
     if (reader(reader_data, &x, 1) == 0) quip_error("Unexpected end of file.");
@@ -89,7 +89,7 @@ static uint8_t read_uint8(quip_reader_t reader, void* reader_data)
 }
 
 
-static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
+uint32_t read_uint32(quip_reader_t reader, void* reader_data)
 {
     uint8_t bytes[4];
     if (reader(reader_data, bytes, 4) < 4) quip_error("Unexpected end of file.");
@@ -101,7 +101,7 @@ static uint32_t read_uint32(quip_reader_t reader, void* reader_data)
 }
 
 
-static uint64_t read_uint64(quip_reader_t reader, void* reader_data)
+uint64_t read_uint64(quip_reader_t reader, void* reader_data)
 {
     uint8_t bytes[8];
     if (reader(reader_data, bytes, 8) < 8) quip_error("Unexpected end of file.");
@@ -354,8 +354,7 @@ quip_quip_out_t* quip_quip_out_open(
 
     /* write reference hash */
     if (ref_based) {
-        uint64_t ref_hash = seqmap_crc64(ref);
-        write_uint64(C->writer, C->writer_data, ref_hash);
+        seqmap_write_quip_header_info(C->writer, C->writer_data, ref);
     }
 
     /* write aux data */
@@ -942,11 +941,7 @@ quip_quip_in_t* quip_quip_in_open(
             quip_error("A reference sequence is needed for decompression.");
         }
 
-        uint64_t ref_hash = read_uint64(D->reader, D->reader_data);
-
-        if (seqmap_crc64(ref) != ref_hash) {
-            quip_error("Incorrect reference sequence: a different sequence was used for compression.");
-        }
+        seqmap_check_quip_header_info(D->reader, D->reader_data, ref);
     }
 
     /* read aux data */
@@ -1248,8 +1243,20 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
     check_header_version(header[6]);
 
     if (header[7] & QUIP_FLAG_REFERENCE) {
-        if (reader(reader_data, NULL, 8) < 8) {
+        read_uint64(reader, reader_data); /* CRC */
+        uint32_t fnlen = read_uint32(reader, reader_data); /* file name length */
+        if (reader(reader_data, NULL, fnlen) < fnlen) {
             quip_error("Unexpected end of file.");
+        }
+
+        uint32_t seqname_len, i, n = read_uint32(reader, reader_data);
+        for (i = 0; i < n; ++i) {
+            seqname_len = read_uint32(reader, reader_data);
+            if (reader(reader_data, NULL, seqname_len) < seqname_len) {
+                quip_error("Unexpected end of file.");
+            }
+
+            read_uint64(reader, reader_data); /* sequence length */
         }
     }
 

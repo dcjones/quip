@@ -12,7 +12,6 @@ typedef struct named_seq_t_
 {
     char* seqname;
     twobit_t* seq;
-    uint64_t  crc;
 } named_seq_t;
 
 
@@ -35,6 +34,9 @@ struct seqmap_t_
 
     /* number of stored sequences */
     size_t n;
+
+    /* file name from which the set of sequences was read */
+    char* fn;
 };
 
 
@@ -44,6 +46,7 @@ seqmap_t* seqmap_alloc()
     M->seqs = NULL;
     M->size = 0;
     M->n    = 0;
+    M->fn   = NULL;
 
     return M;
 }
@@ -64,6 +67,7 @@ void seqmap_clear(seqmap_t* M)
 void seqmap_free(seqmap_t* M)
 {
     seqmap_clear(M);
+    free(M->fn);
     free(M);
 }
 
@@ -101,8 +105,16 @@ static void check_unique(const seqmap_t* M)
 }
 
 
-void seqmap_read_fasta(seqmap_t* M, FILE* fasta_f)
+void seqmap_read_fasta(seqmap_t* M, const char* fn)
 {
+    const char* prev_quip_in_fname = quip_in_fname;
+    quip_in_fname = fn;
+
+    FILE* f = fopen(fn, "rb");
+    if (f == NULL) {
+        quip_error("Error opening file.");
+    }
+
     const size_t bufsize = 1024;
     char* buf = malloc_or_die(bufsize); buf[0] = '\0';
     char* next = buf;
@@ -122,7 +134,7 @@ void seqmap_read_fasta(seqmap_t* M, FILE* fasta_f)
     while (true) {
         /* end of buffer */
         if (*next == '\0') {
-            if (fgets(buf, bufsize, fasta_f) == NULL) {
+            if (fgets(buf, bufsize, f) == NULL) {
                 /* end of file */
                 break;
             }
@@ -188,6 +200,13 @@ void seqmap_read_fasta(seqmap_t* M, FILE* fasta_f)
 
     str_free(&seqname);
     free(buf);
+
+    M->fn = realloc(M->fn, strlen(fn) + 1);
+    memcpy(M->fn, fn, strlen(fn) + 1);
+
+    quip_in_fname = prev_quip_in_fname;
+
+    fclose(f);
 }
 
 
@@ -237,4 +256,72 @@ uint64_t seqmap_crc64(const seqmap_t* M)
 
     return crc;
 }
+
+
+void seqmap_write_quip_header_info(quip_writer_t writer, void* writer_data, const seqmap_t* M)
+{
+    uint64_t ref_hash = seqmap_crc64(M);
+    write_uint64(writer, writer_data, ref_hash);
+    write_uint32(writer, writer_data, strlen(M->fn));
+    writer(writer_data, (uint8_t*) M->fn, strlen(M->fn));
+    write_uint32(writer, writer_data, M->n);
+
+    size_t i;
+    for (i = 0; i < M->n; ++i) {
+        write_uint32(writer, writer_data, strlen(M->seqs[i].seqname));
+        writer(writer_data, (uint8_t*) M->seqs[i].seqname, strlen(M->seqs[i].seqname));
+        write_uint64(writer, writer_data, twobit_len(M->seqs[i].seq));
+    }
+}
+
+
+static void incorrect_ref_error()
+{
+    quip_error("Incorrect reference sequence: a different sequence was used for compression.");
+}
+
+
+void seqmap_check_quip_header_info(quip_reader_t reader, void* reader_data, const seqmap_t* M)
+{
+    if (seqmap_crc64(M) != read_uint64(reader, reader_data)) {
+        incorrect_ref_error();
+    }
+
+    uint32_t fnlen = read_uint32(reader, reader_data);
+    reader(reader_data, NULL, fnlen);
+
+    uint32_t n = read_uint32(reader, reader_data);
+    if (M->n != n) {
+        incorrect_ref_error();
+    }
+
+    char*  seqname = NULL;
+    uint32_t seqname_len, seqname_size = 0;
+
+    size_t i;
+    for (i = 0; i < n; ++i) {
+        seqname_len = read_uint32(reader, reader_data);
+        if (seqname_len != strlen(M->seqs[i].seqname)) {
+            incorrect_ref_error();
+        }
+
+        if (seqname_size < seqname_len) {
+            seqname = realloc_or_die(seqname, seqname_len);
+            seqname_size = seqname_len;
+        }
+
+        reader(reader_data, (uint8_t*) seqname, seqname_len);
+        if (memcmp(M->seqs[i].seqname, seqname, seqname_len) != 0) {
+            incorrect_ref_error();
+        }
+
+        if (read_uint64(reader, reader_data) != twobit_len(M->seqs[i].seq)) {
+            incorrect_ref_error();
+        }
+    }
+
+    free(seqname);
+}
+
+
 

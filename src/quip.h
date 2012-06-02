@@ -173,6 +173,14 @@ typedef void   (*quip_writer_t) (void* writer_data, const uint8_t* data, size_t 
 
 typedef size_t (*quip_reader_t) (void* reader_data, uint8_t* data, size_t size);
 
+/* Some hand read/write functions. */
+void write_uint8(quip_writer_t writer, void* writer_data, uint8_t x);
+void write_uint32(quip_writer_t writer, void* writer_data, uint32_t x);
+void write_uint64(quip_writer_t writer, void* writer_data, uint64_t x);
+uint8_t read_uint8(quip_reader_t reader, void* reader_data);
+uint32_t read_uint32(quip_reader_t reader, void* reader_data);
+uint64_t read_uint64(quip_reader_t reader, void* reader_data);
+
 
 /*
  * Formats supported by quip.

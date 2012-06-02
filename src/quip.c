@@ -264,15 +264,8 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
 
     seqmap_t* ref = NULL;
     if (ref_fn != NULL) {
-        FILE* ref_f = fopen(ref_fn, "rb");
-        if (ref_f == NULL) {
-            fprintf(stderr, "%s: %s: Error opening file.\n", quip_prog_name, ref_fn);
-            return EXIT_FAILURE;
-        }
-
         ref = seqmap_alloc();
-        seqmap_read_fasta(ref, ref_f);
-        fclose(ref_f);
+        seqmap_read_fasta(ref, ref_fn);
     }
 
     char* out_fn = NULL;
