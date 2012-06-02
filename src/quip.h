@@ -289,6 +289,9 @@ extern const char* quip_prog_name;
 /* Input file name. */
 extern const char* quip_in_fname;
 
+/* Number of reads used for assembly. */
+extern size_t quip_assembly_n;
+
 /* Exit with cleanup. */
 void quip_abort();
 

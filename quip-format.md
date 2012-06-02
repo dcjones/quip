@@ -74,6 +74,14 @@ their lengths.
 None of this information is strictly necessary for decompression, but very useful
 when one needs to locate the correct reference sequence.
 
+If assembly-based compression was used, a 8-byte unsigned integer encoded storing
+the number or reads used for assembly.
+
+    +---+---+---+---+---+---+---+---+
+    |      Num. Assembled Reads     |
+    +---+---+---+---+---+---+---+---+
+
+
 
 Auxiliary Data
 --------------

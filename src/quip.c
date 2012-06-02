@@ -549,7 +549,8 @@ int main(int argc, char* argv[])
         {"output",     required_argument, NULL, 'o'},
         {"to",         required_argument, NULL, 'o'},
         {"reference",  required_argument, NULL, 'r'},
-        {"assembly",   no_argument, NULL, 'a'},
+        {"assembly-n", required_argument, NULL, 'n'},
+        {"assembly",   no_argument      , NULL, 'a'},
         {"list",       no_argument, NULL, 'l'},
         {"test",       no_argument, NULL, 't'},
         {"stdout",     no_argument, NULL, 'c'},
@@ -582,7 +583,7 @@ int main(int argc, char* argv[])
     }
     
     while (1) {
-        opt = getopt_long(argc, argv, "i:o:r:ltacdfvhV", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "i:o:r:n:ltacdfvhV", long_options, &opt_idx);
 
         if (opt == -1) break;
 
@@ -599,6 +600,11 @@ int main(int argc, char* argv[])
 
             case 'r':
                 ref_fn = optarg;
+                break;
+
+            case 'n':
+                quip_assembly_n = strtoul(optarg, NULL, 10);
+                assembly_flag = true;
                 break;
 
             case 'l':

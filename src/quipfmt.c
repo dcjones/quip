@@ -357,6 +357,10 @@ quip_quip_out_t* quip_quip_out_open(
         seqmap_write_quip_header_info(C->writer, C->writer_data, ref);
     }
 
+    if (assembly_based) {
+        write_uint64(C->writer, C->writer_data, quip_assembly_n);
+    }
+
     /* write aux data */
     if (aux != NULL) {
         write_uint8(C->writer, C->writer_data, (uint8_t) aux->fmt);
@@ -944,6 +948,10 @@ quip_quip_in_t* quip_quip_in_open(
         seqmap_check_quip_header_info(D->reader, D->reader_data, ref);
     }
 
+    if (assembly_based) {
+        quip_assembly_n = read_uint64(D->reader, D->reader_data);
+    }
+
     /* read aux data */
     D->aux_data_type = read_uint8(D->reader, D->reader_data);
     uint64_t aux_size = read_uint64(D->reader, D->reader_data);
@@ -1258,6 +1266,10 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
 
             read_uint64(reader, reader_data); /* sequence length */
         }
+    }
+
+    if (header[7] & QUIP_FLAG_ASSEMBLED) {
+        read_uint64(reader, reader_data); // quip_assembly_n
     }
 
     /* read aux data */

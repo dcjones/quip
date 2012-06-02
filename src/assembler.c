@@ -38,7 +38,7 @@ static const size_t bloom_n = 4000000;
 static const size_t bloom_m = 8;
 
 /* Number of reads to be used for assembly. */
-static const size_t assembly_n = 2500000;
+size_t quip_assembly_n = 2500000;
 
 
 struct assembler_t_
@@ -111,7 +111,7 @@ assembler_t* assembler_alloc(
         A->B = bloom_alloc(bloom_n, bloom_m);
         A->x = twobit_alloc();
         A->H = kmerhash_alloc();
-        A->assembly_pending_n = assembly_n;
+        A->assembly_pending_n = quip_assembly_n;
     }
 
     A->seqenc = seqenc_alloc_encoder(writer, writer_data, ref);
@@ -583,7 +583,7 @@ disassembler_t* disassembler_alloc(
 
         D->B = bloom_alloc(bloom_n, bloom_m);
         D->x = twobit_alloc();
-        D->assembly_pending_n = assembly_n;
+        D->assembly_pending_n = quip_assembly_n;
     }
 
     return D;
