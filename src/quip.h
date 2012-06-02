@@ -57,8 +57,8 @@ extern "C" {
 typedef struct
 {
     unsigned char* s;    /* null-terminated string */
-    size_t         n;    /* length of s */
-    size_t         size; /* bytes allocated for s */
+    uint32_t       n;    /* length of s */
+    uint32_t       size; /* bytes allocated for s */
 } str_t;
 
 void str_init(str_t*);
@@ -105,6 +105,7 @@ samopt_t*       samopt_table_get(samopt_table_t* M, const unsigned char key[2]);
 size_t          samopt_table_size(const samopt_table_t* M);
 void            samopt_table_copy(samopt_table_t* dest, const samopt_table_t* src);
 size_t          samopt_table_bytes(const samopt_table_t*);
+uint64_t        samopt_table_crc64_update(const samopt_table_t*, uint64_t crc);
 
 /* A read, either aligned or unaligned. */
 typedef struct short_read_t_

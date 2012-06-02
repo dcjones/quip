@@ -6,6 +6,7 @@
 #include "misc.h"
 #include "ac.h"
 #include "dist.h"
+#include "crc64.h"
 #include <string.h>
 #include <assert.h>
 
@@ -90,6 +91,22 @@ void samopt_table_free(samopt_table_t* M)
 size_t samopt_table_size(const samopt_table_t* M)
 {
     return M->m;
+}
+
+
+uint64_t samopt_table_crc64_update(const samopt_table_t* M, uint64_t crc)
+{
+    size_t i;
+    for (i = 0; i < M->n; ++i) {
+        if (samopt_table_empty(&M->xs[i])) continue;
+
+        crc = crc64_update((uint8_t*) M->xs[i].key, 2, crc);
+        crc = crc64_update((uint8_t*) &M->xs[i].type, 1, crc);
+        crc = crc64_update((uint8_t*) &M->xs[i].data->n, 4, crc);
+        crc = crc64_update(M->xs[i].data->s, M->xs[i].data->n, crc);
+    }
+
+    return crc;
 }
 
 
@@ -599,3 +616,7 @@ void samoptenc_reset_decoder(samoptenc_t* E)
     ac_reset_decoder(E->ac);
 }
 
+uint64_t samoptenc_crc64_update(const samoptenc_t* E, uint64_t crc)
+{
+    return samopt_table_crc64_update(E->last, crc);
+}

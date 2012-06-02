@@ -247,11 +247,9 @@ static void* aux_compressor_thread(void* ctx)
     size_t i;
     for (i = 0; i < C->chunk_len; ++i) {
         samoptenc_encode(C->auxenc, C->chunk[i].aux);
-
-        /* TODO: how can we do CRC checks? */
-        // C->aux_crc = crc64_update(
-        //     C->chunk[i].aux.s,
-        //     C->chunk[i].aux.n, C->aux_crc);
+        C->aux_crc = samoptenc_crc64_update(
+                        C->auxenc,
+                        C->aux_crc);
     }
 
     return NULL;
@@ -737,11 +735,9 @@ static void* aux_decompressor_thread(void* ctx)
     size_t i;
     for (i = 0; i < cnt; ++i) {
         samoptenc_decode(D->auxenc, D->chunk[i].aux);
-
-        /* TODO: crc check somehow */
-        // D->aux_crc = crc64_update(
-        //     D->chunk[i].aux.s,
-        //     D->chunk[i].aux.n, D->aux_crc);
+        D->aux_crc = samoptenc_crc64_update(
+                        D->auxenc,
+                        D->aux_crc);
     }
 
     return NULL;   

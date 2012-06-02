@@ -13,4 +13,4 @@
 
 uint64_t crc64_update(uint8_t* buf, size_t bufsize, uint64_t crc);
 
- #endif
+#endif

@@ -34,4 +34,7 @@ void   samoptenc_flush(samoptenc_t* E);
 void samoptenc_start_decoder(samoptenc_t* E);
 void samoptenc_reset_decoder(samoptenc_t* E);
 
+/* Update the checksum with the last encoded aux data. */
+uint64_t samoptenc_crc64_update(const samoptenc_t* E, uint64_t crc);
+
 #endif
