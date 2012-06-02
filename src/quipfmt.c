@@ -298,8 +298,8 @@ quip_quip_out_t* quip_quip_out_open(
 {
     quip_quip_out_t* C = malloc_or_die(sizeof(quip_quip_out_t));
 
-    bool quick = (opts & QUIP_OPT_QUIP_ASSEMBLY_FREE) != 0;
-    bool ref_based = ref != NULL;
+    bool assembly_based = (opts & QUIP_OPT_QUIP_ASSEMBLY) != 0;
+    bool ref_based      = ref != NULL;
     C->writer = writer;
     C->writer_data = writer_data;
     C->ref = ref;
@@ -340,7 +340,7 @@ quip_quip_out_t* quip_quip_out_open(
     C->idenc     = idenc_alloc_encoder(writer, (void*) writer_data);
     C->auxenc    = samoptenc_alloc_encoder(writer, (void*) writer_data);
     C->qualenc   = qualenc_alloc_encoder(writer, (void*) writer_data);
-    C->assembler = assembler_alloc(writer, (void*) writer_data, quick, ref);
+    C->assembler = assembler_alloc(writer, (void*) writer_data, assembly_based, ref);
 
     /* write header */
     C->writer(C->writer_data, quip_header_magic, 6);
@@ -348,8 +348,8 @@ quip_quip_out_t* quip_quip_out_open(
 
     /* header flags */
     uint8_t header_flags = 0;
-    if (ref_based) header_flags |= QUIP_FLAG_REFERENCE;
-    if (!quick)    header_flags |= QUIP_FLAG_ASSEMBLED;
+    if (ref_based)      header_flags |= QUIP_FLAG_REFERENCE;
+    if (assembly_based) header_flags |= QUIP_FLAG_ASSEMBLED;
     C->writer(C->writer_data, &header_flags, 1);
 
     /* write reference hash */
@@ -934,8 +934,8 @@ quip_quip_in_t* quip_quip_in_open(
 
     check_header_version(header_version);
 
-    bool quick     = (header_flags & QUIP_FLAG_ASSEMBLED) == 0;
-    bool ref_based = (header_flags & QUIP_FLAG_REFERENCE) != 0;
+    bool assembly_based = (header_flags & QUIP_FLAG_ASSEMBLED) == 0;
+    bool ref_based      = (header_flags & QUIP_FLAG_REFERENCE) != 0;
 
     if (ref_based) {
         if (ref == NULL) {
@@ -959,7 +959,7 @@ quip_quip_in_t* quip_quip_in_open(
 
     D->idenc   = idenc_alloc_decoder(id_buf_reader, (void*) D);
     D->auxenc  = samoptenc_alloc_decoder(aux_buf_reader, (void*) D);
-    D->disassembler = disassembler_alloc(seq_buf_reader, (void*) D, quick, ref);
+    D->disassembler = disassembler_alloc(seq_buf_reader, (void*) D, assembly_based, ref);
     D->qualenc = qualenc_alloc_decoder(qual_buf_reader, (void*) D);
 
     return D;

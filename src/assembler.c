@@ -43,8 +43,8 @@ static const size_t assembly_n = 2500000;
 
 struct assembler_t_
 {
-    /* don't actually assemble anything */
-    bool quick;
+    /* actually assemble something */
+    bool assemble;
 
     /* function to write compressed output */
     quip_writer_t writer;
@@ -89,13 +89,13 @@ static void build_kmer_hash(assembler_t* A);
 assembler_t* assembler_alloc(
         quip_writer_t   writer,
         void*           writer_data,
-        bool            quick,
+        bool            assemble,
         const seqmap_t* ref)
 {
     assembler_t* A = malloc_or_die(sizeof(assembler_t));
     memset(A, 0, sizeof(assembler_t));
 
-    A->quick = quick;
+    A->assemble = assemble;
 
     A->writer = writer;
     A->writer_data = writer_data;
@@ -103,7 +103,7 @@ assembler_t* assembler_alloc(
 
     /* If we are not assembling, we do not need any of the data structure
      * initialized below. */
-    if (!quick) {
+    if (assemble) {
         A->seeds = malloc_or_die(seeds_n * sizeof(twobit_t*));
         memset(A->seeds, 0, seeds_n * sizeof(twobit_t*));
         A->seeds_len = 0;
@@ -445,7 +445,7 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
         return;
     }
 
-    if (A->quick) {
+    if (!A->assemble) {
         seqenc_encode_char_seq(A->seqenc, seq->seq.s, seq->seq.n);
     }
     else if (A->assembly_pending_n > 0) {
@@ -496,7 +496,7 @@ size_t assembler_finish(assembler_t* A)
     /* This leads to slightly better compression, but slows things
        down a lot on large assemblies. */
 /*
-    if (!A->quick && A->assembly_pending_n == 0) {
+    if (A->assemble && A->assembly_pending_n == 0) {
         seqenc_get_supercontig_consensus(A->seqenc, A->supercontig);
         index_contigs(A);
     }
@@ -523,12 +523,10 @@ void assembler_flush(assembler_t* A)
 }
 
 
-/* TODO: restructure disassembler */
-
 struct disassembler_t_
 {
-    /* don't actually assemble anything */
-    bool quick;
+    /* actually assemble something */
+    bool assemble;
 
     /* function to read compressed input */
     quip_reader_t reader;
@@ -565,7 +563,7 @@ struct disassembler_t_
 disassembler_t* disassembler_alloc(
     quip_reader_t reader,
     void* reader_data,
-    bool quick,
+    bool assemble,
     const seqmap_t* ref)
 {
     disassembler_t* D = malloc_or_die(sizeof(disassembler_t));
@@ -575,10 +573,10 @@ disassembler_t* disassembler_alloc(
     D->reader = reader;
     D->reader_data = reader_data;
     D->ref = ref;
-    D->quick = quick;
+    D->assemble = assemble;
     D->initial_state = true;
 
-    if (!quick) {
+    if (assemble) {
         D->seeds = malloc_or_die(seeds_n * sizeof(twobit_t*));
         memset(D->seeds, 0, seeds_n * sizeof(twobit_t*));
         D->seeds_len = 0;

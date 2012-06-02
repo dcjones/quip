@@ -30,9 +30,9 @@
 #define O_BINARY 0
 #endif 
 
-static bool force_flag  = false;
-static bool quick_flag  = false;
-static bool stdout_flag = false;
+static bool force_flag    = false;
+static bool assembly_flag = false;
+static bool stdout_flag   = false;
 
 static enum {
     QUIP_CMD_CONVERT,
@@ -312,7 +312,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         in  = quip_in_open(block_reader,  (void*) stdin,  in_fmt, 0, ref);
         quip_get_aux(in, &aux);
 
-        if (out_fmt == QUIP_FMT_QUIP && quick_flag) opts = QUIP_OPT_QUIP_ASSEMBLY_FREE;
+        if (out_fmt == QUIP_FMT_QUIP && assembly_flag) opts = QUIP_OPT_QUIP_ASSEMBLY;
         else opts = 0;
 
         out = quip_out_open(block_writer, (void*) stdout, out_fmt, opts, &aux, ref);
@@ -411,7 +411,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
                 free(out_fn);
             }
 
-            if (out_fmt == QUIP_FMT_QUIP && quick_flag) opts = QUIP_OPT_QUIP_ASSEMBLY_FREE;
+            if (out_fmt == QUIP_FMT_QUIP && assembly_flag) opts = QUIP_OPT_QUIP_ASSEMBLY;
             else opts = 0;
 
             out = quip_out_open(block_writer, (void*) fout, out_fmt, opts, &aux, ref);
@@ -556,9 +556,9 @@ int main(int argc, char* argv[])
         {"output",     required_argument, NULL, 'o'},
         {"to",         required_argument, NULL, 'o'},
         {"reference",  required_argument, NULL, 'r'},
+        {"assembly",   no_argument, NULL, 'a'},
         {"list",       no_argument, NULL, 'l'},
         {"test",       no_argument, NULL, 't'},
-        {"quick",      no_argument, NULL, 'q'},
         {"stdout",     no_argument, NULL, 'c'},
         {"decompress", no_argument, NULL, 'd'},
         {"uncompress", no_argument, NULL, 'd'},
@@ -589,7 +589,7 @@ int main(int argc, char* argv[])
     }
     
     while (1) {
-        opt = getopt_long(argc, argv, "i:o:r:ltqcdfvhV", long_options, &opt_idx);
+        opt = getopt_long(argc, argv, "i:o:r:ltacdfvhV", long_options, &opt_idx);
 
         if (opt == -1) break;
 
@@ -617,8 +617,8 @@ int main(int argc, char* argv[])
                 out_fmt = QUIP_FMT_NULL;
                 break;
 
-            case 'q':
-                quick_flag = true;
+            case 'a':
+                assembly_flag = true;
                 break;
 
             case 'c':

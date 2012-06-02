@@ -193,9 +193,9 @@ typedef enum quip_fmt_t_
  * combinations of these flags.
  */
 
-/* Compress quip files without the de novo assembly step, which
- * is somewhat faster. */
-#define QUIP_OPT_QUIP_ASSEMBLY_FREE 1
+/* Compress quip files with a de novo assembly step: better compression
+ * at the cost of compression and decompression speed. */
+#define QUIP_OPT_QUIP_ASSEMBLY 1
 
 /* Output SAM files in BAM (compressed SAM) format. */
 #define QUIP_OPT_SAM_BAM 1

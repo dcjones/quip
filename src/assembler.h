@@ -27,7 +27,7 @@ typedef struct assembler_t_ assembler_t;
 assembler_t* assembler_alloc(
         quip_writer_t   writer,
         void*           writer_data,
-        bool            quick,
+        bool            assemble,
         const seqmap_t* ref);
 
 void assembler_free(assembler_t*);
@@ -45,7 +45,7 @@ typedef struct disassembler_t_ disassembler_t;
 disassembler_t* disassembler_alloc(
     quip_reader_t reader,
     void* reader_data,
-    bool quick,
+    bool  assemble,
     const seqmap_t* ref);
 
 void disassembler_free(disassembler_t*);
