@@ -937,7 +937,7 @@ quip_quip_in_t* quip_quip_in_open(
 
     check_header_version(header_version);
 
-    bool assembly_based = (header_flags & QUIP_FLAG_ASSEMBLED) == 0;
+    bool assembly_based = (header_flags & QUIP_FLAG_ASSEMBLED) != 0;
     bool ref_based      = (header_flags & QUIP_FLAG_REFERENCE) != 0;
 
     if (ref_based) {
