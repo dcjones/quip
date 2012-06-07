@@ -1,7 +1,8 @@
 ![Quip](http://cs.washington.edu/homes/dcjones/quip/logo.png)\
 
 Quip compresses next-generation sequencing data with extreme prejudice. It
-supports input and output in the FASTQ and SAM/BAM formats, compressing large
+supports input and output in the [FASTQ](http://en.wikipedia.org/wiki/Fastq)
+and [SAM/BAM](http://samtools.sourceforge.net/) formats, compressing large
 datasets to as little as 15% of their original size.
 
 Installation
@@ -272,16 +273,16 @@ References
 Christos Kozanitis, Chris Saunders, Semyon Kruglyak, Vineet Bafna, and George
 Varghese. Compressing genomic sequence fragments using SlimGene. Journal of
 Computational Biology : a Journal of Computational Molecular Cell Biology,
-18(3):401–13, March 2011. ISSN 1557-8666. doi: 10.1089/cmb.2010.0253.
+18(3):401-13, March 2011. ISSN 1557-8666. doi: 10.1089/cmb.2010.0253.
 
 P.A.Pevzner, H.Tang, and M.S.Waterman. An Eulerian path approach to DNA fragment
 assembly. Proceedings of the National Academy of Sciences of the United States
-of America, 98(17):9748–53, August 2001. ISSN 0027-8424. doi:
+of America, 98(17):9748-53, August 2001. ISSN 0027-8424. doi:
 10.1073/pnas.171285098.
 
 Li Fan, Pei Cao, J. Almeida, and A.Z. Broder. Summary cache: a scalable wide-
 area Web cache sharing protocol. IEEE/ACM Transactions on Networking,
-8(3):281–293, June 2000. ISSN 10636692. doi: 10.1109/90.851975.
+8(3):281-293, June 2000. ISSN 10636692. doi: 10.1109/90.851975.
 
 Flavio Bonomi, Michael Mitzenmacher, and Rina Panigrahy. An improved
 construction for counting Bloom filters. 14th Annual European Symposium on
