@@ -4,7 +4,12 @@ if test -d .git
 then
     desc=`git describe | sed 's/^v//'`
     branch=`git symbolic-ref HEAD | grep -oP '[\w\d]+$'`
-    V=$desc-$branch
+    if [ $branch != "master" ]
+    then
+        V=$desc-$branch
+    else
+        V=$desc
+    fi
 else
     V="unknown"
 fi

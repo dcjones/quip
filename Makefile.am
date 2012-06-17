@@ -4,4 +4,4 @@ SUBDIRS = src
 
 dist_man_MANS = quip.1
 
-EXTRA_DIST = README.md quip-format.md quip-api.md
+EXTRA_DIST = README.md quip-format.md
