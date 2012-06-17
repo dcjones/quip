@@ -52,12 +52,10 @@ const char* fmt_suffix[] =
 
 
 
-
-
 static void print_help()
 {
     printf(
-"Usage: quip [OPTION]... [FILE]...\n"
+"Usage: quip [option]... [file]...\n"
 "Compress, decompress, or convert high-throughput\n"
 "sequencing data with extreme prejudice.\n\n"
 "Options:\n"
@@ -66,16 +64,22 @@ static void print_help()
 "  -o, --output=FORMAT, --to=FORMAT\n"
 "                       output format (guessed by default)\n"
 "  -d, --decompress     decompress (equivalent to '--input=quip')\n"
+"  -r, --reference=ref.fasta\n"
+"                       use a reference sequence (in the FASTA format)\n"
+"                       to compress aligned reads\n"
+"  -a, --assembly        use de novo assembly to potentially increase\n"
+"                       compression at the cost of being somewhat slower.\n"
+"  -n, --assembly-n=N   assemble the first n reads (implies --asembly)\n"
+"                       (default: 2500000)\n"
 "  -t, --test           test compressed file integrity\n"
 "  -l, --list           list total number of reads and bases\n"
 "  -c, --stdout         write on standard output\n"
 "  -f, --force          allow overwriting of output files, etc\n"
-"  -q, --quick          compress quicker, at a lower compression ratio\n"
 "  -v, --verbose        output a great deal of useless information\n"
 "  -h, --help           print this message\n"
 "  -V, --version        display program version\n\n"
-"FORMAT is one of: quip, fastq, sam, bam\n"
-"Report bugs to <dcjones@cs.washington.edu>.\n");
+"FORMAT is one of: quip, fastq, sam, bam\n\n"
+"Air your grievances at: https://github.com/dcjones/quip/issues\n");
 }
 
 

@@ -1,15 +1,14 @@
-.TH QUIP 1 "February 27, 2012" "Quip"
+.TH QUIP 1 "June 17, 2012" "Quip"
 .SH NAME
-quip, unquip, quipcat \- compress and decompress FASTQ sequencing data
+quip, unquip, quipcat \- compress and decompress sequencing data
 .SH SYNOPSIS
 .PP
-quip [\f[I]options\f[]] [\f[I]input.fastq\f[]]...
+quip [\f[I]option\f[]]... [\f[I]file\f[]]...
 .SH DESCRIPTION
 .PP
 .I Quip
-compresses DNA/RNA sequencing data in the FASTQ format using an extremely
-efficient assembly algorithm and specialized statistical modeling. It works
-only on FASTQ data and cannot be applied to anything else.
+compresses next-generation sequencing data with extreme prejudice. It supports
+input and output in the FASTQ and SAM/BAM formats.
 .PP
 When invoked, \f[I]quip\f[] will compress a file and write the compressed data to a
 new file with the suffix \f[I].qp\f[] added, leaving the original file intact
@@ -17,20 +16,45 @@ new file with the suffix \f[I].qp\f[] added, leaving the original file intact
 file compressed with quip and write uncompressed output to a new file with the
 \f[I].qp\f[] suffix removed. If no input file is provided, data is read from standard input.
 .PP
-Quip will not automatically clobber output files unless the \f[I]--force\f[] option is supplied.
+Input and output formats can be provided explicitly with the \f[I]--input\f[]
+and \f[I]--output\f[] options.
+.PP
+Quip will not automatically clobber output files unless the \f[I]--force\f[]
+option is supplied.
 .SH OPTIONS
 .TP
-.B \-d, --decompress, --uncompress
-Decompress a compressed FASTQ file. Compression is the default, unless the program is
-invoked as \f[I]unquip\f[].
+.B \-i, --input=FORMAT, --from=FORMAT
+Format of the input file. By default the file is examined and the format is
+guessed. If input in stdin, the format will not be guessed and should be
+provided.
 .TP
-.B \-l, --list
-Print some summary information about the archive, including number of reads,
-number of bases, and compression ratio.
+.B \-o, --output=FORMAT, --to=FORMAT
+Output format. If not provided, this is guess from the filename. For example,
+a file named \f[I]reads.fastq.qp\f[] will be output in FASTQ format.
+.TP
+.B \-d, --decompress, --uncompress
+Decompress a compressed FASTQ file. Compression is the default, unless the
+program is invoked as \f[I]unquip\f[]. This is equivalent to
+.B --input=quip
+.TP
+.B \-r, --reference=genome.fasta
+Perform reference-based compression of aligned reads, with the given reference
+sequence in FASTA format.
+.TP
+.B \-a, --assembly
+Perform assembly-based compression of unaligned reads.
+.TP
+.B \-n, --assembly-n=N
+Assemble the first N reads. This implies \f[B]--assembly\f[]. (default:
+2500000)
 .TP
 .B \-t, --test
 Test the integrity of the archive by performing a dry-run decompression and
 verifying checksums along the way.
+.TP
+.B \-l, --list
+Print some summary information about the archive, including number of reads,
+number of bases, and compression ratio.
 .TP
 .B \-c, --stdout
 Print output to standard out.
@@ -39,13 +63,6 @@ Print output to standard out.
 Force compression or decompression even if this would involve writing binary
 data to a terminal, clobbering an existing file, or decompressing a file
 that does not have a \f[I].qp\f[] suffix.
-.TP
-.B \-q, --quick
-Skip the assembly step of the compression algorithm, saving time at
-the cost of a larger compressed file. This option is ignored when decompressing:
-files compressed with and without the \f[I]-q\f[] switch are in the same format
-and no special handling is needed to decompress them. This option will not
-significantly affect the decompression time.
 .TP
 .B \-v, --verbose
 While running, print a great deal of information that is of no use unless you
@@ -56,6 +73,10 @@ Print some information about the program version.
 .TP
 .B \-h, --help
 Print brief usage instructions.
+
+.SH SUPPORTED FORMATS
+In the current version of Quip, FORMAT can be any one of \f[B]quip\f[],
+\f[B]fastq\f[], \f[B]sam\f[], \f[B]bam\f[].
 
 .SH OPTIMIZING COMPRESSION
 .PP
@@ -97,24 +118,18 @@ the compression ratio, and is not recommended.
 
 .SH BUGS AND LIMITATIONS
 .PP
-Just in case some poor bastard has read this far and still doesn't get it:
-\f[B]Quip is not a general purpose compression program.\f[] It will not
-compress files that are not in the FASTQ format.
-.PP
 Quip will not compress AB SOLiD colorspace data.
 .PP
 Quip will deduce the quality score scale used, but does not support quality
 score schemes that span a range larger than 64. At the time of writing, such
 systems are quite rare.
 .PP
-In certain versions of FASTQ, the read ID is printed twice: before the
-sequence and before the quality scores. This is an idiotic idea that has
-thankfully fallen out of use. Quip will read data in this format, but will
+In certain versions of FASTQ, the read ID is printed twice: before the sequence
+and before the quality scores. Quip will read data in this format, but will
 ignore the second listing of the read ID.
 .PP
-Quip does not very aggressively check that the input data is in the correct
-format, which is a dangerous and should be remedied.
+The order of optional fields in SAM/BAM files will not be preserved.
 
 .SH AUTHOR
-Quip was conceived and written by Daniel C. Jones <dcjones@cs.washington.edu>
-and grievances should thusly be addressed.
+Quip written by Daniel C. Jones <dcjones@cs.washington.edu>.
+Bugs should preferably be reported at: https://github.com/dcjones/quip/issues
