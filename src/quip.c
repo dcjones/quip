@@ -365,7 +365,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
             quip_get_aux(in, &aux);
 
             /* Make a reasonable name for the output file. */
-            if (stdout_flag) {
+            if (stdout_flag || out_fmt == QUIP_FMT_NULL) {
                 fout = stdout;
             }
             else {

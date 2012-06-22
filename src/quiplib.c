@@ -239,6 +239,7 @@ struct quip_out_t_
         quip_fastq_out_t* fastq;
         quip_sam_out_t*   sam;
         quip_quip_out_t*  quip;
+        void*             null;
     } x;
 };
 
@@ -270,11 +271,13 @@ quip_out_t* quip_out_open(
             out->x.quip = quip_quip_out_open(writer, writer_data, opts, aux, ref);
             break;
 
+        case QUIP_FMT_NULL:
+            out->x.null = NULL;
+            break;
+
         case QUIP_FMT_UNDEFINED:
             quip_error("Undefined format given.");
 
-        case QUIP_FMT_NULL:
-            quip_error("Null format given.");
     }
 
     return out;
@@ -321,7 +324,11 @@ void quip_write(quip_out_t* out, short_read_t* sr)
             quip_quip_write(out->x.quip, sr);
             break;
 
-        default: break;
+        case QUIP_FMT_NULL:
+            break;
+
+        default:
+            quip_error("Write called on an unsupported format.");
     }
 }
 
