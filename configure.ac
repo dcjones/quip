@@ -25,6 +25,8 @@ AC_TYPE_SIZE_T
 
 AC_HEADER_STDBOOL
 
+PKG_CHECK_MODULES([CHECK], [check >= 0.9.4])
+
 # TODO: if zlib is not found, compiile without BAM support
 AC_CHECK_LIB(z, compress, , AC_MSG_ERROR([zlib is required but not was not found.]))
 
@@ -85,6 +87,7 @@ AC_CHECK_HEADER(getopt.h, ,
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
+                 test/Makefile
                  src/version.h])
 
 AM_CONFIG_HEADER([src/config.h])
