@@ -69,7 +69,7 @@ static void print_help()
 "                       to compress aligned reads\n"
 "  -a, --assembly        use de novo assembly to potentially increase\n"
 "                       compression at the cost of being somewhat slower.\n"
-"  -n, --assembly-n=N   assemble the first n reads (implies --asembly)\n"
+"  -n, --assembly-n=N   assemble the first n reads (implies --assembly)\n"
 "                       (default: 2500000)\n"
 "  -t, --test           test compressed file integrity\n"
 "  -l, --list           list total number of reads and bases\n"

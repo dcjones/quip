@@ -1,4 +1,4 @@
-![Quip](http://cs.washington.edu/homes/dcjones/quip/logo.png)\
+![Quip](http://cs.washington.edu/homes/dcjones/quip/logo.png)
 
 Quip compresses next-generation sequencing data with extreme prejudice. It
 supports input and output in the [FASTQ](http://en.wikipedia.org/wiki/Fastq)
