@@ -371,6 +371,10 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
                 }
 
                 fout = open_fout(out_fn);
+                if (fout == NULL) {
+                    quip_warning("skipping.");
+                    goto next_input_file;
+                }
 
                 free(out_fn);
             }
@@ -387,7 +391,8 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
             quip_out_close(out);
             quip_in_close(in);
 
-            if (fout != stdout) fclose(fout);
+next_input_file:
+            if (fout != NULL && fout != stdout) fclose(fout);
             fclose(fin);
 
             if (!force_in_fmt)  in_fmt  = QUIP_FMT_UNDEFINED;

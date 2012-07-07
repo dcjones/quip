@@ -102,7 +102,7 @@ int main(int argc, char* argv[])
     uint64_t md5[2];
     li_MD5_Final((unsigned char*) md5, &md5ctx);
 
-    printf("%"PRIx64"%"PRIx64"\n", md5[0], md5[1]);
+    printf("%016"PRIx64"%016"PRIx64"\n", md5[0], md5[1]);
 
     return 0;
 }
