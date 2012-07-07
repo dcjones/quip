@@ -59,6 +59,7 @@ typedef struct quip_list_t_
 } quip_list_t;
 
 void quip_list(quip_reader_t, void* reader_data, quip_list_t*);
+void quip_list_file(FILE* file, quip_list_t*);
 
 #endif
 

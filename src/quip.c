@@ -89,39 +89,6 @@ void print_version()
 }
 
 
-static void block_writer(void* param, const uint8_t* data, size_t datalen)
-{
-    fwrite(data, 1, datalen, (FILE*) param);
-}
-
-
-static size_t block_reader(void* param, uint8_t* data, size_t datalen)
-{
-    FILE* f = (FILE*) param;
-
-    if (data == NULL) {
-        if (fseek(f, datalen, SEEK_CUR) == 0) return datalen;
-        else {
-            /* The stream is not seekable, so we have
-             * to read and discard datalen bytes. */
-            const size_t bufsize = 4096;
-            size_t readcnt = 0;
-            uint8_t* buf = malloc_or_die(bufsize);
-            size_t remaining = datalen;
-
-            while (remaining > 0) {
-                readcnt = fread(buf, 1, remaining < bufsize ? remaining : bufsize, f);
-                if (readcnt == 0) break;
-                else remaining -= readcnt;
-            }
-
-            free(buf);
-            return datalen - remaining;
-        }
-    }
-    else return fread(data, 1, datalen, (FILE*) param);
-}
-
 /* Prompt the user for a yes/no question. */
 static bool yesno()
 {
@@ -306,13 +273,13 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
                 "Use -f is you really want to do this. (Hint: you don't.)");
         }
 
-        in  = quip_in_open(block_reader,  (void*) stdin,  in_fmt, 0, ref);
+        in  = quip_in_open_file(stdin, in_fmt, 0, ref);
         quip_get_aux(in, &aux);
 
         if (out_fmt == QUIP_FMT_QUIP && assembly_flag) opts = QUIP_OPT_QUIP_ASSEMBLY;
         else opts = 0;
 
-        out = quip_out_open(block_writer, (void*) stdout, out_fmt, opts, &aux, ref);
+        out = quip_out_open_file(stdout, out_fmt, opts, &aux, ref);
 
         while (quip_pipe(in, out));
 
@@ -360,7 +327,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
             }
 
             fin = open_fin(fns[i]);
-            in  = quip_in_open(block_reader, (void*) fin, in_fmt, 0, ref);
+            in  = quip_in_open_file(fin, in_fmt, 0, ref);
 
             quip_get_aux(in, &aux);
 
@@ -411,7 +378,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
             if (out_fmt == QUIP_FMT_QUIP && assembly_flag) opts = QUIP_OPT_QUIP_ASSEMBLY;
             else opts = 0;
 
-            out = quip_out_open(block_writer, (void*) fout, out_fmt, opts, &aux, ref);
+            out = quip_out_open_file(fout, out_fmt, opts, &aux, ref);
 
             while (quip_pipe(in, out));
 
@@ -506,7 +473,7 @@ static int quip_cmd_list(char** fns, size_t fn_count)
     }
 
     if (fn_count == 0) {
-        quip_list(block_reader, stdin, &l);
+        quip_list_file(stdin, &l);
         quip_print_list("stdin", &l);
     }
     else {
@@ -521,7 +488,7 @@ static int quip_cmd_list(char** fns, size_t fn_count)
 
             fin = open_fin(fn);
             if (!fin) continue;
-            quip_list(block_reader, fin, &l);
+            quip_list_file(fin, &l);
             quip_print_list(fn, &l);
         }
     }

@@ -232,6 +232,41 @@ void short_read_copy(short_read_t* dest, const short_read_t* src)
 }
 
 
+
+void quip_file_writer(void* param, const uint8_t* data, size_t datalen)
+{
+    fwrite(data, 1, datalen, (FILE*) param);
+}
+
+
+size_t quip_file_reader(void* param, uint8_t* data, size_t datalen)
+{
+    FILE* f = (FILE*) param;
+
+    if (data == NULL) {
+        if (fseek(f, datalen, SEEK_CUR) == 0) return datalen;
+        else {
+            /* The stream is not seekable, so we have
+             * to read and discard datalen bytes. */
+            const size_t bufsize = 4096;
+            size_t readcnt = 0;
+            uint8_t* buf = malloc_or_die(bufsize);
+            size_t remaining = datalen;
+
+            while (remaining > 0) {
+                readcnt = fread(buf, 1, remaining < bufsize ? remaining : bufsize, f);
+                if (readcnt == 0) break;
+                else remaining -= readcnt;
+            }
+
+            free(buf);
+            return datalen - remaining;
+        }
+    }
+    else return fread(data, 1, datalen, (FILE*) param);
+}
+
+
 struct quip_out_t_
 {
     quip_fmt_t fmt;
@@ -282,6 +317,18 @@ quip_out_t* quip_out_open(
 
     return out;
 }
+
+
+quip_out_t* quip_out_open_file(
+              FILE*             file,
+              quip_fmt_t        format,
+              quip_opt_t        opts,
+              const quip_aux_t* aux,
+              const seqmap_t*   ref)
+{
+    return quip_out_open(quip_file_writer, (void*) file, format, opts, aux, ref);
+}
+
 
 void quip_out_close(quip_out_t* out)
 {
@@ -374,6 +421,16 @@ quip_in_t* quip_in_open(
     }
 
     return in;
+}
+
+
+quip_in_t* quip_in_open_file(
+              FILE*           file,
+              quip_fmt_t      format,
+              quip_opt_t      opts,
+              const seqmap_t* ref)
+{
+    return quip_in_open(quip_file_reader, (void*) file, format, opts, ref);
 }
 
 

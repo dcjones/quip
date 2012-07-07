@@ -1340,3 +1340,8 @@ void quip_list(quip_reader_t reader, void* reader_data, quip_list_t* l)
     }
 }
 
+void quip_list_file(FILE* file, quip_list_t* l)
+{
+    quip_list(quip_file_reader, (void*) file, l);
+}
+

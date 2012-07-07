@@ -173,6 +173,12 @@ typedef void   (*quip_writer_t) (void* writer_data, const uint8_t* data, size_t 
 
 typedef size_t (*quip_reader_t) (void* reader_data, uint8_t* data, size_t size);
 
+
+
+void writer(void* param, const uint8_t* data, size_t datalen);
+size_t quip_file_reader(void* param, uint8_t* data, size_t datalen);
+
+
 /* Some hand read/write functions. */
 void write_uint8(quip_writer_t writer, void* writer_data, uint8_t x);
 void write_uint32(quip_writer_t writer, void* writer_data, uint32_t x);
@@ -238,6 +244,15 @@ quip_out_t* quip_out_open(
               const quip_aux_t* aux,
               const seqmap_t*   ref);
 
+
+quip_out_t* quip_out_open_file(
+              FILE*             file,
+              quip_fmt_t        format,
+              quip_opt_t        opts,
+              const quip_aux_t* aux,
+              const seqmap_t*   ref);
+
+
 void quip_out_close(quip_out_t*);
 
 /*
@@ -259,6 +274,11 @@ quip_in_t* quip_in_open(
               quip_opt_t      opts,
               const seqmap_t* ref);
 
+quip_in_t* quip_in_open_file(
+              FILE*           file,
+              quip_fmt_t      format,
+              quip_opt_t      opts,
+              const seqmap_t* ref);
 
 void quip_in_close(quip_in_t*);
 
@@ -266,8 +286,9 @@ void quip_get_aux(quip_in_t*, quip_aux_t*);
 
 /*
  * Get one read from the input stream. Output NULL if there are none.
- * The pointer returned is not guaranteed to be valid after
- * subsequent calls to quip_in_read, or to quip_in_close.
+ * The pointer returned should not be freed by the caller, and is not
+ * guaranteed to be valid after subsequent calls to quip_in_read, or
+ * to quip_in_close.
  */
 short_read_t* quip_read(quip_in_t*);
 
