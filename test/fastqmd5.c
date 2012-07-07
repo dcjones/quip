@@ -19,9 +19,34 @@
 #include <quip.h>
 #include <stdio.h>
 #include <inttypes.h>
+#include <unistd.h>
 
-int main()
+
+void print_usage(FILE* out)
 {
+    fprintf(out,
+            "fastqmd5 -- compute MD5 hashes on FASTQ files.\n\n"
+            "Usage: cat reads.fastq | fastqmd5 [-h]\n"
+            "options:\n"
+            "   -h      print this message\n");
+}
+
+
+int main(int argc, char* argv[])
+{
+    int o;
+    while ((o = getopt(argc, argv, "hsS")) != -1) {
+        if (o == 'h') {
+            print_usage(stdout);
+            return 0;
+        }
+        else {
+            print_usage(stderr);
+            return 1;
+        }
+    }
+
+
     quip_in_t* in = quip_in_open_file(stdin, QUIP_FMT_FASTQ, 0, NULL);
     short_read_t* r;
 

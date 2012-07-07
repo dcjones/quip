@@ -106,6 +106,7 @@ size_t          samopt_table_size(const samopt_table_t* M);
 void            samopt_table_copy(samopt_table_t* dest, const samopt_table_t* src);
 size_t          samopt_table_bytes(const samopt_table_t*);
 uint64_t        samopt_table_crc64_update(const samopt_table_t*, uint64_t crc);
+void            samopt_table_dump_sorted(const samopt_table_t*, samopt_t** opts);
 
 /* A read, either aligned or unaligned. */
 typedef struct short_read_t_

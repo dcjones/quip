@@ -115,6 +115,31 @@ uint64_t samopt_table_crc64_update(const samopt_table_t* M, uint64_t crc)
 }
 
 
+static int samopt_ptr_cmp(const void* a_, const void* b_)
+{
+   samopt_t* a = *(samopt_t**) a_;
+   samopt_t* b = *(samopt_t**) b_;
+
+   if (a->key[0] != b->key[0]) return (int) a->key[0] - (int) b->key[0];
+   if (a->key[1] != b->key[1]) return (int) a->key[1] - (int) b->key[1];
+   if (a->type != b->type)     return (int) a->type   - (int) b->type;
+   if (a->data->n != b->data->n) return (int) a->data->n - (int) b->data->n;
+   return memcmp(a->data->s, b->data->s, a->data->n);
+}
+
+
+void samopt_table_dump_sorted(const samopt_table_t* M, samopt_t** opts)
+{
+    size_t i, j;
+    for (i = 0, j = 0; i < M->n; ++i) {
+        if (samopt_table_empty(&M->xs[i])) continue;
+        opts[j] = &M->xs[i];
+    }
+
+    qsort(opts, M->m, sizeof(samopt_t*), samopt_ptr_cmp);
+}
+
+
 size_t samopt_table_bytes(const samopt_table_t* M)
 {
     size_t i;
