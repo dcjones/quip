@@ -13,7 +13,7 @@
 #include <pthread.h>
 #include <errno.h>
 
-static const uint8_t quip_header_magic[6] = 
+static const uint8_t quip_header_magic[6] =
     {0xff, 'Q', 'U', 'I', 'P', 0x00};
 
 static const uint8_t quip_header_version = 0x02;
@@ -25,7 +25,7 @@ static const size_t block_size = 5000000;
 static const char qual_scale_size = 64;
 
 /* Maximum number of sequences to read before they are compressed. */
-#define chunk_size 5000 
+#define chunk_size 5000
 
 typedef enum {
     QUIP_FLAG_REFERENCE = 1,
@@ -150,7 +150,7 @@ static void pthread_create_or_die(
     int ret = pthread_create(thread, attr, start_routine, arg);
     if (ret != 0) {
         const char* err_msg;
-        switch (ret) 
+        switch (ret)
         {
             case EAGAIN:
                 err_msg = "insufficient resources.";
@@ -743,7 +743,7 @@ static void* aux_decompressor_thread(void* ctx)
                         D->aux_crc);
     }
 
-    return NULL;   
+    return NULL;  
 }
 
 
@@ -1162,7 +1162,7 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
                 "Aux checksums in block %u do not match. "
                 "Aux data may be corrupt.", D->block_num);
         }
- 
+
         if (D->seq_crc != D->exp_seq_crc) {
             quip_warning(
                 "Sequence checksums in block %u do not match. "
@@ -1213,7 +1213,7 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
     D->chunk_len = D->pending_reads >= chunk_size ?
                     chunk_size : D->pending_reads;
     D->chunk_pos = 0;
- 
+
     D->pending_reads -= D->chunk_len;
     size_t i;
     for (i = 0; i < D->chunk_len; ++i) {
@@ -1227,7 +1227,7 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
             D->qual_scheme_idx++;
         }
     }
-    
+   
     return &D->chunk[D->chunk_pos++];
 }
 

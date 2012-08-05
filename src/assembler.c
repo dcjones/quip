@@ -1,4 +1,4 @@
- 
+
 #include "assembler.h"
 #include "bloom.h"
 #include "kmer.h"
@@ -199,7 +199,7 @@ static bool align_read(assembler_t* A, const unsigned char* seq_str, const twobi
     size_t i, j;
     for (i = 0; i < 3 && best_aln_score > 0.0; ++i) {
         if      (i == 0) qpos = 0;
-        else if (i == 1) qpos = 2 * align_k; 
+        else if (i == 1) qpos = 2 * align_k;
         else if (i == 2) qpos = 4 * align_k;
         if (qpos + align_k > (size_t) qlen) qpos = qlen - align_k - 1;
 
@@ -288,7 +288,7 @@ static void make_contig(bloom_t* B, twobit_t* seed, twobit_t* contig)
     kmer_t nt, nt2, nt_best = 0, xc, y, z;
 
 
-    /* Greedily append nucleotides to the contig using 
+    /* Greedily append nucleotides to the contig using
      * approximate k-mer counts stored in the bloom filter. */
     x = twobit_get_kmer_rev(seed, 0, assemble_k);
     while (true) {
@@ -308,7 +308,7 @@ static void make_contig(bloom_t* B, twobit_t* seed, twobit_t* contig)
                 z = (nt2 << (2 * (assemble_k - 1))) |
                     (nt  << (2 * (assemble_k - 2))) |
                     (x >> 2);
-                z &= assemble_kmer_mask; 
+                z &= assemble_kmer_mask;
                 cnt2 = bloom_get(B, kmer_canonical(z, assemble_k));
                 if (cnt2 > cnt2_best) cnt2_best = cnt2;
             }

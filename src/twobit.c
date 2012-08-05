@@ -218,7 +218,7 @@ void twobit_setc(twobit_t* s, size_t i, char seqc)
     size_t idx = i / (4 * sizeof(kmer_t));
     size_t off = i % (4 * sizeof(kmer_t));
 
-    kmer_t c = chartokmer[(uint8_t) seqc]; 
+    kmer_t c = chartokmer[(uint8_t) seqc];
     if (c > 3) return;
 
     s->seq[idx] = (s->seq[idx] & ~((kmer_t) 0x3 << (2 * off))) | (c << (2 * off));

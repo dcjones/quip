@@ -180,11 +180,11 @@ static inline void append_text(bam_header_t *header, kstring_t *str)
 {
 	size_t x = header->l_text, y = header->l_text + str->l + 2; // 2 = 1 byte dret + 1 byte null
 	kroundup32(x); kroundup32(y);
-	if (x < y) 
+	if (x < y)
     {
         header->n_text = y;
         header->text = (char*)realloc(header->text, y);
-        if ( !header->text ) 
+        if ( !header->text )
         {
             fprintf(stderr,"realloc failed to alloc %ld bytes\n", y);
             abort();

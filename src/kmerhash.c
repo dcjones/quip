@@ -95,7 +95,7 @@ static void kmerhash_expand(kmerhash_t* H)
             c += len * sizeof(kmer_pos_t);
         }
     }
-    
+   
 
     /* Allocate slots. */
     slot_t* slots = malloc_or_die(new_n * sizeof(slot_t));

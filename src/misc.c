@@ -92,7 +92,7 @@ uint32_t murmurhash3(const uint8_t* data, size_t len_)
         k1 *= c2;
 
         h1 ^= k1;
-        h1 = rotl32(h1, 13); 
+        h1 = rotl32(h1, 13);
         h1 = h1*5+0xe6546b64;
     }
 

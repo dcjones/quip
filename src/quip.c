@@ -28,7 +28,7 @@
 #include <sys/stat.h>
 #ifndef O_BINARY
 #define O_BINARY 0
-#endif 
+#endif
 
 static bool force_flag    = false;
 static bool assembly_flag = false;
@@ -209,7 +209,7 @@ static quip_fmt_t guess_file_format(const char* fn)
             char* line2 = strchr(buf, '\n');
             if (line2 == NULL) {
                 fmt = QUIP_FMT_UNDEFINED;
-            } 
+            }
             else {
                 v = line2[1];
 
@@ -518,7 +518,7 @@ static quip_fmt_t parse_format(const char* fmtstr)
 
 int main(int argc, char* argv[])
 {
-    static struct option long_options[] = 
+    static struct option long_options[] =
     {
         {"input",      required_argument, NULL, 'i'},
         {"from",       required_argument, NULL, 'i'},
@@ -557,7 +557,7 @@ int main(int argc, char* argv[])
     else if (strcmp(quip_prog_name, "quipcat") == 0) {
         stdout_flag = true;
     }
-    
+   
     while (1) {
         opt = getopt_long(argc, argv, "i:o:r:n:ltacdfvhV", long_options, &opt_idx);
 

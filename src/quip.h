@@ -162,7 +162,7 @@ void short_read_copy(short_read_t* dest, const short_read_t* src);
   * The reader function should read at most `size` bytes and write it
   * to the `data` buffer. It should then return the number of bytes
   * read. If the number returned is less than `size` it is taken to
-  * mean than the end of the stream has been reached. 
+  * mean than the end of the stream has been reached.
   *
   * Furthermore, if data is NULL, no data need be written, but
   * the stream should advance by `size` bytes (or possible fewer, if
@@ -219,7 +219,7 @@ typedef uint32_t quip_opt_t;
 
 typedef struct seqmap_t_ seqmap_t;
 
-/* 
+/*
  * Certain formats carry with the auxiliary data.
  * This is a container to facilitate passing this
  * around.

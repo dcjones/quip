@@ -102,7 +102,7 @@ kmer_t kmer_comp(kmer_t x, size_t k)
 {
     kmer_t y = 0;
     while (k--) {
-        y = (y << 2) | complement1[x & 0x3]; 
+        y = (y << 2) | complement1[x & 0x3];
         x >>= 2;
     }
 

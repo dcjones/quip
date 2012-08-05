@@ -176,7 +176,7 @@ static void swap_endian_data(const bam1_core_t *c, int data_len, uint8_t *data)
 				for (i = 0; i < (size_t) n; i += 4)
 					bam_swap_endian_4p(s + 5 + i);
 			}
-			bam_swap_endian_4p(s+1); 
+			bam_swap_endian_4p(s+1);
 		}
 	}
 }

@@ -580,7 +580,7 @@ void seqenc_encode_reference_alignment(
             case BAM_CMATCH:
                 for (j = 0; j < r->cigar.lens[i]; ++j, ++read_pos, ++ref_pos) {
                     if (E->tmpseq.s[read_pos] == 'N') continue;
-                        
+                       
                     x = chartokmer[E->tmpseq.s[read_pos]];
                     y = twobit_get(refseq, ref_pos);
 
@@ -728,7 +728,7 @@ static void seqenc_decode_alignment(seqenc_t* E, short_read_t* x, size_t qlen)
     uint8_t  strand = dist2_decode(E->ac, &E->d_aln_strand);
     uint32_t spos   = uint32_enc_decode(E->ac, &E->d_contig_off);
     size_t slen = E->supercontig_motif.n;
-    
+   
     assert(spos < slen);
 
     kmer_t u;

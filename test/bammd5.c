@@ -7,7 +7,7 @@
 
 /*
   bammd5 : Compute MD5 hash on a SAM/BAM files.
-  
+ 
   This is different than say `samtools view reads.bam | md5` because the SAM/BAM
   file is first parsed by quip. Additionally the order of optional data are
   ignored.
@@ -28,7 +28,7 @@ void print_usage(FILE* out)
             "bammd5 -- compute MD5 hashes on SAM and BAM files.\n\n"
             "Usage: cat reads.bam | bammd5 [-hsS]\n"
             "options:\n"
-            "   -s, -S  input is SAM (by default BAM is assumed)\n" 
+            "   -s, -S  input is SAM (by default BAM is assumed)\n"
             "   -h      print this message\n");
 }
 

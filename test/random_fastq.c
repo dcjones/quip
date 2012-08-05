@@ -77,7 +77,7 @@ int main(int argc, char* argv[])
                 break;
 
             case 'i':
-                id_len = (size_t) strtoul(optarg, NULL, 10); 
+                id_len = (size_t) strtoul(optarg, NULL, 10);
                 break;
 
             case 'h':

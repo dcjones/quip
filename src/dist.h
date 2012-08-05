@@ -29,7 +29,7 @@ typedef uint32_t symb_t;
 #include "dist_template_off.h"
 
 
-#define DISTSIZE 16 
+#define DISTSIZE 16
 #define dist_t dist16_t
 #define cond_dist_t cond_dist16_t
 

@@ -165,7 +165,7 @@ static void bam_reserve_data(bam1_t* b, size_t size)
 void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
 {
     /* for the sake of terseness */
-    bam1_t*      b = out->b; 
+    bam1_t*      b = out->b;
     bam1_core_t* c = &b->core;
 
     bool aligned      = !(r->flags & BAM_FUNMAP);

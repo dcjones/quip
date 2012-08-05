@@ -6,7 +6,7 @@
  */
 
 
-/* 
+/*
  * samopt_table functions that are not exposed as part of the external API.
  */
 

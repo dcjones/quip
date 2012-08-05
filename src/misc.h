@@ -28,7 +28,7 @@ FILE* fopen_or_die(const char*, const char*);
 
 #define UNUSED(x) (void)(x)
 
-/* Windows reads/writes in "text mode" by default. This is confusing 
+/* Windows reads/writes in "text mode" by default. This is confusing
  * and wrong, so we need to disable it.
  */
 #if defined(MSDOS) || defined(OS2) || defined(WIN32) || defined(__CYGWIN__)

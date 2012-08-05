@@ -42,7 +42,7 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
-	
+
 static inline int kputsn(const char *p, int l, kstring_t *s)
 {
 	if (s->l + l + 1 >= s->m) {

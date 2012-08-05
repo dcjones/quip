@@ -31,7 +31,7 @@ static void set_cell_count(uint8_t* c, uint32_t cnt)
 
 struct bloom_t_
 {
-    uint8_t* T; 
+    uint8_t* T;
 
     /* pointers into T, to save a little computation */
     uint8_t* subtable[NUM_SUBTABLES];

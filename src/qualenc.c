@@ -129,7 +129,7 @@ void qualenc_encode(qualenc_t* E, const short_read_t* x)
 
     qprev.ui64 = 0;
 
-    int delta = 0; 
+    int delta = 0;
     int qdiff;
     uint8_t q;
 
@@ -205,7 +205,7 @@ void qualenc_decode(qualenc_t* E, short_read_t* seq, size_t n)
 
     qprev.ui64 = 0;
 
-    int delta = 0; 
+    int delta = 0;
     int qdiff;
 
     /* this is: ceil(n / pos_bins) */

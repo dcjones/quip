@@ -9,7 +9,7 @@
 #define QUIP_CRC64
 
 #include <stdlib.h>
-#include <stdint.h> 
+#include <stdint.h>
 
 uint64_t crc64_update(uint8_t* buf, size_t bufsize, uint64_t crc);
 

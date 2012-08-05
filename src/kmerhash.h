@@ -12,7 +12,7 @@
  *    Askitis, N., & Zobel, J. (2005). Cache-conscious collision resolution in
  *    string hash tables. String Processing and Information Retrieval (pp.
  *    91–102). Springer.
-* 
+*
  */
 
 

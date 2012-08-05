@@ -4,7 +4,7 @@
 
 
 /* 64-bit cyclic redundancy check. This was adapted
- * from the public domain implementation by 
+ * from the public domain implementation by
  * Lasse Collin in liblzma.
  */
 

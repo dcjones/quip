@@ -7,7 +7,7 @@
 
 /*
   fastqmd5 : Compute MD5 hash on a fastq file.
-  
+ 
   This is different than say `cat reads.fastq | md5` because the fastq
   is first parsed by quip. This exclude the second id (following the '@'
   symbol) present in some fastq files.

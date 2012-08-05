@@ -92,7 +92,7 @@ static list_t *list_append(list_t *root, void *data)
     list_t *l = root;
     while (l && l->next)
         l = l->next;
-    if ( l ) 
+    if ( l )
     {
         l->next = malloc(sizeof(list_t));
         l = l->next;
@@ -127,7 +127,7 @@ static int tag_exists(const char *tag, const char **tags)
     if ( !tags ) return -1;
     while ( tags[itag] )
     {
-        if ( tags[itag][0]==tag[0] && tags[itag][1]==tag[1] ) return itag; 
+        if ( tags[itag][0]==tag[0] && tags[itag][1]==tag[1] ) return itag;
         itag++;
     }
     return -1;
@@ -157,12 +157,12 @@ static const char *nextline(char **lineptr, size_t *n, const char *text)
     if ( !len )
         return to;
 
-    if ( !*lineptr ) 
+    if ( !*lineptr )
     {
         *lineptr = malloc(len);
         *n = len;
     }
-    else if ( *n < (size_t) len ) 
+    else if ( *n < (size_t) len )
     {
         *lineptr = realloc(*lineptr, len);
         *n = len;
@@ -255,7 +255,7 @@ static int sam_header_compare_lines(HeaderLine *hline1, HeaderLine *hline2)
         {
             if ( unique_tags[itype] )
                 return 2;   // the lines have a matching unique tag but have a conflicting tag
-                    
+                   
             return 0;    // the lines contain conflicting tags, cannot be merged
         }
         itag++;
@@ -316,7 +316,7 @@ static int sam_header_line_merge_with(HeaderLine *out_hline, const HeaderLine *t
 
     if ( out_hline->type[0]!=tmpl_hline->type[0] || out_hline->type[1]!=tmpl_hline->type[1] )
         return 0;
-    
+   
     tmpl_tags = tmpl_hline->tags;
     while (tmpl_tags)
     {
@@ -354,14 +354,14 @@ static HeaderLine *sam_header_line_parse(const char *headerLine)
 		debug("[sam_header_line_parse] expected '@XY', got [%s]\nHint: The header tags must be tab-separated.\n", headerLine);
 		return 0;
 	}
-    
+   
     hline = malloc(sizeof(HeaderLine));
     hline->type[0] = from[0];
     hline->type[1] = from[1];
     hline->tags = NULL;
 
     int itype = tag_exists(hline->type, types);
-    
+   
     from = to;
     while (*to && *to=='\t') to++;
     if ( to-from != 1 ) {
@@ -382,7 +382,7 @@ static HeaderLine *sam_header_line_parse(const char *headerLine)
         else
             tag = new_tag(from,from+3,to-1);
 
-        if ( header_line_has_tag(hline,tag->key) ) 
+        if ( header_line_has_tag(hline,tag->key) )
                 debug("The tag '%c%c' present (at least) twice on line [%s]\n", tag->key[0],tag->key[1], headerLine);
         hline->tags = list_append(hline->tags, tag);
 
@@ -405,10 +405,10 @@ static int sam_header_line_validate(HeaderLine *hline)
     list_t *tags;
     HeaderTag *tag;
     int itype, itag;
-    
+   
     // Is the type correct?
     itype = tag_exists(hline->type, types);
-    if ( itype==-1 ) 
+    if ( itype==-1 )
     {
         debug("The type [%c%c] not recognised.\n", hline->type[0],hline->type[1]);
         return 0;
@@ -600,21 +600,21 @@ void *sam_header2tbl(const void *_dict, char type[2], char key_tag[2], char valu
     while (l)
     {
         HeaderLine *hline = l->data;
-        if ( hline->type[0]!=type[0] || hline->type[1]!=type[1] ) 
+        if ( hline->type[0]!=type[0] || hline->type[1]!=type[1] )
         {
             l = l->next;
             continue;
         }
-        
+       
         HeaderTag *key, *value;
         key   = header_line_has_tag(hline,key_tag);
-        value = header_line_has_tag(hline,value_tag); 
+        value = header_line_has_tag(hline,value_tag);
         if ( !key || !value )
         {
             l = l->next;
             continue;
         }
-        
+       
         k = kh_get(str, tbl, key->value);
         if ( k != kh_end(tbl) )
             debug("[sam_header_lookup_table] They key %s not unique.\n", key->value);
@@ -637,12 +637,12 @@ char **sam_header2list(const void *_dict, char type[2], char key_tag[2], int *_n
     while (l)
     {
         HeaderLine *hline = l->data;
-        if ( hline->type[0]!=type[0] || hline->type[1]!=type[1] ) 
+        if ( hline->type[0]!=type[0] || hline->type[1]!=type[1] )
         {
             l = l->next;
             continue;
         }
-        
+       
         HeaderTag *key;
         key   = header_line_has_tag(hline,key_tag);
         if ( !key )
@@ -709,8 +709,8 @@ void *sam_header_merge(int n, const void **_dicts)
                     out_hlines = out_hlines->next;
                     continue;
                 }
-                
-                if ( status==2 ) 
+               
+                if ( status==2 )
                 {
                     print_header_line(stderr,tmpl_hlines->data);
                     print_header_line(stderr,out_hlines->data);

@@ -33,7 +33,7 @@ static void append_header_text(bam_header_t *header, char* text, int len)
 	int x = header->l_text + 1;
 	int y = header->l_text + len + 1; // 1 byte null
 	if (text == 0) return;
-	kroundup32(x); 
+	kroundup32(x);
 	kroundup32(y);
 	if (x < y) header->text = (char*)realloc(header->text, y);
 	strncpy(header->text + header->l_text, text, len); // we cannot use strcpy() here.
@@ -66,7 +66,7 @@ samfile_t* samopen_out(quip_writer_t writer, void* writer_data, bool binary, voi
 		if (aux) {
 			int i;
 			bam_header_t *alt;
-			// parse the header text 
+			// parse the header text
 			alt = bam_header_init();
 			alt->l_text = fp->header->l_text; alt->text = fp->header->text;
 			sam_header_parse(alt);
