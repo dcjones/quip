@@ -133,7 +133,7 @@ void samopt_table_dump_sorted(const samopt_table_t* M, samopt_t** opts)
     size_t i, j;
     for (i = 0, j = 0; i < M->n; ++i) {
         if (samopt_table_empty(&M->xs[i])) continue;
-        opts[j] = &M->xs[i];
+        opts[j++] = &M->xs[i];
     }
 
     qsort(opts, M->m, sizeof(samopt_t*), samopt_ptr_cmp);

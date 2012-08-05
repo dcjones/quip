@@ -304,10 +304,47 @@ void quip_sam_in_close(quip_sam_in_t* in)
 
 void quip_sam_get_aux(quip_sam_in_t* in, quip_aux_t* aux)
 {
+    /* SAM/BAM headers are stored in two parts. Sequences, with associated
+     * lengths are stored in a hash table and remaining header fields are stored
+     * in plaintext. But it's not quite that simple: the sequence ("@SQ") fields
+     * may be repeated in the plaintext portion! Thus, samtools has graced us
+     * with this ugly bit of code.
+     */
+
     aux->fmt = QUIP_FMT_SAM;
     str_reserve(&aux->data, in->f->header->l_text);
     memcpy(aux->data.s, in->f->header->text, in->f->header->l_text);
     aux->data.n = in->f->header->l_text;
+
+    bam_header_t* alt = bam_header_init();
+    alt->l_text = in->f->header->l_text;
+    alt->text   = in->f->header->text;
+    sam_header_parse(alt);
+    alt->l_text = 0;
+    alt->text   = NULL;
+
+
+    if (alt->n_targets) {
+        if (alt->n_targets != in->f->header->n_targets) {
+            quip_warning("Inconsistent number of target sequences in BAM header.");
+        }
+    }
+    else {
+        size_t max_bytes;
+        int i;
+        for (i = 0; i < in->f->header->n_targets; ++i) {
+            max_bytes = 22 + strlen(in->f->header->target_name[i]);
+            str_reserve_extra(&aux->data, max_bytes);
+            aux->data.n += snprintf(
+                    (char*) aux->data.s + aux->data.n,
+                    max_bytes,
+                    "@SQ\tSN:%s\tLN:%d\n",
+                    in->f->header->target_name[i],
+                    in->f->header->target_len[i]);
+        }
+    }
+
+    bam_header_destroy(alt);
 }
 
 

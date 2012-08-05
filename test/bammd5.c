@@ -52,6 +52,12 @@ int main(int argc, char* argv[])
         }
     }
 
+    if (optind < argc) {
+        fprintf(stderr, "Too many arguments!\n\n");
+        print_usage(stderr);
+        return 1;
+    }
+
     quip_in_t* in = quip_in_open_file(stdin, QUIP_FMT_BAM, 0, NULL);
     short_read_t* r;
 

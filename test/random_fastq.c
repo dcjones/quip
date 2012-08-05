@@ -12,7 +12,7 @@
 static void print_help()
 {
     printf(
-"Usage: random_fastq [option]... \n"
+"Usage: random_fastq [option]...\n"
 "Generate an endless stream of random FASTQ data to standard out.\n\n"
 "Options:\n"
 "    TODO\n\n"
