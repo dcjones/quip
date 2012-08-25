@@ -470,6 +470,7 @@ void samoptenc_encode(samoptenc_t* E, const samopt_table_t* T)
     size_t i, j;
     for (i = 0; i < T->n; ++i) {
         if (samopt_table_empty(&T->xs[i])) continue;
+        if (E->last->m + 1 >= E->last->max_m) samopt_table_expand(E->last);
         opt = samopt_table_get_priv(E->last, T->xs[i].key);
 
         if (samopt_table_empty(opt)) {
@@ -541,6 +542,7 @@ void samoptenc_decode(samoptenc_t* E, samopt_table_t* T)
         key[0] = dist128_decode(E->ac, &E->d_tag_char);
         key[1] = dist128_decode(E->ac, &E->d_tag_char);
 
+        if (E->last->m + 1 >= E->last->max_m) samopt_table_expand(E->last);
         opt = samopt_table_get_priv(E->last, key);
         assert(samopt_table_empty(opt));
 
