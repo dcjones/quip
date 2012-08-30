@@ -229,11 +229,17 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
         doff += (c->l_qseq + 1) / 2;
         s = b->data + doff;
 
-        for (i = 0; i < r->seq.n; ++i) {
-            u = r->qual.s[r->qual.n - 1 - i];
-            s[i] = u == '*' ? 0xff : u - 33;
+        if (r->qual.n == 0) {
+            s[i] = 0xff;
+            ++doff;
         }
-        doff += c->l_qseq;
+        else {
+            for (i = 0; i < r->seq.n; ++i) {
+                u = r->qual.s[r->qual.n - 1 - i];
+                s[i] = u - 33;
+            }
+            doff += c->l_qseq;
+        }
     }
     else {
         for (i = 0; i < r->seq.n; ++i) {
@@ -242,12 +248,17 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
         doff += (c->l_qseq + 1) / 2;
         s = b->data + doff;
 
-        for (i = 0; i < r->seq.n; ++i) {
-            s[i] = r->qual.s[i] == '*' ? 0xff : r->qual.s[i] - 33;
+        if (r->qual.n == 0) {
+            s[i] = 0xff;
+            ++doff;
         }
-        doff += c->l_qseq;
+        else {
+            for (i = 0; i < r->seq.n; ++i) {
+                s[i] = r->qual.s[i] - 33;
+            }
+            doff += c->l_qseq;
+        }
     }
-
 
     /* 12. aux */
     samopt_table_bam_dump(r->aux, b);
