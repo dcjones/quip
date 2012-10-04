@@ -85,8 +85,8 @@ AC_CHECK_HEADER(getopt.h, ,
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile
-                 test/Makefile
-                 src/version.h])
+                 src/version.h
+                 tests/Makefile])
 
 AM_CONFIG_HEADER([src/config.h])
 

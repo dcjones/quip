@@ -1,6 +1,6 @@
 
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS = src
+SUBDIRS = src tests
 
 dist_man_MANS = quip.1
 

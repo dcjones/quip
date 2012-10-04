@@ -1,0 +1,23 @@
+#!/bin/sh
+
+n=100000
+
+mkfifo tmp.fifo a.md5 b.md5
+
+./random_fastq | head -n $((4*n)) | tee tmp.fifo \
+    | ../src/quip -c --in=fastq --out=quip \
+    | ../src/quip -c --in=quip --out=fastq \
+    | ./fastqmd5 > a.md5 &
+./fastqmd5 < tmp.fifo > b.md5 &
+
+if [ "`diff -q a.md5 b.md5`" ]
+then
+    ret=1
+else
+    ret=0
+fi
+
+rm -f tmp.fifo a.md5 b.md5
+
+exit $ret
+
