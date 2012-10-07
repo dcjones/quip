@@ -22,6 +22,9 @@ void kmer_free();
 extern const uint8_t chartokmer[];
 extern const uint8_t kmertochar[];
 
+/* Bit-mask for a k-mer of length k. */
+kmer_t kmer_mask(size_t k);
+
 /* nucleotide string to kmer */
 kmer_t strtokmer(const char*);
 

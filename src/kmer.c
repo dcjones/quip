@@ -62,6 +62,11 @@ const uint8_t chartokmer[256] =
 const uint8_t kmertochar[5] = { 'A', 'C', 'G', 'T', 'N' };
 
 
+kmer_t kmer_mask(size_t k)
+{
+    return UINT64_C(0xffffffffffffffff) >> (64 - 2*k);
+}
+
 
 kmer_t strtokmer(const char* s)
 {

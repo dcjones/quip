@@ -42,3 +42,12 @@ void         bloom_del(bloom_t*, kmer_t);
 #endif
 
 
+/* The first thing we need to compress against a de bruijn graph is a bloom
+ * filter that maps k-mers to conditional probabilities.
+ *
+ *
+ * So, let's build a new data structure that maps k-mers to distributions.
+ */
+
+
+

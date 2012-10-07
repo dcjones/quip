@@ -11,9 +11,10 @@ libquip_a_SOURCES = \
           idenc.h           idenc.c \
           kmer.h            kmer.c \
           kmerhash.h        kmerhash.c \
+          markov.h          markov.c \
           misc.h            misc.c \
           samopt.h          samopt.c \
-		  samoptenc.h \
+          samoptenc.h \
           seqenc.h          seqenc.c \
           seqmap.h          seqmap.c \
           strmap.h          strmap.c \
