@@ -1,5 +1,6 @@
 
 #include "seqenc.h"
+#include "markov.h"
 #include "misc.h"
 #include "ac.h"
 #include "dist.h"
@@ -11,7 +12,14 @@
 
 
 /* Order of the markov chain assigning probabilities to dinucleotides. */
-static const size_t k = 11;
+static const size_t k = 25;
+
+/* Order of the dense fallback markov chain. */
+static const size_t k_catchall = 6;
+
+/* Allow for this many k-mers in the sparse representation. */
+static const size_t max_kmers = 100000000;
+
 
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */
@@ -45,7 +53,7 @@ struct seqenc_t_
     uint32_t ctx0_mask;
 
     /* nucleotide probability given the last k nucleotides */
-    cond_dist16_t cs;
+    markov_t* cs;
 
     /* special case models for the first 2 * prefix_les positions. */
     cond_dist16_t cs0[5];
@@ -125,8 +133,7 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
     size_t N = 1 << (2 * k);
     E->ctx_mask = N - 1;
 
-    cond_dist16_init(&E->cs, N);
-    cond_dist16_set_update_rate(&E->cs, seq_update_rate);
+    E->cs = markov_create(max_kmers, k, k_catchall);
 
     size_t i;
     for (i = 0; i < prefix_len; ++i) {
@@ -217,7 +224,7 @@ void seqenc_free(seqenc_t* E)
     str_free(&E->tmpseq);
 
     ac_free(E->ac);
-    cond_dist16_free(&E->cs);
+    markov_free(E->cs);
 
     size_t i;
     for (i = 0; i < prefix_len; ++i) {
@@ -440,14 +447,14 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const unsigned char* x_str, const two
 
     for (; i < n - 1; i += 2) {
         uv = (twobit_get(x, i) << 2) | twobit_get(x, i + 1);
-        cond_dist16_encode(E->ac, &E->cs, ctx, uv);
+        markov_encode_and_update(E->cs, E->ac, ctx, uv);
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
     /* handle odd read lengths */
     if (i < n) {
         uv = twobit_get(x, i);
-        cond_dist16_encode(E->ac, &E->cs, ctx, uv);
+        markov_encode_and_update(E->cs, E->ac, ctx, uv);
     }
 
     /* encode N mask */
@@ -477,14 +484,14 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
     /* encode trailing positions. */
     for (; i < len - 1; i += 2) {
         uv = (chartokmer[x[i]] << 2) | chartokmer[x[i + 1]];
-        cond_dist16_encode(E->ac, &E->cs, ctx, uv);
+        markov_encode_and_update(E->cs, E->ac, ctx, uv);
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
     /* handle odd read lengths */
     if (i == len - 1) {
         uv = chartokmer[x[i]];
-        cond_dist16_encode(E->ac, &E->cs, ctx, uv);
+        markov_encode_and_update(E->cs, E->ac, ctx, uv);
     }
 
     /* encode N mask */
@@ -580,7 +587,7 @@ void seqenc_encode_reference_alignment(
             case BAM_CMATCH:
                 for (j = 0; j < r->cigar.lens[i]; ++j, ++read_pos, ++ref_pos) {
                     if (E->tmpseq.s[read_pos] == 'N') continue;
-                       
+
                     x = chartokmer[E->tmpseq.s[read_pos]];
                     y = twobit_get(refseq, ref_pos);
 
@@ -687,7 +694,7 @@ static void seqenc_decode_seq(seqenc_t* E, short_read_t* x, size_t n)
     }
 
     while (i < n - 1) {
-        uv = cond_dist16_decode(E->ac, &E->cs, ctx);
+        uv = markov_decode_and_update(E->cs, E->ac, ctx);
         u = uv >> 2;
         v = uv & 0x3;
         x->seq.s[i++] = kmertochar[u];
@@ -696,7 +703,7 @@ static void seqenc_decode_seq(seqenc_t* E, short_read_t* x, size_t n)
     }
 
     if (i == n - 1) {
-        uv = cond_dist16_decode(E->ac, &E->cs, ctx);
+        uv = markov_decode_and_update(E->cs, E->ac, ctx);
         v = uv & 0x3;
         x->seq.s[i] = kmertochar[v];
     }
@@ -728,7 +735,7 @@ static void seqenc_decode_alignment(seqenc_t* E, short_read_t* x, size_t qlen)
     uint8_t  strand = dist2_decode(E->ac, &E->d_aln_strand);
     uint32_t spos   = uint32_enc_decode(E->ac, &E->d_contig_off);
     size_t slen = E->supercontig_motif.n;
-   
+
     assert(spos < slen);
 
     kmer_t u;

@@ -35,15 +35,11 @@ libquip_a_SOURCES = \
           sam/khash.h \
           sam/kseq.h
 
-bin_PROGRAMS = quip dgc
+bin_PROGRAMS = quip
 
 quip_SOURCES = quip.c
 
 quip_LDADD = libquip.a
-
-dgc_SOURCES = dgc.c
-
-dgc_LDADD = libquip.a
 
 include_HEADERS = quip.h
 
