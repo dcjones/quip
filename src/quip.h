@@ -178,6 +178,7 @@ typedef size_t (*quip_reader_t) (void* reader_data, uint8_t* data, size_t size);
 
 void writer(void* param, const uint8_t* data, size_t datalen);
 size_t quip_file_reader(void* param, uint8_t* data, size_t datalen);
+void quip_file_writer(void* param, const uint8_t* data, size_t datalen);
 
 
 /* Some hand read/write functions. */
