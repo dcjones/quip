@@ -18,7 +18,7 @@ static const size_t k = 25;
 static const size_t k_catchall = 6;
 
 /* Allow for this many k-mers in the sparse representation. */
-static const size_t max_kmers = 100000000;
+static const size_t max_kmers = 10000000;
 
 
 /* Use a seperate model for the first n dinucleotides. This is primarily to
