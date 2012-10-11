@@ -147,6 +147,15 @@ void seqmap_read_fasta(seqmap_t* M, const char* fn)
         else if (state == 0) {
             if (*next == '\n') {
                 str_append_char(&seqname, '\0');
+
+                /* Ignore everything after and including the first space in the
+                 * sequence name, since this seems to be the convention. */
+                char* c = strchr((char*) seqname.s, ' ');
+                if (c != NULL) {
+                    *c = '\0';
+                    seqname.n = c - (char*) seqname.s;
+                }
+
                 if (quip_verbose) {
                     fprintf(stderr, "\treading %s...\n", seqname.s);
                 }
