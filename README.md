@@ -23,11 +23,11 @@ version of [automake](http://www.gnu.org/software/automake/) and
 [autoconf](http://www.gnu.org/software/autoconf/).
 
 First clone the git repository with,
-  
+
     git clone git://github.com/dcjones/quip.git
 
 Enter the quip directory
-  
+
     cd quip
 
 Generate the configure script using
@@ -37,7 +37,6 @@ Generate the configure script using
 Then configure, compile, and install
 
     ./configure && make install
-
 
 
 Source from a tarball
@@ -57,6 +56,8 @@ Then configure, compile, and install
 
     ./configure && make install
 
+By default with install to `/usr/local/`, choose another prefix (e.g., your home
+directory) with `./configure --prefix=$HOME`.
 
 
 Usage
