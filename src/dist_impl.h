@@ -39,7 +39,8 @@ void dfun(set) (dist_t*, const uint16_t* cs);
 void dfun(update)(dist_t* D);
 
 /* encode a symbol given the distribution and arithmetic coder */
-void   dfun(encode)(ac_t*, dist_t*, symb_t);
+void dfun(encode)(ac_t*, dist_t*, symb_t);
+void dfun(encode2)(ac_t* ac, dist_t* D, symb_t x, uint8_t update_rate);
 symb_t dfun(decode)(ac_t*, dist_t*);
 
 

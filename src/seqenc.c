@@ -15,7 +15,7 @@
 static const size_t k = 25;
 
 /* Order of the dense fallback markov chain. */
-static const size_t k_catchall = 6;
+static const size_t k_catchall = 8;
 
 /* Allow for this many k-mers in the sparse representation. */
 static const size_t max_kmers = 10000000;
@@ -23,7 +23,7 @@ static const size_t max_kmers = 10000000;
 
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */
-static const size_t prefix_len = 4;
+static const size_t prefix_len = 5;
 
 /* The rate at which the nucleotide markov chain is updated. */
 static const size_t seq_update_rate   = 1;
@@ -49,8 +49,7 @@ struct seqenc_t_
     ac_t* ac;
 
     /* bitmask for two bit encoded context */
-    uint32_t ctx_mask;
-    uint32_t ctx0_mask;
+    kmer_t ctx_mask;
 
     /* nucleotide probability given the last k nucleotides */
     markov_t* cs;
@@ -129,10 +128,7 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
 {
     E->ref = ref;
     str_init(&E->tmpseq);
-
-    size_t N = 1 << (2 * k);
-    E->ctx_mask = N - 1;
-
+    E->ctx_mask = kmer_mask(k);;
     E->cs = markov_create(max_kmers, k, k_catchall);
 
     size_t i;

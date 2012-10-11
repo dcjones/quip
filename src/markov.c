@@ -136,7 +136,7 @@ void markov_encode_and_update(markov_t* mc, ac_t* ac, kmer_t ctx, kmer_t x)
         cond_dist16_encode(ac, &mc->catchall, ctx & mc->xmask_catchall, x);
     }
     else {
-        dist16_encode(ac, &c->dist, x);
+        dist16_encode2(ac, &c->dist, x, 16);
     }
 }
 

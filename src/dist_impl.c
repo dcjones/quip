@@ -59,7 +59,7 @@ void dfun(update)(dist_t* D)
 }
 
 
-static void dfun(encode2)(ac_t* ac, dist_t* D, symb_t x, uint8_t update_rate)
+void dfun(encode2)(ac_t* ac, dist_t* D, symb_t x, uint8_t update_rate)
 {
     prefetch(D, 1, 0);
 
