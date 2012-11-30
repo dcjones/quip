@@ -443,14 +443,14 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const unsigned char* x_str, const two
 
     for (; i < n - 1; i += 2) {
         uv = (twobit_get(x, i) << 2) | twobit_get(x, i + 1);
-        markov_encode_and_update(E->cs, E->ac, ctx, uv);
+        uv = markov_encode_and_update(E->cs, E->ac, ctx, uv);
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
     /* handle odd read lengths */
     if (i < n) {
         uv = twobit_get(x, i);
-        markov_encode_and_update(E->cs, E->ac, ctx, uv);
+        uv = markov_encode_and_update(E->cs, E->ac, ctx, uv);
     }
 
     /* encode N mask */
@@ -480,14 +480,14 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
     /* encode trailing positions. */
     for (; i < len - 1; i += 2) {
         uv = (chartokmer[x[i]] << 2) | chartokmer[x[i + 1]];
-        markov_encode_and_update(E->cs, E->ac, ctx, uv);
+        uv = markov_encode_and_update(E->cs, E->ac, ctx, uv);
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
     /* handle odd read lengths */
     if (i == len - 1) {
         uv = chartokmer[x[i]];
-        markov_encode_and_update(E->cs, E->ac, ctx, uv);
+        uv = markov_encode_and_update(E->cs, E->ac, ctx, uv);
     }
 
     /* encode N mask */
