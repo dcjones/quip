@@ -12,13 +12,13 @@
 
 
 /* Order of the markov chain assigning probabilities to dinucleotides. */
-static const size_t k = 17;
+static const size_t k = 25;
 
 /* Order of the dense fallback markov chain. */
 static const size_t k_catchall = 8;
 
 /* Allow for this many k-mers in the sparse representation. */
-static const size_t max_kmers = 20000000;
+static const size_t max_kmers = 10000000;
 
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */

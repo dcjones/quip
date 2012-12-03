@@ -69,7 +69,7 @@ void maj_dist16_update(maj_dist16_t* D)
         c += D->xs[i].count;
     }
 
-    D->update_delay = 16;
+    D->update_delay = 4;
 }
 
 
@@ -104,7 +104,7 @@ void maj_dist16_encode(ac_t* ac, maj_dist16_t* D, kmer_t x)
     if (b0 > ac->b)         ac_propogate_carry(ac);
     if (ac->l < min_length) ac_renormalize_encoder(ac);
 
-    D->xs[x].count += 8;
+    D->xs[x].count += 1000;
 
     if(!--D->update_delay) maj_dist16_update(D);
 }
@@ -238,22 +238,37 @@ static cell_t* markov_get(const markov_t* mc, kmer_t x)
         prefetch(&mc->subtables[i][NUM_CELLS_PER_BUCKET * hs[i]], 0, 0);
     }
 
+    size_t bucket_sizes[NUM_SUBTABLES];
+    cell_t* cells[NUM_SUBTABLES];
+
     cell_t* c;
     for (i = 0; i < NUM_SUBTABLES; ++i) {
         c = &mc->subtables[i][NUM_CELLS_PER_BUCKET * hs[i]];
-        for (j = 0; j < NUM_CELLS_PER_BUCKET; ++j) {
-            if (c[j].fingerprint == 0) {
-                c[j].fingerprint = fp;
-                maj_dist16_init(&c[j].dist);
-                return &c[j];
-            }
-            else if (c[j].fingerprint == fp) {
+        for (j = 0; j < NUM_CELLS_PER_BUCKET && c[j].fingerprint != 0; ++j) {
+            if (c[j].fingerprint == fp) {
                 return &c[j];
             }
         }
+
+        cells[i] = &c[j];
+        bucket_sizes[i] = j;
     }
 
-    return NULL;
+    size_t i_min = NUM_SUBTABLES;
+    size_t min_bucket_size = NUM_CELLS_PER_BUCKET + 1;
+    for (i = 0; i < NUM_SUBTABLES && min_bucket_size > 0; ++i) {
+        if (bucket_sizes[i] < min_bucket_size) {
+            i_min = i;
+            min_bucket_size = bucket_sizes[i];
+        }
+    }
+
+    if (i_min < NUM_SUBTABLES) {
+        cells[i_min]->fingerprint = fp;
+        maj_dist16_init(&cells[i_min]->dist);
+        return cells[i_min];
+    }
+    else return NULL;
 }
 
 
@@ -269,7 +284,7 @@ static int natural_path_advantage(const markov_t* mc, const maj_dist16_t* d,
     uint32_t fm = m < 15 ? d->xs[m + 1].freq - d->xs[m].freq :
                           0x8000 - d->xs[m].freq;
 
-    if (fm > 10 * fx) return -1;
+    if (fm > 100 * fx) return -1;
     else return 1;
 }
 
