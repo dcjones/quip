@@ -6,6 +6,7 @@
 #include "markov.h"
 #include "misc.h"
 
+#if 0
 /* Number of leading zeros in a uint16_t. */
 static int nlz(uint16_t x)
 {
@@ -17,14 +18,7 @@ static int nlz(uint16_t x)
     y = x >> 1; if (y != 0) return n - 2;
     return n - x;
 }
-
-
-/* (Very) approximate -log2(p) for fixed-precision probability stored in a uint16_t. */
-static int inlog2(uint16_t p)
-{
-    return 0x1000000 - nlz(p);
-}
-
+#endif
 
 static const size_t max_count = 1 << 15;
 
@@ -51,7 +45,11 @@ void maj_dist16_update(maj_dist16_t* D)
 
     /* rescale when we have exceeded the maximum count */
     uint32_t z = 0;
-    for (i = 0; i < 16; ++i) z += D->xs[i].count;
+    for (i = 0; i < 16; ++i) {
+        if (D->xs[i].count > D->xs[D->majority].count) D->majority = i;
+        z += D->xs[i].count;
+    }
+
     if (z > max_count) {
         z = 0;
         for (i = 0; i < 16; ++i) {
@@ -61,7 +59,6 @@ void maj_dist16_update(maj_dist16_t* D)
         }
     }
 
-
     /* update frequencies */
     const uint32_t scale = 0x80000000U / z;
     const uint32_t shift = 31 - dist_length_shift;
@@ -69,7 +66,6 @@ void maj_dist16_update(maj_dist16_t* D)
 
     for (i = 0; i < 16; ++i) {
         D->xs[i].freq = (uint16_t) ((scale * c) >> shift);
-        if (D->xs[i].freq > D->xs[D->majority].freq) D->majority = i;
         c += D->xs[i].count;
     }
 
@@ -89,12 +85,35 @@ void maj_dist16_init(maj_dist16_t* D)
 
 void maj_dist16_encode(ac_t* ac, maj_dist16_t* D, kmer_t x)
 {
-    dist16_encode(ac, (dist16_t*) D, x);
+    prefetch(D, 1, 0);
+
+    uint32_t b0 = ac->b;
+
+    uint32_t u;
+    if (x == 15) {
+        u = (uint32_t) D->xs[x].freq * (ac->l >> dist_length_shift);
+        ac->b += u;
+        ac->l -= u;
+    }
+    else {
+        u = (uint32_t) D->xs[x].freq * (ac->l >>= dist_length_shift);
+        ac->b += u;
+        ac->l = (uint32_t) D->xs[x + 1].freq * ac->l - u;
+    }
+
+    if (b0 > ac->b)         ac_propogate_carry(ac);
+    if (ac->l < min_length) ac_renormalize_encoder(ac);
+
+    D->xs[x].count += 8;
+
+    if(!--D->update_delay) maj_dist16_update(D);
 }
 
 
 kmer_t maj_dist16_decode(ac_t* ac, maj_dist16_t* D)
 {
+    // TODO: No! We can't do this since we need maj_dist16_update to be called.
+    // */
     return dist16_decode(ac, (dist16_t*) D);
 }
 
@@ -106,7 +125,7 @@ kmer_t maj_dist16_decode(ac_t* ac, maj_dist16_t* D)
 #define NUM_CELLS_PER_BUCKET 8
 
 
-/* Each cell holds a 16-bit fingerprint (hash) of the k-mer as well as a
+/* Each cell holds a 17-bit fingerprint (hash) of the k-mer as well as a
  * conditional distribution over nucleotides following that k-mer. */
 typedef struct cell_t_
 {
@@ -148,6 +167,10 @@ struct markov_t_
      * path. */
     dist2_t d_natural_coerced_path;
 
+    /* Encode the observed dinucleotide, conditioned on the majority
+     * dinucleotide, when doing path coercion */
+    cond_dist16_t d_delta;
+
     /* Order of the catchall markov chain. */
     size_t k_catchall;
 
@@ -175,6 +198,7 @@ markov_t* markov_create(size_t n, size_t k, size_t k_catchall)
 
     cond_dist16_init(&mc->catchall, 1 << (2 * k_catchall));
     dist2_init(&mc->d_natural_coerced_path);
+    cond_dist16_init(&mc->d_delta, 16);
 
     size_t i;
     size_t N = mc->n * NUM_CELLS_PER_BUCKET * sizeof(cell_t);
@@ -233,30 +257,51 @@ static cell_t* markov_get(const markov_t* mc, kmer_t x)
 }
 
 
+/* A heuristic guess at how many fewer bits are needed to encode the natural
+ * path versus the majority path */
+static int natural_path_advantage(const markov_t* mc, const maj_dist16_t* d,
+                                  kmer_t x)
+{
+    UNUSED(mc);
+    uint16_t m = d->majority;
+    uint32_t fx = x < 15 ? d->xs[x + 1].freq - d->xs[x].freq :
+                          0x8000 - d->xs[x].freq;
+    uint32_t fm = m < 15 ? d->xs[m + 1].freq - d->xs[m].freq :
+                          0x8000 - d->xs[m].freq;
+
+    if (fm > 10 * fx) return -1;
+    else return 1;
+}
+
+
+
 kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, kmer_t ctx, kmer_t x)
 {
+    static uint64_t branch_a_count = 0;
+    static uint64_t branch_b_count = 0;
+    static uint64_t branch_c_count = 0;
+
     kmer_t u = ctx & mc->xmask;
     cell_t* c = markov_get(mc, u);
 
     if (c == NULL) {
+        ++branch_a_count;
         cond_dist16_encode(ac, &mc->catchall, ctx & mc->xmask_catchall, x);
         return x;
     }
     else {
         /* x in on the consensus path */
-        if (x == c->dist.majority ||
-            mc->k * inlog2(c->dist.xs[x].freq) <=
-            mc->k * inlog2(c->dist.xs[c->dist.majority].freq) + 4) {
+        if (x == c->dist.majority || natural_path_advantage(mc, &c->dist, x) >= 0) {
+            ++branch_b_count;
             dist2_encode(ac, &mc->d_natural_coerced_path, MARKOV_TYPE_NATURAL);
             maj_dist16_encode(ac, &c->dist, x);
             return x;
         }
-        /* Encode a modification. */
+        /* encode a coercion. */
         else {
+            ++branch_c_count;
             dist2_encode(ac, &mc->d_natural_coerced_path, MARKOV_TYPE_COERCION);
-            /* We are always coercing to the majority path, so no more
-             * information is needed. */
-            /* TODO: we may want to update the count on the majority path */
+            cond_dist16_encode(ac, &mc->d_delta, c->dist.majority, x);
             return c->dist.majority;
         }
     }

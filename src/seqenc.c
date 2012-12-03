@@ -12,14 +12,13 @@
 
 
 /* Order of the markov chain assigning probabilities to dinucleotides. */
-static const size_t k = 25;
+static const size_t k = 17;
 
 /* Order of the dense fallback markov chain. */
 static const size_t k_catchall = 8;
 
 /* Allow for this many k-mers in the sparse representation. */
-static const size_t max_kmers = 10000000;
-
+static const size_t max_kmers = 20000000;
 
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */
@@ -432,7 +431,7 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const unsigned char* x_str, const two
     if (n == 0) return;
 
     kmer_t uv;
-    uint32_t ctx = 0;
+    kmer_t ctx = 0;
     size_t i;
 
     for (i = 0; i < n - 1 && i / 2 < prefix_len; i += 2) {
@@ -467,7 +466,7 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_SEQUENCE);
 
     kmer_t uv;
-    uint32_t ctx = 0;
+    kmer_t ctx = 0;
     size_t i;
 
     /* encode leading positions. */
