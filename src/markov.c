@@ -69,17 +69,17 @@ void maj_dist16_update(maj_dist16_t* D)
         c += D->xs[i].count;
     }
 
-    D->update_delay = 4;
+    D->update_delay = 8;
 }
 
 
 void maj_dist16_init(maj_dist16_t* D)
 {
-    D->update_delay = 16;
     D->majority = 0;
     size_t i;
     for (i = 0; i < 16; ++i) D->xs[i].count = 1;
     maj_dist16_update(D);
+    D->update_delay = 2;
 }
 
 
@@ -104,7 +104,7 @@ void maj_dist16_encode(ac_t* ac, maj_dist16_t* D, kmer_t x)
     if (b0 > ac->b)         ac_propogate_carry(ac);
     if (ac->l < min_length) ac_renormalize_encoder(ac);
 
-    D->xs[x].count += 1000;
+    D->xs[x].count += 100;
 
     if(!--D->update_delay) maj_dist16_update(D);
 }
@@ -222,8 +222,8 @@ void markov_free(markov_t* mc)
 }
 
 
-/* Find a k-mer in the markov chain. */
-static cell_t* markov_get(const markov_t* mc, kmer_t x)
+/* Return true iff the k-mer is present. */
+static bool markov_has(const markov_t* mc, kmer_t x)
 {
     uint64_t h1, h0 = kmer_hash(x);
     uint16_t fp = fingerprint_hash(h0);
@@ -246,6 +246,43 @@ static cell_t* markov_get(const markov_t* mc, kmer_t x)
         c = &mc->subtables[i][NUM_CELLS_PER_BUCKET * hs[i]];
         for (j = 0; j < NUM_CELLS_PER_BUCKET && c[j].fingerprint != 0; ++j) {
             if (c[j].fingerprint == fp) {
+                return true;
+            }
+        }
+
+        cells[i] = &c[j];
+        bucket_sizes[i] = j;
+    }
+
+    return false;
+}
+
+
+/* Find a k-mer in the markov chain. */
+static cell_t* markov_get(const markov_t* mc, kmer_t x, bool* new_cell)
+{
+    uint64_t h1, h0 = kmer_hash(x);
+    uint16_t fp = fingerprint_hash(h0);
+
+    uint64_t hs[NUM_SUBTABLES];
+
+    size_t i, j;
+    h1 = h0;
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
+        h1 = kmer_hash_mix(h0, h1);
+        hs[i] = h1 % mc->n;
+        prefetch(&mc->subtables[i][NUM_CELLS_PER_BUCKET * hs[i]], 0, 0);
+    }
+
+    size_t bucket_sizes[NUM_SUBTABLES];
+    cell_t* cells[NUM_SUBTABLES];
+
+    cell_t* c;
+    for (i = 0; i < NUM_SUBTABLES; ++i) {
+        c = &mc->subtables[i][NUM_CELLS_PER_BUCKET * hs[i]];
+        for (j = 0; j < NUM_CELLS_PER_BUCKET && c[j].fingerprint != 0; ++j) {
+            if (c[j].fingerprint == fp) {
+                if (new_cell) *new_cell = false;
                 return &c[j];
             }
         }
@@ -255,7 +292,7 @@ static cell_t* markov_get(const markov_t* mc, kmer_t x)
     }
 
     size_t i_min = NUM_SUBTABLES;
-    size_t min_bucket_size = NUM_CELLS_PER_BUCKET + 1;
+    size_t min_bucket_size = NUM_CELLS_PER_BUCKET;
     for (i = 0; i < NUM_SUBTABLES && min_bucket_size > 0; ++i) {
         if (bucket_sizes[i] < min_bucket_size) {
             i_min = i;
@@ -266,6 +303,7 @@ static cell_t* markov_get(const markov_t* mc, kmer_t x)
     if (i_min < NUM_SUBTABLES) {
         cells[i_min]->fingerprint = fp;
         maj_dist16_init(&cells[i_min]->dist);
+        if (new_cell) *new_cell = true;
         return cells[i_min];
     }
     else return NULL;
@@ -275,16 +313,28 @@ static cell_t* markov_get(const markov_t* mc, kmer_t x)
 /* A heuristic guess at how many fewer bits are needed to encode the natural
  * path versus the majority path */
 static int natural_path_advantage(const markov_t* mc, const maj_dist16_t* d,
-                                  kmer_t x)
+                                  kmer_t ctx, kmer_t x)
 {
     UNUSED(mc);
     uint16_t m = d->majority;
+
+#if 0
+    bool hasx = markov_has(mc, mc->xmask & ((ctx << 4) | x));
+    bool hasm = markov_has(mc, mc->xmask & ((ctx << 4) | m));
+
+    if ((!hasx && hasm) && d->xs[m].count > d->xs[x].count) return -1;
+    else return 1;
+
+    /*if ((long) d->xs[m].count > (long) d->xs[x].count) return -1;*/
+    /*return 1;*/
+#endif
+
     uint32_t fx = x < 15 ? d->xs[x + 1].freq - d->xs[x].freq :
                           0x8000 - d->xs[x].freq;
     uint32_t fm = m < 15 ? d->xs[m + 1].freq - d->xs[m].freq :
                           0x8000 - d->xs[m].freq;
 
-    if (fm > 100 * fx) return -1;
+    if (fm > 2 * fx) return -1;
     else return 1;
 }
 
@@ -295,31 +345,66 @@ kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, kmer_t ctx, kmer_t x)
     static uint64_t branch_a_count = 0;
     static uint64_t branch_b_count = 0;
     static uint64_t branch_c_count = 0;
+    static uint64_t N = 0;
+    static uint64_t new_cells = 0;
+    static char last_branch;
+
+    ++N;
 
     kmer_t u = ctx & mc->xmask;
-    cell_t* c = markov_get(mc, u);
+    bool new_cell;
+    cell_t* c = markov_get(mc, u, &new_cell);
+    if (new_cell) {
+        ++new_cells;
+    }
+
+    if ((branch_a_count + branch_b_count + branch_c_count) % 1000000 == 0) {
+        fprintf(stderr, "%lu, %lu, %lu | %lu / %lu\n",
+                (unsigned long) branch_a_count,
+                (unsigned long) branch_b_count,
+                (unsigned long) branch_c_count,
+                (unsigned long) new_cells,
+                (unsigned long) N);
+        N = 0;
+        new_cells = 0;
+    }
 
     if (c == NULL) {
         ++branch_a_count;
+        last_branch = 'a';
         cond_dist16_encode(ac, &mc->catchall, ctx & mc->xmask_catchall, x);
         return x;
     }
     else {
+#if 0
+        if (x == c->dist.majority) {
+            if (x == 0) last_branch = '0';
+            else last_branch = 'x';
+        }
+        else if (natural_path_advantage(mc, &c->dist, ctx, x) >= 0) {
+            if (c->dist.majority == 0) last_branch = '1';
+            else last_branch = 'y';
+        }
+        else last_branch = 'z';
+#endif
+
         /* x in on the consensus path */
-        if (x == c->dist.majority || natural_path_advantage(mc, &c->dist, x) >= 0) {
+        if (x == c->dist.majority || natural_path_advantage(mc, &c->dist, ctx, x) >= 0) {
             ++branch_b_count;
-            dist2_encode(ac, &mc->d_natural_coerced_path, MARKOV_TYPE_NATURAL);
+            /*dist2_encode(ac, &mc->d_natural_coerced_path, MARKOV_TYPE_NATURAL);*/
             maj_dist16_encode(ac, &c->dist, x);
             return x;
         }
         /* encode a coercion. */
         else {
             ++branch_c_count;
-            dist2_encode(ac, &mc->d_natural_coerced_path, MARKOV_TYPE_COERCION);
-            cond_dist16_encode(ac, &mc->d_delta, c->dist.majority, x);
+            /*dist2_encode(ac, &mc->d_natural_coerced_path, MARKOV_TYPE_COERCION);*/
+            /*cond_dist16_encode(ac, &mc->d_delta, c->dist.majority, x);*/
+            maj_dist16_encode(ac, &c->dist, x);
             return c->dist.majority;
         }
     }
+
 }
 
 
@@ -346,7 +431,7 @@ void markov_encode_and_update(markov_t* mc, ac_t* ac, kmer_t ctx, kmer_t x)
 kmer_t markov_decode_and_update(markov_t* mc, ac_t* ac, kmer_t ctx)
 {
     kmer_t u = ctx & mc->xmask;
-    cell_t* c = markov_get(mc, u);
+    cell_t* c = markov_get(mc, u, NULL);
 
     if (c == NULL) {
         return cond_dist16_decode(ac, &mc->catchall, ctx & mc->xmask_catchall);

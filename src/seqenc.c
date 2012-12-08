@@ -15,14 +15,17 @@
 static const size_t k = 25;
 
 /* Order of the dense fallback markov chain. */
-static const size_t k_catchall = 8;
+static const size_t k_catchall = 7;
 
 /* Allow for this many k-mers in the sparse representation. */
-static const size_t max_kmers = 10000000;
+static const size_t max_kmers = 20000000;
 
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */
-static const size_t prefix_len = 5;
+#define prefix_len 13
+
+/* Maximum order of the markov chain used for encoding the prefix. */
+static const size_t max_prefix_k = 5;
 
 /* The rate at which the nucleotide markov chain is updated. */
 static const size_t seq_update_rate   = 1;
@@ -54,7 +57,10 @@ struct seqenc_t_
     markov_t* cs;
 
     /* special case models for the first 2 * prefix_les positions. */
-    cond_dist16_t cs0[5];
+    cond_dist16_t cs0[prefix_len];
+
+    /* Prefix context mask. */
+    kmer_t prefix_ctx_mask;
 
     dist2_t* d_nmask;
     size_t nmask_n; /* maximum read length supported by d_nmask */
@@ -131,10 +137,14 @@ static void seqenc_init(seqenc_t* E, const seqmap_t* ref)
     E->cs = markov_create(max_kmers, k, k_catchall);
 
     size_t i;
+    size_t prefix_k = 0;
     for (i = 0; i < prefix_len; ++i) {
-        cond_dist16_init(&E->cs0[i], 1 << (4 * i));
+        prefix_k = i < max_prefix_k ? i : max_prefix_k;
+        cond_dist16_init(&E->cs0[i], 1 << (4 * prefix_k));
         cond_dist16_set_update_rate(&E->cs0[i], seq_update_rate);
     }
+
+    E->prefix_ctx_mask = kmer_mask(max_prefix_k);
 
     E->d_nmask = NULL;
     E->nmask_n = 0;
@@ -472,8 +482,8 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
     /* encode leading positions. */
     for (i = 0; i < len - 1 && i / 2 < prefix_len; i += 2) {
         uv = (chartokmer[x[i]] << 2) | chartokmer[x[i + 1]];
-        cond_dist16_encode(E->ac, &E->cs0[i/2], ctx, uv);
-        ctx = ((ctx << 4) | uv) & E->ctx_mask;
+        cond_dist16_encode(E->ac, &E->cs0[i/2], ctx & E->prefix_ctx_mask, uv);
+        ctx = (ctx << 4) | uv;
     }
 
     /* encode trailing positions. */
