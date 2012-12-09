@@ -46,7 +46,6 @@ void maj_dist16_update(maj_dist16_t* D)
     /* rescale when we have exceeded the maximum count */
     uint32_t z = 0;
     for (i = 0; i < 16; ++i) {
-        if (D->xs[i].count > D->xs[D->majority].count) D->majority = i;
         z += D->xs[i].count;
     }
 
@@ -69,7 +68,7 @@ void maj_dist16_update(maj_dist16_t* D)
         c += D->xs[i].count;
     }
 
-    D->update_delay = 8;
+    D->update_delay = 4;
 }
 
 
@@ -104,7 +103,10 @@ void maj_dist16_encode(ac_t* ac, maj_dist16_t* D, kmer_t x)
     if (b0 > ac->b)         ac_propogate_carry(ac);
     if (ac->l < min_length) ac_renormalize_encoder(ac);
 
-    D->xs[x].count += 100;
+    D->xs[x].count += 16;
+    if (D->xs[x].count > D->xs[D->majority].count) {
+        D->majority = x;
+    }
 
     if(!--D->update_delay) maj_dist16_update(D);
 }
@@ -145,14 +147,6 @@ static uint16_t fingerprint_hash(uint64_t h)
 }
 
 
-/* Are we taking the "natural" edge dictated by the sequence, or coercing it
- * down the majority path? */
-enum {
-    MARKOV_TYPE_NATURAL,
-    MARKOV_TYPE_COERCION
-};
-
-
 /* The idea here is to use the dlCBF to map a k-mer to a distribution. */
 struct markov_t_
 {
@@ -162,14 +156,8 @@ struct markov_t_
      * a lower-order dense markov chain. */
     cond_dist16_t catchall;
 
-    /* Encode a bit that determines whether wether or not we are making an
-     * alteration to the sequence being encoded in order to follow the majority
-     * path. */
-    dist2_t d_natural_coerced_path;
-
-    /* Encode the observed dinucleotide, conditioned on the majority
-     * dinucleotide, when doing path coercion */
     cond_dist16_t d_delta;
+    dist2_t d_type;
 
     /* Order of the catchall markov chain. */
     size_t k_catchall;
@@ -197,8 +185,8 @@ markov_t* markov_create(size_t n, size_t k, size_t k_catchall)
     mc->xmask_catchall = kmer_mask(k_catchall);
 
     cond_dist16_init(&mc->catchall, 1 << (2 * k_catchall));
-    dist2_init(&mc->d_natural_coerced_path);
     cond_dist16_init(&mc->d_delta, 16);
+    dist2_init(&mc->d_type);
 
     size_t i;
     size_t N = mc->n * NUM_CELLS_PER_BUCKET * sizeof(cell_t);
@@ -222,6 +210,7 @@ void markov_free(markov_t* mc)
 }
 
 
+#if 0
 /* Return true iff the k-mer is present. */
 static bool markov_has(const markov_t* mc, kmer_t x)
 {
@@ -256,6 +245,7 @@ static bool markov_has(const markov_t* mc, kmer_t x)
 
     return false;
 }
+#endif
 
 
 /* Find a k-mer in the markov chain. */
@@ -316,6 +306,7 @@ static int natural_path_advantage(const markov_t* mc, const maj_dist16_t* d,
                                   kmer_t ctx, kmer_t x)
 {
     UNUSED(mc);
+    UNUSED(ctx);
     uint16_t m = d->majority;
 
 #if 0
@@ -329,6 +320,7 @@ static int natural_path_advantage(const markov_t* mc, const maj_dist16_t* d,
     /*return 1;*/
 #endif
 
+#if 0
     uint32_t fx = x < 15 ? d->xs[x + 1].freq - d->xs[x].freq :
                           0x8000 - d->xs[x].freq;
     uint32_t fm = m < 15 ? d->xs[m + 1].freq - d->xs[m].freq :
@@ -336,20 +328,29 @@ static int natural_path_advantage(const markov_t* mc, const maj_dist16_t* d,
 
     if (fm > 2 * fx) return -1;
     else return 1;
+#endif
+
+    if ((int) d->xs[m].count > 2 * (int) d->xs[x].count) return -1;
+    else return 1;
 }
 
 
 
-kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, kmer_t ctx, kmer_t x)
+kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, size_t i, kmer_t ctx, kmer_t x)
 {
     static uint64_t branch_a_count = 0;
     static uint64_t branch_b_count = 0;
     static uint64_t branch_c_count = 0;
+    static uint64_t branch_d_count = 0;
     static uint64_t N = 0;
     static uint64_t new_cells = 0;
-    static char last_branch;
 
     ++N;
+
+    if (i < mc->k) {
+        cond_dist16_encode(ac, &mc->catchall, ctx & mc->xmask_catchall, x);
+        return x;
+    }
 
     kmer_t u = ctx & mc->xmask;
     bool new_cell;
@@ -358,11 +359,12 @@ kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, kmer_t ctx, kmer_t x)
         ++new_cells;
     }
 
-    if ((branch_a_count + branch_b_count + branch_c_count) % 1000000 == 0) {
-        fprintf(stderr, "%lu, %lu, %lu | %lu / %lu\n",
+    if ((branch_a_count + branch_b_count + branch_c_count + branch_d_count) % 1000000 == 0) {
+        fprintf(stderr, "%lu, %lu, %lu, %lu | %lu / %lu\n",
                 (unsigned long) branch_a_count,
                 (unsigned long) branch_b_count,
                 (unsigned long) branch_c_count,
+                (unsigned long) branch_d_count,
                 (unsigned long) new_cells,
                 (unsigned long) N);
         N = 0;
@@ -371,40 +373,36 @@ kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, kmer_t ctx, kmer_t x)
 
     if (c == NULL) {
         ++branch_a_count;
-        last_branch = 'a';
         cond_dist16_encode(ac, &mc->catchall, ctx & mc->xmask_catchall, x);
         return x;
     }
     else {
-#if 0
-        if (x == c->dist.majority) {
-            if (x == 0) last_branch = '0';
-            else last_branch = 'x';
-        }
-        else if (natural_path_advantage(mc, &c->dist, ctx, x) >= 0) {
-            if (c->dist.majority == 0) last_branch = '1';
-            else last_branch = 'y';
-        }
-        else last_branch = 'z';
-#endif
 
         /* x in on the consensus path */
-        if (x == c->dist.majority || natural_path_advantage(mc, &c->dist, ctx, x) >= 0) {
-            ++branch_b_count;
-            /*dist2_encode(ac, &mc->d_natural_coerced_path, MARKOV_TYPE_NATURAL);*/
+        if (x == c->dist.majority) {
+            /*c->dist.xs[c->dist.majority].count += 16;*/
+            /*if(!--c->dist.update_delay) maj_dist16_update(&c->dist);*/
             maj_dist16_encode(ac, &c->dist, x);
+            ++branch_b_count;
+            return x;
+        }
+        else if (natural_path_advantage(mc, &c->dist, ctx, x) >= 0) {
+            /*c->dist.xs[x].count += 16;*/
+            /*if(!--c->dist.update_delay) maj_dist16_update(&c->dist);*/
+
+            /*cond_dist16_encode(ac, &mc->d_delta, x, c->dist.majority);*/
+
+            maj_dist16_encode(ac, &c->dist, x);
+            ++branch_c_count;
             return x;
         }
         /* encode a coercion. */
         else {
-            ++branch_c_count;
-            /*dist2_encode(ac, &mc->d_natural_coerced_path, MARKOV_TYPE_COERCION);*/
-            /*cond_dist16_encode(ac, &mc->d_delta, c->dist.majority, x);*/
             maj_dist16_encode(ac, &c->dist, x);
+            ++branch_d_count;
             return c->dist.majority;
         }
     }
-
 }
 
 

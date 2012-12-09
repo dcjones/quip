@@ -12,17 +12,17 @@
 
 
 /* Order of the markov chain assigning probabilities to dinucleotides. */
-static const size_t k = 25;
+static const size_t k = 30;
 
 /* Order of the dense fallback markov chain. */
-static const size_t k_catchall = 7;
+static const size_t k_catchall = 11;
 
 /* Allow for this many k-mers in the sparse representation. */
-static const size_t max_kmers = 20000000;
+static const size_t max_kmers = 32000000;
 
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */
-#define prefix_len 13
+#define prefix_len 5
 
 /* Maximum order of the markov chain used for encoding the prefix. */
 static const size_t max_prefix_k = 5;
@@ -452,14 +452,14 @@ void seqenc_encode_twobit_seq(seqenc_t* E, const unsigned char* x_str, const two
 
     for (; i < n - 1; i += 2) {
         uv = (twobit_get(x, i) << 2) | twobit_get(x, i + 1);
-        uv = markov_encode_and_update(E->cs, E->ac, ctx, uv);
+        /*uv = markov_encode_and_update(E->cs, E->ac, ctx, uv);*/
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
     /* handle odd read lengths */
     if (i < n) {
         uv = twobit_get(x, i);
-        uv = markov_encode_and_update(E->cs, E->ac, ctx, uv);
+        /*uv = markov_encode_and_update(E->cs, E->ac, ctx, uv);*/
     }
 
     /* encode N mask */
@@ -489,14 +489,14 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
     /* encode trailing positions. */
     for (; i < len - 1; i += 2) {
         uv = (chartokmer[x[i]] << 2) | chartokmer[x[i + 1]];
-        uv = markov_encode_and_update(E->cs, E->ac, ctx, uv);
+        uv = markov_encode_and_update(E->cs, E->ac, i,  ctx, uv);
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
     /* handle odd read lengths */
     if (i == len - 1) {
         uv = chartokmer[x[i]];
-        uv = markov_encode_and_update(E->cs, E->ac, ctx, uv);
+        uv = markov_encode_and_update(E->cs, E->ac, i, ctx, uv);
     }
 
     /* encode N mask */
@@ -505,7 +505,6 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
         dist2_encode(E->ac, &E->d_nmask[i],
             x[i] == 'N' ? 1 : 0);
     }
-
 }
 
 
