@@ -150,7 +150,8 @@ void cdfun(init) (cond_dist_t* D, size_t n)
     D->xss   = malloc_or_die(n * sizeof(dist_t));
     D->update_rate = 1;
 
-    D->xss[0].update_delay = DISTSIZE * update_delay_factor;
+    /*D->xss[0].update_delay = DISTSIZE * update_delay_factor;*/
+    D->xss[0].update_delay = 1;
 
     size_t i;
     for (i = 0; i < DISTSIZE; ++i) D->xss[0].xs[i].count = 1;
