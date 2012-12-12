@@ -142,6 +142,8 @@ struct markov_t_
      * a lower-order dense markov chain. */
     cond_dist16_t catchall;
 
+    dist2_t d_type;
+
     /* Order of the catchall markov chain. */
     size_t k_catchall;
 
@@ -166,6 +168,8 @@ markov_t* markov_create(size_t n, size_t k, size_t k_catchall)
     mc->xmask = kmer_mask(k);
     mc->k_catchall = k_catchall;
     mc->xmask_catchall = kmer_mask(k_catchall);
+
+    dist2_init(&mc->d_type);
 
     cond_dist16_init(&mc->catchall, 1 << (2 * k_catchall));
     cond_dist16_set_update_rate(&mc->catchall, 2);
@@ -285,26 +289,55 @@ static cell_t* markov_get(const markov_t* mc, kmer_t x, bool* new_cell)
 /* Return true if path coercion seems like a good move. */
 static bool path_coercion_heuristic(const maj_dist16_t* d, kmer_t x)
 {
-    if ((int) d->xs[d->majority].count > 2 * (int) d->xs[x].count) return -1;
-    else return 1;
+    if ((int) d->xs[d->majority].freq > 4 * (int) d->xs[x].freq) return true;
+    else return false;
 }
 
 
 
 kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, size_t i, kmer_t ctx, kmer_t x)
 {
+    static unsigned long N = 0;
+    static unsigned long new_kmer_count = 0;
+    bool new_kmer;
+
     kmer_t u = ctx & mc->xmask;
     cell_t* c;
-    if (i < mc->k || (c = markov_get(mc, u, NULL)) == NULL) {
+    if (i < mc->k || (c = markov_get(mc, u, &new_kmer)) == NULL) {
         cond_dist16_encode(ac, &mc->catchall, ctx & mc->xmask_catchall, x);
         return x;
     }
 
-    maj_dist16_encode(ac, &c->dist, x);
-    if (path_coercion_heuristic(&c->dist, x)) {
-        return c->dist.majority;
+    ++N;
+    if (new_kmer) ++new_kmer_count;
+    if (N % 1000000 == 0) {
+        fprintf(stderr, "new_kmer_count = %0.1f%%\n",
+                100.0 * (double) new_kmer_count / (double) N);
+        N = 0;
+        new_kmer_count = 0;
     }
-    else return x;
+
+    if (new_kmer) {
+        dist2_encode(ac, &mc->d_type, 0);
+        cond_dist16_encode(ac, &mc->catchall, ctx & mc->xmask_catchall, x);
+
+        c->dist.xs[x].count += 100;
+        if (c->dist.xs[x].count > c->dist.xs[c->dist.majority].count) {
+            c->dist.majority = x;
+        }
+        if(!--c->dist.update_delay) maj_dist16_update(&c->dist);
+
+        return x;
+    }
+    else {
+        dist2_encode(ac, &mc->d_type, 1);
+
+        maj_dist16_encode(ac, &c->dist, x);
+        if (path_coercion_heuristic(&c->dist, x)) {
+            return c->dist.majority;
+        }
+        else return x;
+    }
 }
 
 

@@ -12,7 +12,7 @@
 
 
 /* Order of the markov chain assigning probabilities to dinucleotides. */
-static const size_t k = 30;
+static const size_t k = 25;
 
 /* Order of the dense fallback markov chain. */
 static const size_t k_catchall = 11;
