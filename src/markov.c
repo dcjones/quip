@@ -8,6 +8,14 @@
 
 static const size_t max_count = 1 << 15;
 
+
+/* compute ceil(a/b) without casting to floats */
+static size_t size_t_ceil(size_t a, size_t b)
+{
+    return (a + b - 1) / b;
+}
+
+
 /* This structure is essentially dist16_t, but with an added field that tracks
  * the highest probability element, which is necessary to implement heuristics
  * for finding good paths in the de Bruijn graph. */
@@ -142,8 +150,6 @@ struct markov_t_
      * a lower-order dense markov chain. */
     cond_dist16_t catchall;
 
-    dist2_t d_type;
-
     /* Order of the catchall markov chain. */
     size_t k_catchall;
 
@@ -162,14 +168,11 @@ struct markov_t_
 markov_t* markov_create(size_t n, size_t k, size_t k_catchall)
 {
     markov_t* mc = malloc_or_die(sizeof(markov_t));
-    mc->n = (size_t) ceil((double) n / (double) NUM_CELLS_PER_BUCKET
-                                     / (double) NUM_SUBTABLES);
+    mc->n = size_t_ceil(n, NUM_CELLS_PER_BUCKET * NUM_SUBTABLES);
     mc->k = k;
     mc->xmask = kmer_mask(k);
     mc->k_catchall = k_catchall;
     mc->xmask_catchall = kmer_mask(k_catchall);
-
-    dist2_init(&mc->d_type);
 
     cond_dist16_init(&mc->catchall, 1 << (2 * k_catchall));
     cond_dist16_set_update_rate(&mc->catchall, 2);
@@ -294,7 +297,6 @@ static bool path_coercion_heuristic(const maj_dist16_t* d, kmer_t x)
 }
 
 
-
 kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, size_t i, kmer_t ctx, kmer_t x)
 {
     static unsigned long N = 0;
@@ -317,27 +319,11 @@ kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, size_t i, kmer_t ctx, km
         new_kmer_count = 0;
     }
 
-    if (new_kmer) {
-        dist2_encode(ac, &mc->d_type, 0);
-        cond_dist16_encode(ac, &mc->catchall, ctx & mc->xmask_catchall, x);
-
-        c->dist.xs[x].count += 100;
-        if (c->dist.xs[x].count > c->dist.xs[c->dist.majority].count) {
-            c->dist.majority = x;
-        }
-        if(!--c->dist.update_delay) maj_dist16_update(&c->dist);
-
-        return x;
+    maj_dist16_encode(ac, &c->dist, x);
+    if (path_coercion_heuristic(&c->dist, x)) {
+        return c->dist.majority;
     }
-    else {
-        dist2_encode(ac, &mc->d_type, 1);
-
-        maj_dist16_encode(ac, &c->dist, x);
-        if (path_coercion_heuristic(&c->dist, x)) {
-            return c->dist.majority;
-        }
-        else return x;
-    }
+    else return x;
 }
 
 

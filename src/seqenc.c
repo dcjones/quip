@@ -12,7 +12,7 @@
 
 
 /* Order of the markov chain assigning probabilities to dinucleotides. */
-static const size_t k = 25;
+static const size_t k = 16;
 
 /* Order of the dense fallback markov chain. */
 static const size_t k_catchall = 11;
@@ -22,7 +22,7 @@ static const size_t max_kmers = 32000000;
 
 /* Use a seperate model for the first n dinucleotides. This is primarily to
  * account for positional sequence bias that is sommon in short read sequencing.  */
-#define prefix_len 5
+#define prefix_len 4
 
 /* Maximum order of the markov chain used for encoding the prefix. */
 static const size_t max_prefix_k = 5;
@@ -506,7 +506,6 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
             x[i] == 'N' ? 1 : 0);
     }
 }
-
 
 
 void seqenc_encode_alignment(
