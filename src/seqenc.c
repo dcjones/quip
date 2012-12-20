@@ -433,6 +433,8 @@ void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
 }
 
 
+/* TODO: This does not work correctly with the current version of
+ * markov_encode_and_update. */
 void seqenc_encode_twobit_seq(seqenc_t* E, const unsigned char* x_str, const twobit_t* x)
 {
     dist2_encode(E->ac, &E->d_type, SEQENC_TYPE_SEQUENCE);
@@ -478,9 +480,12 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
     kmer_t uv;
     kmer_t ctx = 0;
     size_t i;
+    int last_n_pos = -1;
 
     /* encode leading positions. */
     for (i = 0; i < len - 1 && i / 2 < prefix_len; i += 2) {
+        if      (x[i+1] == 'N') last_n_pos = i + 1;
+        else if (x[i]   == 'N') last_n_pos = i;
         uv = (chartokmer[x[i]] << 2) | chartokmer[x[i + 1]];
         cond_dist16_encode(E->ac, &E->cs0[i/2], ctx & E->prefix_ctx_mask, uv);
         ctx = (ctx << 4) | uv;
@@ -488,15 +493,18 @@ void seqenc_encode_char_seq(seqenc_t* E, const uint8_t* x, size_t len)
 
     /* encode trailing positions. */
     for (; i < len - 1; i += 2) {
+        if      (x[i+1] == 'N') last_n_pos = i + 1;
+        else if (x[i]   == 'N') last_n_pos = i;
         uv = (chartokmer[x[i]] << 2) | chartokmer[x[i + 1]];
-        uv = markov_encode_and_update(E->cs, E->ac, i,  ctx, uv);
+        uv = markov_encode_and_update(E->cs, E->ac, i, last_n_pos, ctx, uv);
         ctx = ((ctx << 4) | uv) & E->ctx_mask;
     }
 
     /* handle odd read lengths */
     if (i == len - 1) {
+        if (x[i] == 'N') last_n_pos = i;
         uv = chartokmer[x[i]];
-        uv = markov_encode_and_update(E->cs, E->ac, i, ctx, uv);
+        uv = markov_encode_and_update(E->cs, E->ac, i, last_n_pos, ctx, uv);
     }
 
     /* encode N mask */

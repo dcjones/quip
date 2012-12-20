@@ -62,7 +62,7 @@ void maj_dist16_update(maj_dist16_t* D)
         c += D->xs[i].count;
     }
 
-    D->update_delay = 4;
+    D->update_delay = 16;
 }
 
 
@@ -78,8 +78,6 @@ void maj_dist16_init(maj_dist16_t* D)
 
 void maj_dist16_encode(ac_t* ac, maj_dist16_t* D, kmer_t x)
 {
-    prefetch(D, 1, 0);
-
     uint32_t b0 = ac->b;
 
     uint32_t u;
@@ -115,10 +113,10 @@ kmer_t maj_dist16_decode(ac_t* ac, maj_dist16_t* D)
 
 
 /* Number of sub-tables used by the dlCFB. */
-#define NUM_SUBTABLES 4
+#define NUM_SUBTABLES 2
 
 /* Number of cells per bucket. */
-#define NUM_CELLS_PER_BUCKET 8
+#define NUM_CELLS_PER_BUCKET 12
 
 
 /* Each cell holds a 17-bit fingerprint (hash) of the k-mer as well as a
@@ -177,11 +175,15 @@ markov_t* markov_create(size_t n, size_t k, size_t k_catchall)
     cond_dist16_init(&mc->catchall, 1 << (2 * k_catchall));
     cond_dist16_set_update_rate(&mc->catchall, 2);
 
-    size_t i;
+    size_t i, j;
     size_t N = mc->n * NUM_CELLS_PER_BUCKET * sizeof(cell_t);
     for (i = 0; i < NUM_SUBTABLES; ++i) {
         mc->subtables[i] = malloc_or_die(N);
-        memset(mc->subtables[i], 0, N);
+        mc->subtables[i][0].fingerprint = 0;
+        maj_dist16_init(&mc->subtables[i][0].dist);
+        for (j = 1; j < NUM_CELLS_PER_BUCKET * mc->n; ++j) {
+            memcpy(&mc->subtables[i][j], &mc->subtables[i][0], sizeof(cell_t));
+        }
     }
 
     return mc;
@@ -197,44 +199,6 @@ void markov_free(markov_t* mc)
     }
     free(mc);
 }
-
-
-#if 0
-/* Return true iff the k-mer is present. */
-static bool markov_has(const markov_t* mc, kmer_t x)
-{
-    uint64_t h1, h0 = kmer_hash(x);
-    uint16_t fp = fingerprint_hash(h0);
-
-    uint64_t hs[NUM_SUBTABLES];
-
-    size_t i, j;
-    h1 = h0;
-    for (i = 0; i < NUM_SUBTABLES; ++i) {
-        h1 = kmer_hash_mix(h0, h1);
-        hs[i] = h1 % mc->n;
-        prefetch(&mc->subtables[i][NUM_CELLS_PER_BUCKET * hs[i]], 0, 0);
-    }
-
-    size_t bucket_sizes[NUM_SUBTABLES];
-    cell_t* cells[NUM_SUBTABLES];
-
-    cell_t* c;
-    for (i = 0; i < NUM_SUBTABLES; ++i) {
-        c = &mc->subtables[i][NUM_CELLS_PER_BUCKET * hs[i]];
-        for (j = 0; j < NUM_CELLS_PER_BUCKET && c[j].fingerprint != 0; ++j) {
-            if (c[j].fingerprint == fp) {
-                return true;
-            }
-        }
-
-        cells[i] = &c[j];
-        bucket_sizes[i] = j;
-    }
-
-    return false;
-}
-#endif
 
 
 /* Find a k-mer in the markov chain. */
@@ -260,7 +224,7 @@ static cell_t* markov_get(const markov_t* mc, kmer_t x, bool* new_cell)
     for (i = 0; i < NUM_SUBTABLES; ++i) {
         c = &mc->subtables[i][NUM_CELLS_PER_BUCKET * hs[i]];
         for (j = 0; j < NUM_CELLS_PER_BUCKET && c[j].fingerprint != 0; ++j) {
-            if (c[j].fingerprint == fp) {
+            if (expect(c[j].fingerprint == fp, 0)) {
                 if (new_cell) *new_cell = false;
                 return &c[j];
             }
@@ -281,7 +245,6 @@ static cell_t* markov_get(const markov_t* mc, kmer_t x, bool* new_cell)
 
     if (i_min < NUM_SUBTABLES) {
         cells[i_min]->fingerprint = fp;
-        maj_dist16_init(&cells[i_min]->dist);
         if (new_cell) *new_cell = true;
         return cells[i_min];
     }
@@ -297,15 +260,18 @@ static bool path_coercion_heuristic(const maj_dist16_t* d, kmer_t x)
 }
 
 
-kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, size_t i, kmer_t ctx, kmer_t x)
+kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, size_t i, int last_n_pos,
+                                kmer_t ctx, kmer_t x)
 {
     static unsigned long N = 0;
     static unsigned long new_kmer_count = 0;
     bool new_kmer;
+    bool has_n = (size_t) ((int) i - last_n_pos) < mc->k;
+
 
     kmer_t u = ctx & mc->xmask;
     cell_t* c;
-    if (i < mc->k || (c = markov_get(mc, u, &new_kmer)) == NULL) {
+    if (i < mc->k || has_n || (c = markov_get(mc, u, &new_kmer)) == NULL) {
         cond_dist16_encode(ac, &mc->catchall, ctx & mc->xmask_catchall, x);
         return x;
     }

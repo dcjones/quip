@@ -40,6 +40,8 @@ void markov_free(markov_t* mc);
  * Args:
  *   mc: A markov chain.
  *   ac: An arithmetic coder.
+ *   i: Position
+ *   last_n_pos: position of the last N
  *   ctx: The k-mer preceeding x, on which its probability is conditioned.
  *   x: A dinucleotide to encode.
  *
@@ -47,7 +49,8 @@ void markov_free(markov_t* mc);
  *   If a coercion was performed, return the kmer that x was coerced into,
  *   otherwise return x.
  */
-kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, size_t i, kmer_t ctx, kmer_t x);
+kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, size_t i, int las_n_pos,
+                                kmer_t ctx, kmer_t x);
 
 
 /* Decode a k-mer with a given markov chain, updating the model.

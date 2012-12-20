@@ -26,6 +26,12 @@ FILE* fopen_or_die(const char*, const char*);
 #define prefetch(p, rw, locality)
 #endif
 
+#if HAVE_EXPECT
+#define expect(cond, exp) __builtin_expect(cond, exp)
+#else
+#define expect(cond, exp) (cond)
+#endif
+
 #define UNUSED(x) (void)(x)
 
 /* Windows reads/writes in "text mode" by default. This is confusing

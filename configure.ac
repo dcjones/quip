@@ -37,10 +37,24 @@ AC_COMPILE_IFELSE(
     [[__builtin_prefetch(NULL, 0, 0);]])],
   [
     AC_MSG_RESULT([yes])
-    AC_DEFINE_UNQUOTED([HAVE_PREFETCH], 1, [Define to 1 if you have the `__builtin_prefetch' function.] ) ],
+    AC_DEFINE_UNQUOTED([HAVE_PREFETCH], 1, [Define to 1 if you have the '__builtin_prefetch' function.] ) ],
   [
     AC_MSG_RESULT([no])
-    AC_DEFINE_UNQUOTED([HAVE_PREFETCH], 0, [Define to 1 if you have the `__builtin_prefetch' function.] ) ],
+    AC_DEFINE_UNQUOTED([HAVE_PREFETCH], 0, [Define to 1 if you have the '__builtin_prefetch' function.] ) ],
+  ])
+
+# Check for __builtin_expect
+AC_MSG_CHECKING([for __builtin_expect])
+AC_COMPILE_IFELSE(
+  [AC_LANG_PROGRAM(
+    [[#include<stdlib.h>]],
+    [[__builtin_expect(0, 0);]])],
+  [
+    AC_MSG_RESULT([yes])
+    AC_DEFINE_UNQUOTED([HAVE_EXPECT], 1, [Define to 1 if you have the '__builtin_expect' function.] ) ],
+  [
+    AC_MSG_RESULT([no])
+    AC_DEFINE_UNQUOTED([HAVE_EXPECT], 0, [Define to 1 if you have the '__builtin_expect' function.] ) ],
   ])
 
 opt_CFLAGS="-std=gnu99 -Wall -Wextra -pedantic -g -O3 -DNDEBUG"

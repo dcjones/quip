@@ -66,7 +66,7 @@ void dfun(encode2)(ac_t* ac, dist_t* D, symb_t x, uint8_t update_rate)
     uint32_t b0 = ac->b;
 
     uint32_t u;
-    if (x == DISTSIZE - 1) {
+    if (expect(x == DISTSIZE - 1, 0)) {
         u = (uint32_t) D->xs[x].freq * (ac->l >> dist_length_shift);
         ac->b += u;
         ac->l -= u;
