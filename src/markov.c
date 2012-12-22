@@ -268,6 +268,7 @@ kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, size_t i, int last_n_pos
     bool new_kmer;
     bool has_n = (size_t) ((int) i - last_n_pos) < mc->k;
 
+    ++N;
 
     kmer_t u = ctx & mc->xmask;
     cell_t* c;
@@ -276,12 +277,25 @@ kmer_t markov_encode_and_update(markov_t* mc, ac_t* ac, size_t i, int last_n_pos
         return x;
     }
 
-    ++N;
+    if (new_kmer) {
+        /* prime with the cell when stats from the lower order markov chain. */
+        memcpy(&c->dist, &mc->catchall.xss[ctx & mc->xmask_catchall], sizeof(dist16_t));
+        size_t j;
+        for (j = 0; j < 16; ++j) {
+            if (c->dist.xs[j].freq > c->dist.xs[c->dist.majority].freq) {
+                c->dist.majority = j;
+            }
+        }
+        c->dist.update_delay = 1;
+    }
+
+    /* update the catchall anyway anyway */
+    mc->catchall.xss[ctx & mc->xmask_catchall].xs[x].count++;
+
     if (new_kmer) ++new_kmer_count;
     if (N % 1000000 == 0) {
         fprintf(stderr, "new_kmer_count = %0.1f%%\n",
-                100.0 * (double) new_kmer_count / (double) N);
-        N = 0;
+                100.0 * (double) new_kmer_count / (double) 1000000);
         new_kmer_count = 0;
     }
 
