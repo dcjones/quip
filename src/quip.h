@@ -178,6 +178,8 @@ typedef size_t (*quip_reader_t) (void* reader_data, uint8_t* data, size_t size);
 
 void writer(void* param, const uint8_t* data, size_t datalen);
 size_t quip_file_reader(void* param, uint8_t* data, size_t datalen);
+size_t quip_gzfile_reader(void* param, uint8_t* data, size_t datalen);
+size_t quip_bzfile_reader(void* param, uint8_t* data, size_t datalen);
 
 
 /* Some hand read/write functions. */
@@ -201,6 +203,17 @@ typedef enum quip_fmt_t_
     QUIP_FMT_BAM,
     QUIP_FMT_QUIP
 } quip_fmt_t;
+
+
+/*
+ * Input filters. Support for special processing of some files
+ */
+typedef enum quip_filter_t_
+{
+    QUIP_FILTER_NONE,
+    QUIP_FILTER_GZIP,
+    QUIP_FILTER_BZIP2
+} quip_filter_t;
 
 
 /*
@@ -272,12 +285,14 @@ quip_in_t* quip_in_open(
               quip_reader_t   reader,
               void*           reader_data,
               quip_fmt_t      format,
+              quip_filter_t   filter,
               quip_opt_t      opts,
               const seqmap_t* ref);
 
 quip_in_t* quip_in_open_file(
               FILE*           file,
               quip_fmt_t      format,
+              quip_filter_t   filter,
               quip_opt_t      opts,
               const seqmap_t* ref);
 

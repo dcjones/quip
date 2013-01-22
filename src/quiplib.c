@@ -1,4 +1,5 @@
 
+#include "config.h"
 #include "quip.h"
 #include "misc.h"
 #include "seqmap.h"
@@ -8,6 +9,10 @@
 #include "sam/bam.h"
 #include <stdlib.h>
 #include <stdarg.h>
+#include <zlib.h>
+#ifdef HAVE_LIBBZ2
+#include <bzlib.h>
+#endif
 
 bool quip_verbose = false;
 const char* quip_prog_name = "quip";
@@ -267,6 +272,49 @@ size_t quip_file_reader(void* param, uint8_t* data, size_t datalen)
 }
 
 
+size_t quip_gzfile_reader(void* param, uint8_t* data, size_t datalen)
+{
+    gzFile gzf = (gzFile) param;
+
+    if (data == NULL) {
+        if (gzseek(gzf, datalen, SEEK_CUR) >= 0) {
+            return datalen;
+        }
+        else {
+            quip_error("Error reading gzipped file.");
+            return 0; /* unreachable */
+        }
+    }
+    else {
+        int outlen = gzread(gzf, (void*) data, datalen);
+        if (outlen < 0) {
+            quip_error("Error reading gzipped file.");
+        }
+        return (size_t) outlen;
+    }
+}
+
+
+#ifdef HAVE_LIBBZ2
+size_t quip_bzfile_reader(void* param, uint8_t* data, size_t datalen)
+{
+    BZFILE* bzf = (BZFILE*) param;
+
+    if (data == NULL) {
+        quip_error("Seeking not supported by bzip2.");
+        return 0; /* unreachable */
+    }
+    else {
+        int outlen = BZ2_bzread(bzf, (void*) data, datalen);
+        if (outlen < 0) {
+            quip_error("Error reading bzip2 file.");
+        }
+        return (size_t) outlen;
+    }
+}
+#endif
+
+
 struct quip_out_t_
 {
     quip_fmt_t fmt;
@@ -383,6 +431,9 @@ void quip_write(quip_out_t* out, short_read_t* sr)
 struct quip_in_t_
 {
     quip_fmt_t fmt;
+    quip_filter_t filter;
+    void* reader_data;
+
     union {
         quip_fastq_in_t* fastq;
         quip_sam_in_t*   sam;
@@ -395,11 +446,14 @@ quip_in_t* quip_in_open(
               quip_reader_t   reader,
               void*           reader_data,
               quip_fmt_t      fmt,
+              quip_filter_t   filter,
               quip_opt_t      opts,
               const seqmap_t* ref)
 {
     quip_in_t* in = malloc_or_die(sizeof(quip_in_t));
     in->fmt = fmt;
+    in->filter = filter;
+    in->reader_data = reader_data;
 
     switch (fmt) {
         case QUIP_FMT_FASTQ:
@@ -427,10 +481,38 @@ quip_in_t* quip_in_open(
 quip_in_t* quip_in_open_file(
               FILE*           file,
               quip_fmt_t      format,
+              quip_filter_t   filter,
               quip_opt_t      opts,
               const seqmap_t* ref)
 {
-    return quip_in_open(quip_file_reader, (void*) file, format, opts, ref);
+    if (filter == QUIP_FILTER_GZIP) {
+        gzFile gzf = gzdopen(fileno(file), "rb");
+        if (gzf == NULL) {
+            quip_error("Cannot open gzipped file.");
+        }
+        return quip_in_open(quip_gzfile_reader, (void*) gzf, format,
+                            filter, opts, ref);
+    }
+    else if (filter == QUIP_FILTER_BZIP2) {
+#ifdef HAVE_LIBBZ2
+        BZFILE* bzf = BZ2_bzdopen(fileno(file), "rb");
+        if (bzf == NULL) {
+            quip_error("Cannot open bzipped file.");
+        }
+        return quip_in_open(quip_bzfile_reader, (void*) bzf, format,
+                            filter, opts, ref);
+#else
+        quip_error("Quip has not been compiled with bzip2 support.")
+#endif
+    }
+    else if (filter == QUIP_FILTER_NONE) {
+        return quip_in_open(quip_file_reader, (void*) file, format,
+                            filter, opts, ref);
+    }
+    else {
+        quip_error("Unsupported input filter.");
+        return NULL; /* unreachable */
+    }
 }
 
 
@@ -452,6 +534,15 @@ void quip_in_close(quip_in_t* in)
 
         default: break;
     }
+
+    if (in->filter == QUIP_FILTER_GZIP) {
+        gzclose((gzFile) in->reader_data);
+    }
+#ifdef HAVE_LIBBZ2
+    else if (in->filter == QUIP_FILTER_BZIP2) {
+        BZ2_bzclose((BZFILE*) in->reader_data);
+    }
+#endif
 
     free(in);
 }

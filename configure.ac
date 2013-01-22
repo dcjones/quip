@@ -25,8 +25,8 @@ m4_ifdef([AC_TYPE_SIZE_T],   [AC_TYPE_SIZE_T])
 
 AC_HEADER_STDBOOL
 
-# TODO: if zlib is not found, compiile without BAM support
 AC_CHECK_LIB(z, compress, , AC_MSG_ERROR([zlib is required but not was not found.]))
+AC_CHECK_LIB(bz2, BZ2_bzCompress)
 
 # Check if the compiler has a builtin prefetch function
 AC_LANG(C)
@@ -88,7 +88,7 @@ AC_CONFIG_FILES([Makefile
                  src/version.h
                  tests/Makefile])
 
-AM_CONFIG_HEADER([src/config.h])
+AC_CONFIG_HEADER([src/config.h])
 
 AC_OUTPUT
 

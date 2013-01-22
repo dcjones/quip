@@ -26,6 +26,12 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <zlib.h>
+
+#ifdef HAVE_LIBBZ2
+#include <bzlib.h>
+#endif
+
 #ifndef O_BINARY
 #define O_BINARY 0
 #endif
@@ -41,6 +47,8 @@ static enum {
 
 static quip_fmt_t in_fmt  = QUIP_FMT_UNDEFINED;
 static quip_fmt_t out_fmt = QUIP_FMT_UNDEFINED;
+
+static quip_filter_t in_filter = QUIP_FILTER_NONE;
 
 static bool force_in_fmt  = false;
 static bool force_out_fmt = false;
@@ -182,47 +190,118 @@ static FILE* open_fout(const char* fn)
 }
 
 
+
+/* Helper for `guess_file_format`. Check if the given null-terminated buffer
+ * contains a valid fastq entry. */
+static bool is_fastq(char* buf)
+{
+    char* line3 = strchr(buf, '\n');
+    if (line3 == NULL) return false;
+    line3 = strchr(++line3, '\n');
+    if (line3 == NULL) return false;
+    return buf[0] == '@' && line3[1] == '+';
+}
+
+
+/* Helper for `guess_file_format`. Check if the given null-terminated buffer
+ * contains a valid SAM entry. */
+static bool is_sam(char* buf)
+{
+    /* This is pretty crude check. Just count tabs within a line to see if we
+     * have the right number of fields. */
+    char* end = strchr(buf, '\n');
+    int tabcount = 0;
+    if (end == NULL) return false;
+    while (true) {
+        buf = strchr(buf, '\t');
+        if (buf == NULL || buf >= end) break;
+        ++tabcount;
+    }
+
+    return tabcount == 14;
+}
+
+
 /* Peek into a file to try to guess the type. */
-static quip_fmt_t guess_file_format(const char* fn)
+static void guess_file_format(const char* fn,
+                              quip_fmt_t* pfmt,
+                              quip_filter_t* pfilter)
 {
     char buf[1024];
     FILE* f = open_fin(fn);
-    quip_fmt_t fmt;
+    quip_fmt_t fmt = QUIP_FMT_UNDEFINED;
+    quip_filter_t filter = QUIP_FILTER_NONE;
 
     size_t n = fread(buf, sizeof(char), sizeof(buf) - 1, f);
     buf[n] = '\0';
+    fclose(f);
 
-    if (n == 0) fmt = QUIP_FMT_UNDEFINED;
-    else {
-        /* Check gzip header magic. */
-        if (n >= 2 && memcmp(buf, "\037\213", 2) == 0) {
+    if (n == 0) return;
+
+
+    /* check for gzip header magic */
+    else if (n >= 2 && memcmp(buf, "\037\213", 2) == 0) {
+        /* Input can be either BAM or gzipped fastq. */
+        gzFile gzf = gzopen(fn, "rb");
+        if (gzf == NULL) {
+            quip_error("Error opening file.");
+        }
+
+        int gzn = gzread(gzf, buf, sizeof(buf) - 1);
+        gzclose(gzf);
+
+        if (gzn < 0) {
+            quip_error("Error reading file.");
+        }
+
+        buf[gzn] = '\0';
+
+        if (gzn >= 4 && strncmp(buf, "BAM\001", 4) == 0) {
             fmt = QUIP_FMT_BAM;
         }
-        /* Check quip header magic. */
-        else if (n >= 6 && memcmp(buf, "\377QUIP\000", 6) == 0) {
-            fmt = QUIP_FMT_QUIP;
+        else if (is_fastq(buf)) {
+            fmt = QUIP_FMT_FASTQ;
+            filter = QUIP_FILTER_GZIP;
         }
-        else {
-            /* Look at the leading character of consecutive lines
-             * to choose between SAM and FASTQ. */
-            char v, u = buf[0];
-            char* line2 = strchr(buf, '\n');
-            if (line2 == NULL) {
-                fmt = QUIP_FMT_UNDEFINED;
-            }
-            else {
-                v = line2[1];
-
-                if (u != '@' ||
-                    (u == '@' && v == '@') ||
-                    strchr(line2, '\t') != NULL) fmt = QUIP_FMT_SAM;
-                else fmt = QUIP_FMT_FASTQ;
-            }
-       }
     }
 
-    fclose(f);
-    return fmt;
+    /* check of bzip2 header magic */
+#ifdef HAVE_LIBBZ2
+    else if (n >= 3 && memcmp(buf, "BZh", 3) == 0) {
+        BZFILE* bzf = BZ2_bzopen(fn, "rb");
+        if (bzf == NULL) {
+            quip_error("Error opening file.");
+        }
+
+        int bzn = BZ2_bzread(bzf, buf, sizeof(buf) - 1);
+        BZ2_bzclose(bzf);
+
+        if (bzn < 0) {
+            quip_error("Error reading file.");
+        }
+
+        buf[bzn] = '\0';
+
+        if (is_fastq(buf)) {
+            fmt = QUIP_FMT_FASTQ;
+            filter = QUIP_FILTER_BZIP2;
+        }
+    }
+#endif
+
+    /* Check quip header magic. */
+    else if (n >= 6 && memcmp(buf, "\377QUIP\000", 6) == 0) {
+        fmt = QUIP_FMT_QUIP;
+    }
+    else if (is_fastq(buf)) {
+        fmt = QUIP_FMT_FASTQ;
+    }
+    else if (is_sam(buf)) {
+        fmt = QUIP_FMT_SAM;
+    }
+
+    *pfmt = fmt;
+    *pfilter = filter;
 }
 
 
@@ -273,7 +352,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
                 "Use -f is you really want to do this. (Hint: you don't.)");
         }
 
-        in  = quip_in_open_file(stdin, in_fmt, 0, ref);
+        in  = quip_in_open_file(stdin, in_fmt, in_filter, 0, ref);
         quip_get_aux(in, &aux);
 
         if (out_fmt == QUIP_FMT_QUIP && assembly_flag) opts = QUIP_OPT_QUIP_ASSEMBLY;
@@ -293,7 +372,8 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
         for (i = 0; i < fn_count; ++i) {
             /* Determine the input format */
             if (in_fmt == QUIP_FMT_UNDEFINED) {
-                in_fmt = guess_file_format(fns[i]);
+                guess_file_format(fns[i], &in_fmt, &in_filter);
+
                 if (in_fmt == QUIP_FMT_UNDEFINED) {
                     quip_error("Unrecognized file format.");
                 }
@@ -327,7 +407,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
             }
 
             fin = open_fin(fns[i]);
-            in  = quip_in_open_file(fin, in_fmt, 0, ref);
+            in  = quip_in_open_file(fin, in_fmt, in_filter, 0, ref);
 
             quip_get_aux(in, &aux);
 
@@ -337,7 +417,20 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
             }
             else {
                 if (out_fmt == QUIP_FMT_QUIP) {
-                    asprintf(&out_fn, "%s.qp", fns[i]);
+                    size_t fnlen = strlen(fns[i]);
+                    out_fn = malloc_or_die(fnlen + 1);
+                    memcpy(out_fn, fns[i], fnlen);
+                    if (in_filter == QUIP_FILTER_GZIP && fnlen >= 3 &&
+                        strncmp(&out_fn[fnlen - 3], ".gz", 3) == 0) {
+                        fnlen -= 3;
+                    }
+                    else if (in_filter == QUIP_FILTER_BZIP2 && fnlen >= 4 &&
+                             strncmp(&out_fn[fnlen - 4], ".bz2", 4) == 0) {
+                        fnlen -= 4;
+                    }
+
+                    memcpy(&out_fn[fnlen], ".qp", 3);
+                    out_fn[fnlen + 3] = '\0';
                 }
                 else if (in_fmt == QUIP_FMT_QUIP) {
                     size_t fn_len = strlen(fns[i]);

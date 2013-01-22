@@ -14,7 +14,12 @@ When invoked, \f[I]quip\f[] will compress a file and write the compressed data t
 new file with the suffix \f[I].qp\f[] added, leaving the original file intact
 (contrary to the default gzip/bzi2 behavior). Similarly, \f[I]uquip\f[] will take a
 file compressed with quip and write uncompressed output to a new file with the
-\f[I].qp\f[] suffix removed. If no input file is provided, data is read from standard input.
+\f[I].qp\f[] suffix removed.
+.PP
+Input format is automatically detected if a file is given. If no input file is
+provided, data is read from standard input, but in this case the input format
+will not be guessed and is assumed to be FASTQ unless otherwise specified (i.e.
+with the \f[I]--input\f[I] option).
 .PP
 Input and output formats can be provided explicitly with the \f[I]--input\f[]
 and \f[I]--output\f[] options.
@@ -77,6 +82,10 @@ Print brief usage instructions.
 .SH SUPPORTED FORMATS
 In the current version of Quip, FORMAT can be any one of \f[B]quip\f[],
 \f[B]fastq\f[], \f[B]sam\f[], \f[B]bam\f[].
+.PP
+Input in FASTQ format may also be compressed with gzip or bzip2. Running quip on
+a file \f[I]reads.fastq.gz\f[I] will produce a new file \f[I]reads.fastq.qp\f[I]
+that's about half the size, and similarly for bzip2.
 
 .SH OPTIMIZING COMPRESSION
 .PP
