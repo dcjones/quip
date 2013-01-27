@@ -63,7 +63,7 @@ CC="$PTHREAD_CC"
 AC_DEFINE([_FILE_OFFSET_BITS], [64],
           [Do not crash on >4GB files on 32bit machines.])
 
-# We need to define asprintf on non-gnu systems 
+# We need to define asprintf on non-gnu systems
 AC_CHECK_FUNCS(vasprintf)
 AC_CHECK_FUNCS(asprintf)
 
@@ -82,6 +82,8 @@ AC_CHECK_FUNC(isatty, ,
 AC_CHECK_HEADER(getopt.h, ,
                 AC_MSG_ERROR([The posix getopt.h header is needed.]))
 
+AC_CHECK_HEADER(signal.h, ,
+                AC_MSG_ERROR([The posix signal.h header is needed.]))
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile

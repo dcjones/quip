@@ -326,8 +326,15 @@ extern const char* quip_prog_name;
 /* Input file name. */
 extern const char* quip_in_fname;
 
+/* Ouptut file name and descriptor. */
+extern char* quip_out_fname;
+extern int quip_out_fd;
+
 /* Number of reads used for assembly. */
 extern size_t quip_assembly_n;
+
+/* Remove the file currently being written. */
+void quip_remove_output_file();
 
 /* Exit with cleanup. */
 void quip_abort();

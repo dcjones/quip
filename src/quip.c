@@ -26,6 +26,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <signal.h>
 #include <zlib.h>
 
 #ifdef HAVE_LIBBZ2
@@ -97,6 +98,15 @@ void print_version()
 }
 
 
+static void handle_signal(int sig)
+{
+    signal(sig, SIG_IGN);
+    quip_remove_output_file();
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+
 /* Prompt the user for a yes/no question. */
 static bool yesno()
 {
@@ -108,7 +118,6 @@ static bool yesno()
 }
 
 
-/* Open an input file, or die trying */
 static FILE* open_fin(const char* fn)
 {
     quip_in_fname = fn;
@@ -469,13 +478,16 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
                     goto next_input_file;
                 }
 
-                free(out_fn);
+                if (quip_out_fname) free(quip_out_fname);
+                quip_out_fname = out_fn;
+                quip_out_fd = fileno(fout);
             }
 
             if (out_fmt == QUIP_FMT_QUIP && assembly_flag) opts = QUIP_OPT_QUIP_ASSEMBLY;
             else opts = 0;
 
             out = quip_out_open_file(fout, out_fmt, opts, &aux, ref);
+
 
             while (quip_pipe(in, out));
 
@@ -493,6 +505,10 @@ next_input_file:
         }
     }
 
+    if (quip_out_fname) {
+        free(quip_out_fname);
+        quip_out_fname = NULL;
+    }
     str_free(&aux.data);
     if (ref) seqmap_free(ref);
 
@@ -650,7 +666,7 @@ int main(int argc, char* argv[])
     else if (strcmp(quip_prog_name, "quipcat") == 0) {
         stdout_flag = true;
     }
-   
+
     while (1) {
         opt = getopt_long(argc, argv, "i:o:r:n:ltacdfvhV", long_options, &opt_idx);
 
@@ -723,6 +739,13 @@ int main(int argc, char* argv[])
 
     /* initialize reverse complement lookup tables */
     kmer_init();
+
+    signal(SIGINT,  handle_signal);
+    signal(SIGHUP,  handle_signal);
+    signal(SIGPIPE, handle_signal);
+    signal(SIGTERM, handle_signal);
+    signal(SIGXCPU, handle_signal);
+    signal(SIGXFSZ, handle_signal);
 
     int ret;
     switch (quip_cmd) {

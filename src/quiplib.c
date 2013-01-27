@@ -9,6 +9,7 @@
 #include "sam/bam.h"
 #include <stdlib.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <zlib.h>
 #ifdef HAVE_LIBBZ2
 #include <bzlib.h>
@@ -17,17 +18,24 @@
 bool quip_verbose = false;
 const char* quip_prog_name = "quip";
 const char* quip_in_fname = "";
+char* quip_out_fname = NULL;
+int quip_out_fd = -1;
 
-
-static void remove_output_file()
+void quip_remove_output_file()
 {
-    /* TODO */
+    if (quip_out_fd >= 0) {
+        close(quip_out_fd);
+    }
+
+    if (quip_out_fname) {
+        unlink(quip_out_fname);
+    }
 }
 
 
 void quip_abort()
 {
-    remove_output_file();
+    quip_remove_output_file();
     exit(EXIT_FAILURE);
 }
 
