@@ -28,6 +28,7 @@ assembler_t* assembler_alloc(
         quip_writer_t   writer,
         void*           writer_data,
         bool            assemble,
+        uint8_t         quip_version,
         const seqmap_t* ref);
 
 void assembler_free(assembler_t*);
@@ -46,6 +47,7 @@ disassembler_t* disassembler_alloc(
     quip_reader_t reader,
     void* reader_data,
     bool  assemble,
+    uint8_t quip_version,
     const seqmap_t* ref);
 
 void disassembler_free(disassembler_t*);

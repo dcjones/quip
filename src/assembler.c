@@ -46,6 +46,9 @@ struct assembler_t_
     /* actually assemble something */
     bool assemble;
 
+    /* quip version field */
+    uint8_t quip_version;
+
     /* function to write compressed output */
     quip_writer_t writer;
     void* writer_data;
@@ -90,12 +93,14 @@ assembler_t* assembler_alloc(
         quip_writer_t   writer,
         void*           writer_data,
         bool            assemble,
+        uint8_t         quip_version,
         const seqmap_t* ref)
 {
     assembler_t* A = malloc_or_die(sizeof(assembler_t));
     memset(A, 0, sizeof(assembler_t));
 
     A->assemble = assemble;
+    A->quip_version = quip_version;
 
     A->writer = writer;
     A->writer_data = writer_data;
@@ -269,10 +274,10 @@ static bool align_read(assembler_t* A, const unsigned char* seq_str, const twobi
 }
 
 
-static void make_contig(bloom_t* B, twobit_t* seed, twobit_t* contig)
+static void make_contig(uint8_t quip_version, bloom_t* B,
+                        twobit_t* seed, twobit_t* contig)
 {
     twobit_clear(contig);
-
 
     /* delete all kmers in the seed */
     kmer_t x = twobit_get_kmer_rev(seed, 0, assemble_k);
@@ -281,12 +286,10 @@ static void make_contig(bloom_t* B, twobit_t* seed, twobit_t* contig)
         bloom_ldec(B, kmer_canonical((x << 2) | twobit_get(seed, i), assemble_k));
     }
 
-
     /* expand the contig as far left as possible */
     unsigned int cnt, cnt2, cnt_best, cnt2_best;
 
     kmer_t nt, nt2, nt_best = 0, xc, y, z;
-
 
     /* Greedily append nucleotides to the contig using
      * approximate k-mer counts stored in the bloom filter. */
@@ -313,7 +316,8 @@ static void make_contig(bloom_t* B, twobit_t* seed, twobit_t* contig)
                 if (cnt2 > cnt2_best) cnt2_best = cnt2;
             }
 
-            if (cnt + cnt2_best > cnt_best) {
+            if ((quip_version == 2 && cnt + cnt2_best > cnt_best) ||
+                (quip_version == 3 && cnt > 0 && cnt + cnt2_best > cnt_best)) {
                 cnt_best = cnt + cnt2_best;
                 nt_best  = nt;
             }
@@ -348,7 +352,8 @@ static void make_contig(bloom_t* B, twobit_t* seed, twobit_t* contig)
                 if (cnt2 > cnt2_best) cnt2_best = cnt2;
             }
 
-            if (cnt + cnt2_best > cnt_best) {
+            if ((quip_version == 2 && cnt + cnt2_best > cnt_best) ||
+                (quip_version == 3 && cnt > 0 && cnt + cnt2_best > cnt_best)) {
                 cnt_best = cnt + cnt2_best;
                 nt_best  = nt;
             }
@@ -366,6 +371,7 @@ static void make_contig(bloom_t* B, twobit_t* seed, twobit_t* contig)
 
 /* Heuristically build contigs from k-mers counts and a set of reads */
 static void make_contigs(
+    uint8_t quip_version,
     twobit_t** supercontig,
     twobit_t** supercontig_rc,
     bloom_t* B,
@@ -381,7 +387,7 @@ static void make_contigs(
     size_t contig_cnt = 0;
 
     for (i = 0; i < n; ++i) {
-        make_contig(B, seeds[i], contig);
+        make_contig(quip_version, B, seeds[i], contig);
 
         /* reject over terribly short contigs */
         len = twobit_len(contig);
@@ -463,7 +469,8 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
         --A->assembly_pending_n;
 
         if (A->assembly_pending_n == 0) {
-            make_contigs(&A->supercontig, &A->supercontig_rc, A->B, A->seeds, A->seeds_len);
+            make_contigs(A->quip_version, &A->supercontig, &A->supercontig_rc,
+                         A->B, A->seeds, A->seeds_len);
 
             /* Free up memory we won't need any more */
             bloom_free(A->B);
@@ -528,6 +535,9 @@ struct disassembler_t_
     /* actually assemble something */
     bool assemble;
 
+    /* quip header version used during compression */
+    uint8_t quip_version;
+
     /* function to read compressed input */
     quip_reader_t reader;
     void* reader_data;
@@ -564,6 +574,7 @@ disassembler_t* disassembler_alloc(
     quip_reader_t reader,
     void* reader_data,
     bool assemble,
+    uint8_t quip_version,
     const seqmap_t* ref)
 {
     disassembler_t* D = malloc_or_die(sizeof(disassembler_t));
@@ -574,6 +585,7 @@ disassembler_t* disassembler_alloc(
     D->reader_data = reader_data;
     D->ref = ref;
     D->assemble = assemble;
+    D->quip_version = quip_version;
     D->initial_state = true;
 
     if (assemble) {
@@ -632,7 +644,8 @@ void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
         --D->assembly_pending_n;
 
         if (D->assembly_pending_n == 0) {
-            make_contigs(&D->supercontig, &D->supercontig_rc, D->B, D->seeds, D->seeds_len);
+            make_contigs(D->quip_version, &D->supercontig, &D->supercontig_rc,
+                         D->B, D->seeds, D->seeds_len);
 
             /* Free up memory we won't need any more */
             bloom_free(D->B);

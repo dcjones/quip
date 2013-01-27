@@ -16,7 +16,7 @@
 static const uint8_t quip_header_magic[6] =
     {0xff, 'Q', 'U', 'I', 'P', 0x00};
 
-static const uint8_t quip_header_version = 0x02;
+static const uint8_t quip_header_version = 0x03;
 
 /* maximum number of bases per block */
 static const size_t block_size = 5000000;
@@ -35,17 +35,19 @@ typedef enum {
 
 void check_header_version(uint8_t v)
 {
-    if (v != quip_header_version) {
-        const char* version_str;
-        switch (v) {
-            case 1: version_str = "version 1.0.x"; break;
-            case 2: version_str = "version 1.1.x"; break;
-            default: version_str = "a newer version"; break;
-        }
-
-        quip_error("Input was compressed with a different version of quip. Use %s", version_str);
+    /* This is version 3 specific. */
+    const char* version_str;
+    if (v == 1) {
+        version_str = "version 1.0.x";
+    }
+    else if (v == 2 || v == 3) {
+        return;
+    }
+    else {
+        version_str = "a newer version";
     }
 
+    quip_error("Input was compressed with a different version of quip. Use %s", version_str);
 }
 
 
@@ -340,7 +342,8 @@ quip_quip_out_t* quip_quip_out_open(
     C->idenc     = idenc_alloc_encoder(writer, (void*) writer_data);
     C->auxenc    = samoptenc_alloc_encoder(writer, (void*) writer_data);
     C->qualenc   = qualenc_alloc_encoder(writer, (void*) writer_data);
-    C->assembler = assembler_alloc(writer, (void*) writer_data, assembly_based, ref);
+    C->assembler = assembler_alloc(writer, (void*) writer_data,
+                                   assembly_based, quip_header_version, ref);
 
     /* write header */
     C->writer(C->writer_data, quip_header_magic, 6);
@@ -962,7 +965,8 @@ quip_quip_in_t* quip_quip_in_open(
 
     D->idenc   = idenc_alloc_decoder(id_buf_reader, (void*) D);
     D->auxenc  = samoptenc_alloc_decoder(aux_buf_reader, (void*) D);
-    D->disassembler = disassembler_alloc(seq_buf_reader, (void*) D, assembly_based, ref);
+    D->disassembler = disassembler_alloc(seq_buf_reader, (void*) D,
+                                         assembly_based, header_version, ref);
     D->qualenc = qualenc_alloc_decoder(qual_buf_reader, (void*) D);
 
     return D;
@@ -1227,7 +1231,7 @@ short_read_t* quip_quip_read(quip_quip_in_t* D)
             D->qual_scheme_idx++;
         }
     }
-   
+
     return &D->chunk[D->chunk_pos++];
 }
 
