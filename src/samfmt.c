@@ -32,7 +32,7 @@ quip_sam_out_t* quip_sam_out_open(
     }
     else {
         header_text = "@HD\tVN:1.0\tSO:unsorted\n";
-        header->n_text = header->l_text = header->n_text = strlen(header_text);
+        header->l_text = header->n_text = strlen(header_text);
     }
 
     header->text = malloc_or_die(header->l_text + 1);

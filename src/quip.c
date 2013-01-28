@@ -261,6 +261,7 @@ static void guess_file_format(const char* fn,
 
         if (gzn < 0) {
             quip_error("Error reading file.");
+            return;
         }
 
         buf[gzn] = '\0';

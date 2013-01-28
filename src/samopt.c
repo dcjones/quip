@@ -592,18 +592,24 @@ void samoptenc_decode(samoptenc_t* E, samopt_table_t* T)
         }
         /* decode arrays */
         else if (opt->type == 'B') {
-            unsigned char subtype, arraylen[4];
-            c = subtype = cond_dist256_decode(E->ac, E->d_data[k], c);
-            c = arraylen[0] = cond_dist256_decode(E->ac, E->d_data[k], c);
-            c = arraylen[1] = cond_dist256_decode(E->ac, E->d_data[k], c);
-            c = arraylen[2] = cond_dist256_decode(E->ac, E->d_data[k], c);
-            c = arraylen[3] = cond_dist256_decode(E->ac, E->d_data[k], c);
+            union {
+                unsigned char bytes[4];
+                uint32_t word;
+            } arraylen;
 
-            size = *((uint32_t*) arraylen) * aux_type_size[samopt_type_num(opt->type)];
+            c = 0;
+            unsigned char subtype;
+            c = subtype = cond_dist256_decode(E->ac, E->d_data[k], c);
+            c = arraylen.bytes[0] = cond_dist256_decode(E->ac, E->d_data[k], c);
+            c = arraylen.bytes[1] = cond_dist256_decode(E->ac, E->d_data[k], c);
+            c = arraylen.bytes[2] = cond_dist256_decode(E->ac, E->d_data[k], c);
+            c = arraylen.bytes[3] = cond_dist256_decode(E->ac, E->d_data[k], c);
+
+            size = arraylen.word * aux_type_size[samopt_type_num(opt->type)];
             str_reserve(opt->data, size + 5);
             opt->data->n = size + 5;
             opt->data->s[0] = subtype;
-            memcpy(opt->data->s + 1, arraylen, 4);
+            memcpy(opt->data->s + 1, arraylen.bytes, 4);
 
             for (j = 0; j < size; ++j) {
                 c = opt->data->s[5 + j] = cond_dist256_decode(E->ac, E->d_data[k], c);

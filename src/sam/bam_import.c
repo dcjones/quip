@@ -79,6 +79,7 @@ struct __tamFile_t {
 	int is_first;
 };
 
+#if 0
 char **__bam_get_lines(const char *fn, int *_n) // for bam_plcmd.c only
 {
 	char **list = 0, *s;
@@ -104,7 +105,9 @@ char **__bam_get_lines(const char *fn, int *_n) // for bam_plcmd.c only
 	*_n = n;
 	return list;
 }
+#endif
 
+#if 0
 static bam_header_t *hash2header(const kh_ref_t *hash)
 {
 	bam_header_t *header;
@@ -123,6 +126,9 @@ static bam_header_t *hash2header(const kh_ref_t *hash)
 	bam_init_header_hash(header);
 	return header;
 }
+#endif
+
+#if 0
 bam_header_t *sam_header_read2(const char *fn)
 {
 	bam_header_t *header;
@@ -162,6 +168,9 @@ bam_header_t *sam_header_read2(const char *fn)
 	kh_destroy(ref, hash);
 	return header;
 }
+#endif
+
+
 static inline uint8_t *alloc_data(bam1_t *b, int size)
 {
 	if (b->m_data < size) {

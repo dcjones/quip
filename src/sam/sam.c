@@ -28,6 +28,8 @@ bam_header_t *bam_header_dup(const bam_header_t *h0)
 
 	return h;
 }
+
+#if 0
 static void append_header_text(bam_header_t *header, char* text, int len)
 {
 	int x = header->l_text + 1;
@@ -40,7 +42,7 @@ static void append_header_text(bam_header_t *header, char* text, int len)
 	header->l_text += len;
 	header->text[header->l_text] = 0;
 }
-
+#endif
 
 samfile_t* samopen_out(quip_writer_t writer, void* writer_data, bool binary, void* aux)
 {
@@ -103,6 +105,8 @@ open_err_ret:
 
 samfile_t* samopen_in(quip_reader_t reader, void* reader_data, bool binary, void* aux)
 {
+    (void) aux; // supress unused parameter warning
+
 	samfile_t *fp;
 	fp = (samfile_t*)calloc(1, sizeof(samfile_t));
 
@@ -117,6 +121,7 @@ samfile_t* samopen_in(quip_reader_t reader, void* reader_data, bool binary, void
 		if (fp->x.tamr == 0) goto open_err_ret;
 		fp->header = sam_header_read(fp->x.tamr);
 		if (fp->header->n_targets == 0) { // no @SQ fields
+#if 0
 			if (aux) { // check if aux is present
 				bam_header_t *textheader = fp->header;
 				fp->header = sam_header_read2((const char*)aux);
@@ -124,6 +129,7 @@ samfile_t* samopen_in(quip_reader_t reader, void* reader_data, bool binary, void
 				append_header_text(fp->header, textheader->text, textheader->l_text);
 				bam_header_destroy(textheader);
 			}
+#endif
 			if (fp->header->n_targets == 0 && bam_verbose >= 1)
 				fprintf(stderr, "[samopen] no @SQ lines in the header.\n");
 		} else if (bam_verbose >= 2) fprintf(stderr, "[samopen] SAM header is present: %d sequences.\n", fp->header->n_targets);
