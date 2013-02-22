@@ -216,18 +216,28 @@ static bool is_fastq(char* buf)
  * contains a valid SAM entry. */
 static bool is_sam(char* buf)
 {
-    /* This is pretty crude check. Just count tabs within a line to see if we
-     * have the right number of fields. */
+    /* Check for SAM header tags. Failing at that, count the number of tabs to
+     * see if it could be a SAM entry. */
+    size_t n = strlen(buf);
+    if (n >= 3) {
+        if      (strncmp(buf, "@HD", 3) == 0) return true;
+        else if (strncmp(buf, "@SQ", 3) == 0) return true;
+        else if (strncmp(buf, "@RG", 3) == 0) return true;
+        else if (strncmp(buf, "@PG", 3) == 0) return true;
+        else if (strncmp(buf, "@CO", 3) == 0) return true;
+    }
+
     char* end = strchr(buf, '\n');
     int tabcount = 0;
     if (end == NULL) return false;
     while (true) {
         buf = strchr(buf, '\t');
         if (buf == NULL || buf >= end) break;
+        ++buf;
         ++tabcount;
     }
 
-    return tabcount == 14;
+    return tabcount >= 10;
 }
 
 
