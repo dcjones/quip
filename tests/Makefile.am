@@ -1,5 +1,6 @@
 
-check_PROGRAMS = random_fastq fastqmd5 bammd5
+bin_PROGRAMS = fastqmd5 bammd5
+check_PROGRAMS = random_fastq
 
 TESTS = test_fastq
 

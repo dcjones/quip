@@ -418,7 +418,7 @@ short_read_t* quip_sam_read(quip_sam_in_t* in)
     else in->r.mate_seqname.n = 0;
 
     in->r.mate_pos = in->b->core.mpos;
-
+    in->r.tlen = in->b->core.isize;
 
     uint32_t* samcigar = bam1_cigar(in->b);
     size_t cigarlen = in->b->core.n_cigar;

@@ -7,7 +7,7 @@
 
 /*
   bammd5 : Compute MD5 hash on a SAM/BAM files.
- 
+
   This is different than say `samtools view reads.bam | md5` because the SAM/BAM
   file is first parsed by quip. Additionally the order of optional data are
   ignored.
@@ -58,7 +58,8 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    quip_in_t* in = quip_in_open_file(stdin, QUIP_FMT_BAM, 0, NULL);
+    quip_in_t* in = quip_in_open_file(stdin, QUIP_FMT_BAM,
+                                      QUIP_FILTER_NONE, 0, NULL);
     short_read_t* r;
 
     li_MD5_CTX md5ctx;
