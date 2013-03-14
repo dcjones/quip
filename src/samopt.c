@@ -215,7 +215,7 @@ static samopt_t* samopt_table_get_priv(const samopt_table_t* M, const unsigned c
 }
 
 
-samopt_t* samopt_table_get(samopt_table_t* M, const unsigned char key[2])
+samopt_t* samopt_table_get(samopt_table_t* M, const unsigned char key[3])
 {
     if (M->m + 1 >= M->max_m) samopt_table_expand(M);
 
@@ -247,6 +247,10 @@ void samopt_table_clear(samopt_table_t* M)
 void samopt_table_copy(samopt_table_t* dest, const samopt_table_t* src)
 {
     samopt_table_clear(dest);
+    while (dest->n < src->n) {
+        samopt_table_expand(dest);
+    }
+
     samopt_t* opt;
     size_t i;
     for (i = 0; i < src->n; ++i) {
@@ -470,10 +474,13 @@ void samoptenc_encode(samoptenc_t* E, const samopt_table_t* T)
     size_t i, j;
     for (i = 0; i < T->n; ++i) {
         if (samopt_table_empty(&T->xs[i])) continue;
-        if (E->last->m + 1 >= E->last->max_m) samopt_table_expand(E->last);
         opt = samopt_table_get_priv(E->last, T->xs[i].key);
 
         if (samopt_table_empty(opt)) {
+            if (E->last->m + 1 >= E->last->max_m) {
+                samopt_table_expand(E->last);
+                opt = samopt_table_get_priv(E->last, T->xs[i].key);
+            }
             opt->key[0] = T->xs[i].key[0];
             opt->key[1] = T->xs[i].key[1];
             E->last->m++;
@@ -499,7 +506,7 @@ void samoptenc_encode(samoptenc_t* E, const samopt_table_t* T)
             dist128_encode(E->ac, &E->d_tag_char, T->xs[i].key[1]);
         }
 
-        opt->type= T->xs[i].type;
+        opt->type = T->xs[i].type;
         str_copy(opt->data, T->xs[i].data);
     }
 
@@ -542,7 +549,9 @@ void samoptenc_decode(samoptenc_t* E, samopt_table_t* T)
         key[0] = dist128_decode(E->ac, &E->d_tag_char);
         key[1] = dist128_decode(E->ac, &E->d_tag_char);
 
-        if (E->last->m + 1 >= E->last->max_m) samopt_table_expand(E->last);
+        if (E->last->m + 1 >= E->last->max_m) {
+            samopt_table_expand(E->last);
+        }
         opt = samopt_table_get_priv(E->last, key);
         assert(samopt_table_empty(opt));
 

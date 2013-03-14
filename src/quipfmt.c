@@ -746,7 +746,7 @@ static void* aux_decompressor_thread(void* ctx)
                         D->aux_crc);
     }
 
-    return NULL;  
+    return NULL;
 }
 
 
