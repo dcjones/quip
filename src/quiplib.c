@@ -510,7 +510,7 @@ quip_in_t* quip_in_open_file(
         return quip_in_open(quip_bzfile_reader, (void*) bzf, format,
                             filter, opts, ref);
 #else
-        quip_error("Quip has not been compiled with bzip2 support.")
+        quip_error("Quip has not been compiled with bzip2 support.");
 #endif
     }
     else if (filter == QUIP_FILTER_NONE) {
