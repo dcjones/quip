@@ -438,7 +438,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
             else {
                 if (out_fmt == QUIP_FMT_QUIP) {
                     size_t fnlen = strlen(fns[i]);
-                    out_fn = malloc_or_die(fnlen + 1);
+                    out_fn = malloc_or_die(fnlen + 4);
                     memcpy(out_fn, fns[i], fnlen);
                     if (in_filter == QUIP_FILTER_GZIP && fnlen >= 3 &&
                         strncmp(&out_fn[fnlen - 3], ".gz", 3) == 0) {
