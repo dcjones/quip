@@ -58,8 +58,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    quip_in_t* in = quip_in_open_file(stdin, QUIP_FMT_BAM,
-                                      QUIP_FILTER_NONE, 0, NULL);
+    quip_in_t* in = quip_in_open_file(stdin, fmt, QUIP_FILTER_NONE, 0, NULL);
     short_read_t* r;
 
     li_MD5_CTX md5ctx;
