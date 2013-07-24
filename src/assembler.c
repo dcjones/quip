@@ -630,7 +630,8 @@ void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
     seqenc_decode_extras(D->seqenc, seq, n);
     seqenc_decode(D->seqenc, seq, n);
 
-    if (D->assembly_pending_n > 0 && (seq->flags & BAM_FUNMAP) != 0) {
+    if (D->assembly_pending_n > 0 &&
+        (D->ref == NULL || seq->flags & BAM_FUNMAP) != 0) {
         twobit_copy_str_n(D->x, (char*) seq->seq.s, seq->seq.n);
 
         if (D->assembly_pending_n <= seeds_n - D->seeds_len) {
