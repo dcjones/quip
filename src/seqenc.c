@@ -347,6 +347,7 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
             ((x->flags & BAM_FUNMAP) == 0 && strcmp((char*) x->seqname.s, (char*) x->mate_seqname.s) == 0))
         {
             dist2_encode(E->ac, &E->d_ext_mate_sameseq, 1);
+            seqidx = get_seq_idx(E, &x->seqname);
         }
         else {
             dist2_encode(E->ac, &E->d_ext_mate_sameseq, 0);
@@ -410,6 +411,7 @@ void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
     if ((x->flags & BAM_FMUNMAP) == 0) {
         if (dist2_decode(E->ac, &E->d_ext_mate_sameseq)) {
             str_copy(&x->mate_seqname, &x->seqname);
+            seqidx = get_seq_idx(E, &x->seqname);
         }
         else {
             decode_seqname(E, &x->mate_seqname);

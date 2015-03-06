@@ -1,4 +1,6 @@
 
+AUTOMAKE_OPTIONS = subdir-objects
+
 lib_LIBRARIES = libquip.a
 
 libquip_a_SOURCES = \
