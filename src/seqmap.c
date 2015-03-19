@@ -194,6 +194,10 @@ void seqmap_read_fasta(seqmap_t* M, const char* fn)
                 seq = NULL;
                 state = 0;
             }
+            else if (isalpha(*next)) {
+                twobit_append_char(seq, 'N');
+                state = 1;
+            }
             else {
                 fasta_unexpected_char(*next);
             }
