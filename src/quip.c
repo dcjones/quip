@@ -458,7 +458,7 @@ static int quip_cmd_convert(char** fns, size_t fn_count)
                     if (fn_len >= 3 && strcmp(fns[i] + fn_len - 3, ".qp") == 0) {
                         out_fn = malloc_or_die(fn_len - 3 + 1);
                         memcpy(out_fn, fns[i], fn_len - 3);
-                        out_fn[fn_len] = '\0';
+                        out_fn[fn_len - 3] = '\0';
                     }
                     else {
                         asprintf(&out_fn, "%s.%s", fns[i], fmt_suffix[out_fmt]);
