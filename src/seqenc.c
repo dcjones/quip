@@ -425,7 +425,6 @@ void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen,
         }
     }
 
-    fprintf(stderr, "%lu\n", (unsigned long) quip_version);
     if ((x->flags & BAM_FMUNMAP) == 0) {
         if (quip_version >= 4) {
             if ((x->flags & BAM_FUNMAP) == 0) {
