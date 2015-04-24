@@ -297,7 +297,7 @@ static void decode_seqname(seqenc_t* E, str_t* seqname)
 }
 
 
-void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
+void seqenc_encode_extras(seqenc_t* E, const short_read_t* x, uint8_t quip_version)
 {
     uint32_enc_encode(E->ac, &E->d_ext_flags, x->flags);
     dist256_encode(E->ac, &E->d_ext_map_qual, x->map_qual);
@@ -343,26 +343,41 @@ void seqenc_encode_extras(seqenc_t* E, const short_read_t* x)
     }
 
     if ((x->flags & BAM_FMUNMAP) == 0) {
-        if ((x->flags & BAM_FUNMAP) == 0) {
-            if (strcmp((char*) x->seqname.s, (char*) x->mate_seqname.s) == 0) {
+        if (quip_version >= 4) {
+            if ((x->flags & BAM_FUNMAP) == 0) {
+                if (strcmp((char*) x->seqname.s, (char*) x->mate_seqname.s) == 0) {
+                    dist2_encode(E->ac, &E->d_ext_mate_sameseq, 1);
+                }
+                else {
+                    dist2_encode(E->ac, &E->d_ext_mate_sameseq, 0);
+                    encode_seqname(E, &x->mate_seqname);
+                }
+            }
+            else {
+                encode_seqname(E, &x->mate_seqname);
+            }
+            seqidx = get_seq_idx(E, &x->mate_seqname);
+        }
+        else {
+            if ((x->mate_seqname.n == 1 && x->mate_seqname.s[0] == '=') ||
+                ((x->flags & BAM_FUNMAP) == 0 && strcmp((char*) x->seqname.s, (char*) x->mate_seqname.s) == 0))
+            {
                 dist2_encode(E->ac, &E->d_ext_mate_sameseq, 1);
             }
             else {
                 dist2_encode(E->ac, &E->d_ext_mate_sameseq, 0);
                 encode_seqname(E, &x->mate_seqname);
+                seqidx = get_seq_idx(E, &x->mate_seqname);
             }
         }
-        else {
-            encode_seqname(E, &x->mate_seqname);
-        }
 
-        seqidx = get_seq_idx(E, &x->mate_seqname);
         uint32_enc_encode(E->ac, &E->d_ext_pos[seqidx], x->mate_pos);
     }
 }
 
 
-void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
+void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen,
+                          uint8_t quip_version)
 {
     x->flags    = uint32_enc_decode(E->ac, &E->d_ext_flags);
     x->strand   = (x->flags & BAM_FREVERSE) ? 1 : 0;
@@ -410,20 +425,32 @@ void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen)
         }
     }
 
+    fprintf(stderr, "%lu\n", (unsigned long) quip_version);
     if ((x->flags & BAM_FMUNMAP) == 0) {
-        if ((x->flags & BAM_FUNMAP) == 0) {
+        if (quip_version >= 4) {
+            if ((x->flags & BAM_FUNMAP) == 0) {
+                if (dist2_decode(E->ac, &E->d_ext_mate_sameseq)) {
+                    str_copy(&x->mate_seqname, &x->seqname);
+                }
+                else {
+                    decode_seqname(E, &x->mate_seqname);
+                }
+            }
+            else {
+                decode_seqname(E, &x->mate_seqname);
+            }
+
+            seqidx = get_seq_idx(E, &x->mate_seqname);
+        }
+        else {
             if (dist2_decode(E->ac, &E->d_ext_mate_sameseq)) {
                 str_copy(&x->mate_seqname, &x->seqname);
             }
             else {
                 decode_seqname(E, &x->mate_seqname);
+                seqidx = get_seq_idx(E, &x->mate_seqname);
             }
         }
-        else {
-            decode_seqname(E, &x->mate_seqname);
-        }
-
-        seqidx = get_seq_idx(E, &x->mate_seqname);
         x->mate_pos = uint32_enc_decode(E->ac, &E->d_ext_pos[seqidx]);
     }
 }

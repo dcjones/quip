@@ -35,8 +35,8 @@ void seqenc_set_supercontig(seqenc_t*, const twobit_t* supercontig);
 void seqenc_get_supercontig_consensus(seqenc_t*, twobit_t* supercontig);
 
 /* Encode/decode additional members of short_read. */
-void seqenc_encode_extras(seqenc_t* E, const short_read_t* x);
-void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen);
+void seqenc_encode_extras(seqenc_t* E, const short_read_t* x, uint8_t quip_version);
+void seqenc_decode_extras(seqenc_t* E, short_read_t* x, size_t seqlen, uint8_t quip_version);
 
 void seqenc_encode_char_seq(seqenc_t*, const uint8_t*, size_t len);
 void seqenc_encode_twobit_seq(seqenc_t*, const unsigned char* seq_str, const twobit_t* seq);

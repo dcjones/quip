@@ -443,7 +443,7 @@ void assembler_add_seq(assembler_t* A, const short_read_t* seq)
 {
     A->stat_n++;
 
-    seqenc_encode_extras(A->seqenc, seq);
+    seqenc_encode_extras(A->seqenc, seq, A->quip_version);
 
     if (A->ref != NULL && (seq->flags & BAM_FUNMAP) == 0) {
         seqenc_encode_reference_alignment(A->seqenc, seq);
@@ -627,7 +627,7 @@ void disassembler_read(disassembler_t* D, short_read_t* seq, size_t n)
         D->initial_state = false;
     }
 
-    seqenc_decode_extras(D->seqenc, seq, n);
+    seqenc_decode_extras(D->seqenc, seq, n, D->quip_version);
     seqenc_decode(D->seqenc, seq, n);
 
     if (D->assembly_pending_n > 0 &&

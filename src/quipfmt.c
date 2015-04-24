@@ -16,7 +16,7 @@
 static const uint8_t quip_header_magic[6] =
     {0xff, 'Q', 'U', 'I', 'P', 0x00};
 
-static const uint8_t quip_header_version = 0x03;
+static const uint8_t quip_header_version = 0x04;
 
 /* maximum number of bases per block */
 static const size_t block_size = 5000000;
@@ -40,7 +40,7 @@ void check_header_version(uint8_t v)
     if (v == 1) {
         version_str = "version 1.0.x";
     }
-    else if (v == 2 || v == 3) {
+    else if (v == 2 || v == 3 || v == 4) {
         return;
     }
     else {
