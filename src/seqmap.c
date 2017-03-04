@@ -153,7 +153,7 @@ void seqmap_read_fasta(seqmap_t* M, const char* fn)
                 char* c = strchr((char*) seqname.s, ' ');
                 if (c != NULL) {
                     *c = '\0';
-                    seqname.n = c - (char*) seqname.s;
+                    seqname.n = c - (char*) seqname.s + 1;
                 }
 
                 if (quip_verbose) {
