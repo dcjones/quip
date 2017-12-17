@@ -192,15 +192,24 @@ void quip_sam_write(quip_sam_out_t* out, short_read_t* r)
     c->qual = r->map_qual;
 
     /* 6. cigar (and bin) */
-    bam_reserve_data(b, doff + 4 * r->cigar.n);
+    bam_reserve_data(b, doff + sizeof(uint32_t) * r->cigar.n);
     c->n_cigar = r->cigar.n;
     for (i = 0; i < r->cigar.n; ++i) {
         bam1_cigar(b)[i] =
             (r->cigar.lens[i] << BAM_CIGAR_SHIFT) | r->cigar.ops[i];
     }
-    doff += 4 * r->cigar.n;
+    doff += sizeof(uint32_t) * r->cigar.n;
 
-    c->bin = bam_reg2bin(c->pos, bam_calend(c, bam1_cigar(b)));
+    /* Inlined bam_calend(c, bam1_cigar(b)), to avoid some inexplicable segfault */
+    const uint32_t* cigar = bam1_cigar(b);
+    uint32_t k, end;
+    end = c->pos;
+    for (k = 0; k < r->cigar.n; ++k) {
+        int op = cigar[k] & BAM_CIGAR_MASK;
+        if (op == BAM_CMATCH || op == BAM_CDEL || op == BAM_CREF_SKIP)
+            end += cigar[k] >> BAM_CIGAR_SHIFT;
+    }
+    c->bin = bam_reg2bin(c->pos, end);
 
     /* 7. rnext */
     c->mtid = (mate_aligned && r->mate_seqname.n > 0) ?

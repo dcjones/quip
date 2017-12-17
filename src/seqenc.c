@@ -657,6 +657,9 @@ void seqenc_encode_reference_alignment(
             case BAM_CPAD:
                 quip_error("Cigar PAD operation is unsupported.");
                 break;
+
+            default:
+                quip_error("Unsupported cigar operation encountered.");
         }
     }
 
